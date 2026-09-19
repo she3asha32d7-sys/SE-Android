@@ -19,11 +19,11 @@ jobs:
 
       - name: Extract SE project
         run: |
-          unzip -q SE-v3.0.1.zip
-          ls -la SE-v3.0.1
+          unzip -q SE-v3.0.2.zip
+          ls -la SE-v3.0.2
 
       - name: Build APK
-        working-directory: SE-v3.0.1
+        working-directory: SE-v3.0.2
         run: |
           chmod +x gradlew
           ./gradlew :app:smartphone:assembleStableChannelRichCodecRelease --stacktrace
@@ -31,5 +31,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SE-v3.0.1-APK
-          path: SE-v3.0.1/app/smartphone/build/outputs/apk/**/*.apk
+          name: SE-v3.0.2-APK
+          path: SE-v3.0.2/app/smartphone/build/outputs/apk/**/*.apk
