@@ -1,0 +1,35 @@
+name: Build SE APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Extract SE project
+        run: |
+          unzip -q SE-v3.0.1.zip
+          ls -la SE-v3.0.1
+
+      - name: Build APK
+        working-directory: SE-v3.0.1
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:smartphone:assembleStableChannelRichCodecRelease --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SE-v3.0.1-APK
+          path: SE-v3.0.1/app/smartphone/build/outputs/apk/**/*.apk
