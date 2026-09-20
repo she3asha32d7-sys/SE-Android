@@ -13,10 +13,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -24,24 +24,46 @@ jobs:
       - name: Prepare Android SDK
         shell: bash
         run: |
+          set -e
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
-          yes | sdkmanager --licenses >/dev/null || true
+          SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager -perm -111 | head -n 1 || true)"
 
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager was not found under $ANDROID_HOME"
+            find "$ANDROID_HOME" -maxdepth 5 -type f -name sdkmanager -print || true
+            exit 1
+          fi
+
+          echo "Using sdkmanager: $SDKMANAGER"
+
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME"             "platform-tools"             "platforms;android-35"             "build-tools;35.0.0"
 
       - name: Extract SE project
         shell: bash
         run: |
-          rm -rf SE-Android-v10.1.0
-          unzip -q SE-v10.1.0-source.zip
+          set -e
+          rm -rf _source SE-Android-v10.1.0
+          mkdir -p _source
+
+          test -f SE-v10.1.0-source.zip
+          unzip -q SE-v10.1.0-source.zip -d _source
+
+          PROJECT_ROOT="$(find _source -maxdepth 4 -type f -name gradlew -print -quit | xargs -r dirname)"
+
+          if [ -z "$PROJECT_ROOT" ] || { [ ! -f "$PROJECT_ROOT/settings.gradle" ] && [ ! -f "$PROJECT_ROOT/settings.gradle.kts" ]; }; then
+            echo "ERROR: Could not find a valid Gradle project in SE-v10.1.0-source.zip"
+            find _source -maxdepth 4 -type f \( -name gradlew -o -name settings.gradle -o -name settings.gradle.kts \) -print
+            exit 1
+          fi
+
+          mv "$PROJECT_ROOT" SE-Android-v10.1.0
 
           test -f SE-Android-v10.1.0/gradlew
-          test -f SE-Android-v10.1.0/settings.gradle
+          test -f SE-Android-v10.1.0/settings.gradle || test -f SE-Android-v10.1.0/settings.gradle.kts
 
           echo "=== Project extracted ==="
           ls -la SE-Android-v10.1.0
@@ -64,25 +86,19 @@ jobs:
         shell: bash
         run: |
           echo "=== APK files ==="
-          find SE-Android-v10.1.0/app/build/outputs/apk \
-            -type f \
-            -name "*.apk" \
-            -print
+          find SE-Android-v10.1.0/app/build/outputs/apk             -type f             -name "*.apk"             -print
 
       - name: Rename APK
         shell: bash
         run: |
+          set -e
           mkdir -p output
 
-          APK=$(find SE-Android-v10.1.0/app/build/outputs/apk/release \
-            -type f \
-            -name "*.apk" \
-            | head -n 1)
+          APK="$(find SE-Android-v10.1.0/app/build/outputs/apk/release             -type f -name "*.apk" | head -n 1)"
 
           test -n "$APK"
 
-          cp "$APK" \
-            "output/SE-v10.1.0-universal-release.apk"
+          cp "$APK" "output/SE-v10.1.0-universal-release.apk"
 
           ls -lh output/
 
