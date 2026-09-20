@@ -68,6 +68,22 @@ jobs:
           echo "=== Project extracted ==="
           ls -la SE-Android-v10.1.0
 
+      - name: Fix SE Activity imports
+        shell: bash
+        run: |
+          set -e
+
+          SERIES="SE-Android-v10.1.0/app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt"
+          VOD="SE-Android-v10.1.0/app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt"
+
+          grep -q 'import com.orbital.iptv.ui.vod.VodActivity' "$SERIES" ||             sed -i '/^import android.content.Intent$/a import com.orbital.iptv.ui.vod.VodActivity' "$SERIES"
+
+          grep -q 'import com.orbital.iptv.ui.series.SeriesActivity' "$VOD" ||             sed -i '/^import android.content.Intent$/a import com.orbital.iptv.ui.series.SeriesActivity' "$VOD"
+
+          echo "=== Patched Activity imports ==="
+          grep -n 'Activity' "$SERIES" | head -n 12
+          grep -n 'Activity' "$VOD" | head -n 12
+
       - name: Verify Java
         run: java -version
 
