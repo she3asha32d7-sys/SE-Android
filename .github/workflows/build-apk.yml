@@ -98,25 +98,36 @@ jobs:
           chmod +x gradlew
           ./gradlew clean assembleRelease --stacktrace --no-daemon
 
-      - name: Find APK
-        shell: bash
-        run: |
-          echo "=== APK files ==="
-          find SE-Android-v10.1.0/app/build/outputs/apk             -type f             -name "*.apk"             -print
-
-      - name: Rename APK
+      - name: Sign APK
         shell: bash
         run: |
           set -e
-          mkdir -p output
 
           APK="$(find SE-Android-v10.1.0/app/build/outputs/apk/release             -type f -name "*.apk" | head -n 1)"
 
           test -n "$APK"
 
-          cp "$APK" "output/SE-v10.1.0-universal-release.apk"
+          mkdir -p signing output
 
-          ls -lh output/
+          echo "Generating a temporary signing key for this installable APK..."
+          keytool -genkeypair             -keystore signing/se-release.keystore             -storepass changeit             -keypass changeit             -alias se-release             -keyalg RSA             -keysize 2048             -validity 10000             -dname "CN=SE IPTV PLAYER, OU=SE, O=SE, L=Unknown, ST=Unknown, C=EG"             -noprompt
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -perm -111 | sort -V | tail -n 1)"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign -perm -111 | sort -V | tail -n 1)"
+
+          test -n "$APKSIGNER"
+          test -n "$ZIPALIGN"
+
+          "$ZIPALIGN" -f -p 4 "$APK" output/SE-v10.1.0-aligned.apk
+
+          "$APKSIGNER" sign             --ks signing/se-release.keystore             --ks-pass pass:changeit             --key-pass pass:changeit             --ks-key-alias se-release             --out output/SE-v10.1.0-universal-release.apk             output/SE-v10.1.0-aligned.apk
+
+          rm -f output/SE-v10.1.0-aligned.apk
+
+          "$APKSIGNER" verify --verbose output/SE-v10.1.0-universal-release.apk
+
+          echo "=== Signed APK ==="
+          ls -lh output/SE-v10.1.0-universal-release.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
