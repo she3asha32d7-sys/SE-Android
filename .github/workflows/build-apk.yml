@@ -1,35 +1,94 @@
-name: Build SE APK
+name: Build SE IPTV PLAYER V10.1.0
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Build Release APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
+
+      - name: Prepare Android SDK
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          yes | sdkmanager --licenses >/dev/null || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Extract SE project
+        shell: bash
         run: |
-          unzip -q SE-v3.0.2.zip
-          ls -la SE-v3.0.2
+          rm -rf SE-Android-v10.1.0
+          unzip -q SE-v10.1.0-source.zip
 
-      - name: Build APK
-        working-directory: SE-v3.0.2
+          test -f SE-Android-v10.1.0/gradlew
+          test -f SE-Android-v10.1.0/settings.gradle
+
+          echo "=== Project extracted ==="
+          ls -la SE-Android-v10.1.0
+
+      - name: Verify Java
+        run: java -version
+
+      - name: Verify Gradle
+        working-directory: SE-Android-v10.1.0
+        run: ./gradlew --version
+
+      - name: Build Release APK
+        working-directory: SE-Android-v10.1.0
+        shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :app:smartphone:assembleStableChannelRichCodecRelease --stacktrace
+          ./gradlew clean assembleRelease --stacktrace --no-daemon
 
-      - name: Upload APK
+      - name: Find APK
+        shell: bash
+        run: |
+          echo "=== APK files ==="
+          find SE-Android-v10.1.0/app/build/outputs/apk \
+            -type f \
+            -name "*.apk" \
+            -print
+
+      - name: Rename APK
+        shell: bash
+        run: |
+          mkdir -p output
+
+          APK=$(find SE-Android-v10.1.0/app/build/outputs/apk/release \
+            -type f \
+            -name "*.apk" \
+            | head -n 1)
+
+          test -n "$APK"
+
+          cp "$APK" \
+            "output/SE-v10.1.0-universal-release.apk"
+
+          ls -lh output/
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SE-v3.0.2-APK
-          path: SE-v3.0.2/app/smartphone/build/outputs/apk/**/*.apk
+          name: SE-v10.1.0-APK
+          path: output/SE-v10.1.0-universal-release.apk
+          retention-days: 30
