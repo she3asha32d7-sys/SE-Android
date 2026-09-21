@@ -1,0 +1,21 @@
+name: Snapshot SE source V10.1.0
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: SE-v10.1.0-source-snapshot
+          path: SE-v10.1.0-source.zip
+          retention-days: 2
