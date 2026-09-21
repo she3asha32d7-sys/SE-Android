@@ -112,10 +112,19 @@ jobs:
               configurations.configureEach {
                   resolutionStrategy.eachDependency { details ->
                       if (details.requested.group == "com.google.android.gms" &&
-                          details.requested.name == "play-services-cast-framework" &&
+                          (details.requested.name == "play-services-cast-framework" ||
+                           details.requested.name == "play-services-cast") &&
                           details.requested.version == "22.1.0") {
                           details.useVersion("22.0.0")
                           details.because("Kotlin 1.9.x compatibility")
+                      }
+                  }
+              }
+
+              plugins.withId("org.jetbrains.kotlin.android") {
+                  tasks.configureEach { task ->
+                      if (task.hasProperty("kotlinOptions")) {
+                          task.kotlinOptions.freeCompilerArgs += "-Xskip-metadata-version-check"
                       }
                   }
               }
