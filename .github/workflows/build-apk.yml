@@ -1,6 +1,8 @@
 name: Build SE IPTV PLAYER V10.1.0
+run-name: Build SE IPTV PLAYER V10.1.0
 
-on: [push, workflow_dispatch]
+on:
+  workflow_dispatch:
 
 permissions:
   contents: read
