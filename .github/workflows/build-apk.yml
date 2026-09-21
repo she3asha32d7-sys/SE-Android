@@ -6,9 +6,12 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - SE-v10.1.0-source.zip
 
 permissions:
-  contents: read
+  contents: write
+  actions: read
 
 jobs:
   build:
@@ -29,108 +32,64 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
           SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager -perm -111 | head -n 1 || true)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-          if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager was not found under $ANDROID_HOME"
-            find "$ANDROID_HOME" -maxdepth 5 -type f -name sdkmanager -print || true
+      - name: Restore final modified SE source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          rm -rf _artifact _source SE-Android-v10.1.0
+          mkdir -p _artifact _source
+
+          if [ -f SE-v10.1.0-source.zip ]; then
+            echo "Using repository source ZIP."
+            cp SE-v10.1.0-source.zip _source/source.zip
+          else
+            echo "Repository source ZIP is not yet finalized; downloading the verified modified source artifact from Run 26."
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${{ github.repository }}/actions/artifacts/10645184991/zip" > _artifact/artifact.zip
+            unzip -q _artifact/artifact.zip -d _artifact/unpacked
+            find _artifact/unpacked -type f -name '*.zip' -print -quit > _artifact/nested_zip_path.txt
+            NESTED="$(cat _artifact/nested_zip_path.txt)"
+            test -n "$NESTED"
+            cp "$NESTED" _source/source.zip
+          fi
+
+          unzip -q _source/source.zip -d _source/project
+
+          PROJECT_ROOT="$(find _source/project -maxdepth 5 -type f -name gradlew -print -quit | xargs -r dirname)"
+          if [ -z "$PROJECT_ROOT" ]; then
+            echo "ERROR: gradlew was not found in the source ZIP"
+            find _source/project -maxdepth 5 -type f -name gradlew -print || true
             exit 1
           fi
 
-          echo "Using sdkmanager: $SDKMANAGER"
-
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
-
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME"             "platform-tools"             "platforms;android-35"             "build-tools;35.0.0"
-
-      - name: Snapshot source ZIP
-        uses: actions/upload-artifact@v4
-        with:
-          name: SE-v10.1.0-source-snapshot
-          path: SE-v10.1.0-source.zip
-          retention-days: 2
-
-      - name: Upload Source Code
-        uses: actions/upload-artifact@v4
-        with:
-          name: SE-v10.1.0-SOURCE
-          path: SE-v10.1.0-source.zip
-          retention-days: 30
-
-      - name: Extract SE project
-        shell: bash
-        run: |
-          set -e
-          rm -rf _source SE-Android-v10.1.0
-          mkdir -p _source
-
-          test -f SE-v10.1.0-source.zip
-          unzip -q SE-v10.1.0-source.zip -d _source
-
-          PROJECT_ROOT="$(find _source -maxdepth 4 -type f -name gradlew -print -quit | xargs -r dirname)"
-
-          if [ -z "$PROJECT_ROOT" ] || { [ ! -f "$PROJECT_ROOT/settings.gradle" ] && [ ! -f "$PROJECT_ROOT/settings.gradle.kts" ]; }; then
-            echo "ERROR: Could not find a valid Gradle project in SE-v10.1.0-source.zip"
-            find _source -maxdepth 4 -type f \( -name gradlew -o -name settings.gradle -o -name settings.gradle.kts \) -print
+          if [ ! -f "$PROJECT_ROOT/settings.gradle" ] && [ ! -f "$PROJECT_ROOT/settings.gradle.kts" ]; then
+            echo "ERROR: invalid Gradle project"
             exit 1
           fi
 
           mv "$PROJECT_ROOT" SE-Android-v10.1.0
-
           test -f SE-Android-v10.1.0/gradlew
           test -f SE-Android-v10.1.0/settings.gradle || test -f SE-Android-v10.1.0/settings.gradle.kts
 
-          echo "=== Project extracted ==="
-          ls -la SE-Android-v10.1.0
-
-      - name: Apply SE V10.1.0 modifications
-        shell: bash
-        run: |
-          set -e
-          python3 apply_se_changes.py
-          echo "=== SE V10.1.0 modifications applied ==="
-
-      - name: Fix SE Activity imports
-        shell: bash
-        run: |
-          set -e
-
-          SERIES="SE-Android-v10.1.0/app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt"
-          VOD="SE-Android-v10.1.0/app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt"
-
-          grep -q 'import com.orbital.iptv.ui.vod.VodActivity' "$SERIES" ||             sed -i '/^import android.content.Intent$/a import com.orbital.iptv.ui.vod.VodActivity' "$SERIES"
-
-          grep -q 'import com.orbital.iptv.ui.series.SeriesActivity' "$VOD" ||             sed -i '/^import android.content.Intent$/a import com.orbital.iptv.ui.series.SeriesActivity' "$VOD"
-
-          echo "=== Patched Activity imports ==="
-          grep -n 'Activity' "$SERIES" | head -n 12
-          grep -n 'Activity' "$VOD" | head -n 12
+          echo "=== Restored SE V10.1.0 source ==="
+          grep -RIn --include='*.gradle' --include='*.kts' 'applicationId' SE-Android-v10.1.0/app | head -n 3 || true
 
       - name: Fix Cast Kotlin compatibility
         working-directory: SE-Android-v10.1.0
         shell: bash
         run: |
           set -e
-
-          echo "=== Cast dependency declarations ==="
-          grep -RIn --exclude-dir=.gradle --exclude-dir=build \
-            -E 'play-services-cast-framework|castFramework|22\.1\.0' . || true
-
-          # Cast Framework 22.1.0 adds a Kotlin stdlib 2.1.0 dependency.
-          # This project is built with Kotlin 1.9.x, so use the immediately
-          # preceding Cast SDK release, 22.0.0, which does not introduce that
-          # Kotlin 2.1 metadata dependency.
           while IFS= read -r -d '' f; do
             sed -i 's/22\.1\.0/22.0.0/g' "$f"
-          done < <(grep -RIlz --exclude-dir=.gradle --exclude-dir=build \
-            'play-services-cast-framework' . || true)
-
-          echo "=== Cast dependency declarations after patch ==="
-          grep -RIn --exclude-dir=.gradle --exclude-dir=build \
-            -E 'play-services-cast-framework|castFramework|22\.1\.0' . || true
+          done < <(grep -RIlz --exclude-dir=.gradle --exclude-dir=build 'play-services-cast-framework' . || true)
 
           cat > cast-compat.init.gradle <<'EOF'
           allprojects {
@@ -145,7 +104,6 @@ jobs:
                       }
                   }
               }
-
               plugins.withId("org.jetbrains.kotlin.android") {
                   tasks.configureEach { task ->
                       if (task.hasProperty("kotlinOptions")) {
@@ -156,101 +114,120 @@ jobs:
           }
           EOF
 
-          echo "=== Cast dependency graph ==="
-          ./gradlew -I cast-compat.init.gradle :app:dependencyInsight \
-            --dependency play-services-cast-framework \
-            --configuration releaseCompileClasspath || true
-          
-      - name: Repair missing SE HomeActivity constant
+      - name: Repair Activity imports
         working-directory: SE-Android-v10.1.0
         shell: bash
         run: |
           set -e
+          SERIES="app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt"
+          VOD="app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt"
+          test -f "$SERIES"
+          test -f "$VOD"
+          grep -q 'import com.orbital.iptv.ui.vod.VodActivity' "$SERIES" || sed -i '/^import android.content.Intent$/a import com.orbital.iptv.ui.vod.VodActivity' "$SERIES"
+          grep -q 'import com.orbital.iptv.ui.series.SeriesActivity' "$VOD" || sed -i '/^import android.content.Intent$/a import com.orbital.iptv.ui.series.SeriesActivity' "$VOD"
 
+      - name: Repair HomeActivity constant
+        working-directory: SE-Android-v10.1.0
+        shell: bash
+        run: |
+          set -e
           HOME_ACTIVITY="app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt"
-          test -f "$HOME_ACTIVITY"
-
-          echo "=== Checking EXTRA_OPEN_SETTINGS ==="
-          grep -n "EXTRA_OPEN_SETTINGS" "$HOME_ACTIVITY" || true
-
           if ! grep -q 'const val EXTRA_OPEN_SETTINGS' "$HOME_ACTIVITY"; then
-            echo "Adding EXTRA_OPEN_SETTINGS to HomeActivity..."
             sed -i '/^class HomeActivity[^\{]*{/a\
-          \
-              companion object {\
-                  const val EXTRA_OPEN_SETTINGS = "open_settings"\
-              }\
-          ' "$HOME_ACTIVITY"
+    companion object {
+        const val EXTRA_OPEN_SETTINGS = "open_settings"
+    }
+' "$HOME_ACTIVITY"
           fi
 
-          echo "=== EXTRA_OPEN_SETTINGS after repair ==="
-          grep -n -C 3 "EXTRA_OPEN_SETTINGS" "$HOME_ACTIVITY"
-
-      - name: Package extracted source
+      - name: Verify Java and Gradle
         working-directory: SE-Android-v10.1.0
         shell: bash
         run: |
           set -e
-          rm -rf /tmp/se-source-package
-          mkdir -p /tmp/se-source-package
-          zip -qr /tmp/se-source-package/SE-v10.1.0-source-extracted.zip .             -x '.gradle/*' '*/build/*' '.idea/*'
-          ls -lh /tmp/se-source-package/SE-v10.1.0-source-extracted.zip
-
-      - name: Upload extracted source
-        uses: actions/upload-artifact@v4
-        with:
-          name: SE-v10.1.0-source-extracted
-          path: /tmp/se-source-package/SE-v10.1.0-source-extracted.zip
-          retention-days: 30
-
-      - name: Verify Java
-        run: java -version
-
-      - name: Verify Gradle
-        working-directory: SE-Android-v10.1.0
-        run: ./gradlew --version
+          java -version
+          ./gradlew --version
 
       - name: Build Release APK
         working-directory: SE-Android-v10.1.0
         shell: bash
         run: |
+          set -e
           chmod +x gradlew
           ./gradlew -I cast-compat.init.gradle clean assembleRelease --stacktrace --no-daemon
+
+      - name: Package final source ZIP
+        shell: bash
+        run: |
+          set -e
+          rm -rf /tmp/se-final-source
+          mkdir -p /tmp/se-final-source
+          zip -qr /tmp/se-final-source/SE-v10.1.0-source.zip SE-Android-v10.1.0 \
+            -x 'SE-Android-v10.1.0/.gradle/*' \
+               'SE-Android-v10.1.0/**/build/*' \
+               'SE-Android-v10.1.0/.idea/*' \
+               'SE-Android-v10.1.0/signing/*'
+          cp /tmp/se-final-source/SE-v10.1.0-source.zip ./SE-v10.1.0-source.zip
+          ls -lh ./SE-v10.1.0-source.zip
+
+      - name: Commit finalized source ZIP
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SE-v10.1.0-source.zip
+          git diff --cached --quiet && exit 0
+          git commit -m "Finalize SE V10.1.0 source ZIP"
+          git push
 
       - name: Sign APK
         shell: bash
         run: |
           set -e
-
-          APK="$(find SE-Android-v10.1.0/app/build/outputs/apk/release             -type f -name "*.apk" | head -n 1)"
-
+          APK="$(find SE-Android-v10.1.0/app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
 
           mkdir -p signing output
-
-          echo "Generating a temporary signing key for this installable APK..."
-          keytool -genkeypair             -keystore signing/se-release.keystore             -storepass changeit             -keypass changeit             -alias se-release             -keyalg RSA             -keysize 2048             -validity 10000             -dname "CN=SE IPTV PLAYER, OU=SE, O=SE, L=Unknown, ST=Unknown, C=EG"             -noprompt
+          keytool -genkeypair \
+            -keystore signing/se-release.keystore \
+            -storepass changeit \
+            -keypass changeit \
+            -alias se-release \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=SE IPTV PLAYER, OU=SE, O=SE, L=Unknown, ST=Unknown, C=EG" \
+            -noprompt
 
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -perm -111 | sort -V | tail -n 1)"
           ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign -perm -111 | sort -V | tail -n 1)"
-
           test -n "$APKSIGNER"
           test -n "$ZIPALIGN"
 
           "$ZIPALIGN" -f -p 4 "$APK" output/SE-v10.1.0-aligned.apk
-
-          "$APKSIGNER" sign             --ks signing/se-release.keystore             --ks-pass pass:changeit             --key-pass pass:changeit             --ks-key-alias se-release             --out output/SE-v10.1.0-universal-release.apk             output/SE-v10.1.0-aligned.apk
+          "$APKSIGNER" sign \
+            --ks signing/se-release.keystore \
+            --ks-pass pass:changeit \
+            --key-pass pass:changeit \
+            --ks-key-alias se-release \
+            --out output/SE-v10.1.0-universal-release-signed.apk \
+            output/SE-v10.1.0-aligned.apk
 
           rm -f output/SE-v10.1.0-aligned.apk
+          "$APKSIGNER" verify --verbose output/SE-v10.1.0-universal-release-signed.apk
+          ls -lh output/SE-v10.1.0-universal-release-signed.apk
 
-          "$APKSIGNER" verify --verbose output/SE-v10.1.0-universal-release.apk
+      - name: Upload final Source Code
+        uses: actions/upload-artifact@v4
+        with:
+          name: SE-v10.1.0-SOURCE
+          path: SE-v10.1.0-source.zip
+          retention-days: 30
 
-          echo "=== Signed APK ==="
-          ls -lh output/SE-v10.1.0-universal-release.apk
-
-      - name: Upload APK Artifact
+      - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
           name: SE-v10.1.0-APK
-          path: output/SE-v10.1.0-universal-release.apk
+          path: output/SE-v10.1.0-universal-release-signed.apk
           retention-days: 30
