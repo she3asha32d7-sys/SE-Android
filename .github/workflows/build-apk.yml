@@ -158,28 +158,25 @@ jobs:
           # resolve the same Intent extra key.
           if ! grep -q 'const val EXTRA_OPEN_SETTINGS' "$HOME_ACTIVITY"; then
             python3 - "$HOME_ACTIVITY" <<'PY'
-import pathlib
-import re
-import sys
+            import pathlib
+            import re
+            import sys
 
-path = pathlib.Path(sys.argv[1])
-text = path.read_text(encoding="utf-8")
+            path = pathlib.Path(sys.argv[1])
+            source = path.read_text(encoding="utf-8")
 
-# Reuse an existing companion object when present.
-companion = re.search(r'\bcompanion\s+object\s*\{', text)
-if companion:
-    pos = companion.end()
-    text = text[:pos] + '\n        const val EXTRA_OPEN_SETTINGS = "open_settings"\n' + text[pos:]
-else:
-    # Otherwise insert a companion object immediately inside HomeActivity.
-    cls = re.search(r'(class\s+HomeActivity\b[^\{]*\{)', text)
-    if not cls:
-        raise SystemExit("HomeActivity class declaration not found")
-    pos = cls.end()
-    text = text[:pos] + '\n\n    companion object {\n        const val EXTRA_OPEN_SETTINGS = "open_settings"\n    }\n' + text[pos:]
-
-path.write_text(text, encoding="utf-8")
-PY
+            if "const val EXTRA_OPEN_SETTINGS" not in source:
+                class_match = re.search(r"^class\\s+HomeActivity\\b[^\\{]*\\{", source, re.MULTILINE)
+                if not class_match:
+                    raise SystemExit("HomeActivity class declaration not found")
+                insert = (
+                    "\\n\\n    companion object {\\n"
+                    "        const val EXTRA_OPEN_SETTINGS = \\"open_settings\\"\\n"
+                    "    }\\n"
+                )
+                source = source[:class_match.end()] + insert + source[class_match.end():]
+                path.write_text(source, encoding="utf-8")
+            PY
           fi
 
           echo "=== EXTRA_OPEN_SETTINGS after repair ==="
