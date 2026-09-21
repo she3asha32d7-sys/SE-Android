@@ -136,6 +136,51 @@ jobs:
             --dependency play-services-cast-framework \
             --configuration releaseCompileClasspath || true
           
+      - name: Repair missing SE HomeActivity constant
+        working-directory: SE-Android-v10.1.0
+        shell: bash
+        run: |
+          set -e
+
+          HOME_ACTIVITY="app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt"
+          test -f "$HOME_ACTIVITY"
+
+          echo "=== Checking EXTRA_OPEN_SETTINGS ==="
+          grep -n "EXTRA_OPEN_SETTINGS" "$HOME_ACTIVITY" || true
+
+          # The SE navigation patches reference HomeActivity.EXTRA_OPEN_SETTINGS.
+          # Define the constant in HomeActivity's companion object so all callers
+          # (HomeActivity, SeriesActivity, VodActivity, MainSidebarController)
+          # resolve the same Intent extra key.
+          if ! grep -q 'const val EXTRA_OPEN_SETTINGS' "$HOME_ACTIVITY"; then
+            python3 - "$HOME_ACTIVITY" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+
+# Reuse an existing companion object when present.
+companion = re.search(r'\bcompanion\s+object\s*\{', text)
+if companion:
+    pos = companion.end()
+    text = text[:pos] + '\n        const val EXTRA_OPEN_SETTINGS = "open_settings"\n' + text[pos:]
+else:
+    # Otherwise insert a companion object immediately inside HomeActivity.
+    cls = re.search(r'(class\s+HomeActivity\b[^\{]*\{)', text)
+    if not cls:
+        raise SystemExit("HomeActivity class declaration not found")
+    pos = cls.end()
+    text = text[:pos] + '\n\n    companion object {\n        const val EXTRA_OPEN_SETTINGS = "open_settings"\n    }\n' + text[pos:]
+
+path.write_text(text, encoding="utf-8")
+PY
+          fi
+
+          echo "=== EXTRA_OPEN_SETTINGS after repair ==="
+          grep -n -C 3 "EXTRA_OPEN_SETTINGS" "$HOME_ACTIVITY"
+
       - name: Verify Java
         run: java -version
 
