@@ -90,18 +90,16 @@ jobs:
         run: |
           set -e
           echo "=== Checking Google Cast dependency ==="
-          grep -RIn --include='*.gradle' --include='*.gradle.kts' \\
-            'play-services-cast-framework' . || true
+          grep -RIn --include='*.gradle' --include='*.gradle.kts' 'play-services-cast-framework' . || true
 
           # This project uses Kotlin 1.9.x. Cast 22.1.0 pulls Kotlin 2.1 metadata,
           # which makes kspReleaseKotlin fail before the APK is produced.
-          find . -type f \\
-            \( -name '*.gradle' -o -name '*.gradle.kts' \) -print0 | \\
-            xargs -0 -r sed -i 's/com\\.google\\.android\\.gms:play-services-cast-framework:22\\.1\\.0/com.google.android.gms:play-services-cast-framework:21.3.0/g'
+          while IFS= read -r -d '' f; do
+            sed -i 's/com\.google\.android\.gms:play-services-cast-framework:22\.1\.0/com.google.android.gms:play-services-cast-framework:21.3.0/g' "$f"
+          done < <(find . -type f \( -name '*.gradle' -o -name '*.gradle.kts' \) -print0)
 
           echo "=== Cast dependency after compatibility patch ==="
-          grep -RIn --include='*.gradle' --include='*.gradle.kts' \\
-            'play-services-cast-framework' . || true
+          grep -RIn --include='*.gradle' --include='*.gradle.kts' 'play-services-cast-framework' . || true
 
       - name: Verify Java
         run: java -version
