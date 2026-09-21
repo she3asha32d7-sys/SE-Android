@@ -86,6 +86,13 @@ jobs:
           echo "=== Project extracted ==="
           ls -la SE-Android-v10.1.0
 
+      - name: Apply SE V10.1.0 modifications
+        shell: bash
+        run: |
+          set -e
+          python3 apply_se_changes.py
+          echo "=== SE V10.1.0 modifications applied ==="
+
       - name: Fix SE Activity imports
         shell: bash
         run: |
