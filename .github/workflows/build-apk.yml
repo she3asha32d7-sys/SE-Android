@@ -172,6 +172,23 @@ jobs:
           echo "=== EXTRA_OPEN_SETTINGS after repair ==="
           grep -n -C 3 "EXTRA_OPEN_SETTINGS" "$HOME_ACTIVITY"
 
+      - name: Package extracted source
+        working-directory: SE-Android-v10.1.0
+        shell: bash
+        run: |
+          set -e
+          rm -rf /tmp/se-source-package
+          mkdir -p /tmp/se-source-package
+          zip -qr /tmp/se-source-package/SE-v10.1.0-source-extracted.zip .             -x '.gradle/*' '*/build/*' '.idea/*'
+          ls -lh /tmp/se-source-package/SE-v10.1.0-source-extracted.zip
+
+      - name: Upload extracted source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SE-v10.1.0-source-extracted
+          path: /tmp/se-source-package/SE-v10.1.0-source-extracted.zip
+          retention-days: 30
+
       - name: Verify Java
         run: java -version
 
