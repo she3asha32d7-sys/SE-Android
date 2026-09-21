@@ -90,28 +90,43 @@ jobs:
         run: |
           set -e
 
-          echo "=== Locating Cast/Kotlin dependency declarations ==="
-          grep -RIn \
-            --exclude-dir=.gradle \
-            --exclude-dir=build \
-            -E 'play-services-cast-framework|22\.1\.0|kotlin-stdlib' . || true
+          echo "=== Cast dependency declarations ==="
+          grep -RIn --exclude-dir=.gradle --exclude-dir=build \
+            -E 'play-services-cast-framework|castFramework|22\.1\.0' . || true
+
+          # Cast Framework 22.1.0 adds a Kotlin stdlib 2.1.0 dependency.
+          # This project is built with Kotlin 1.9.x, so use the immediately
+          # preceding Cast SDK release, 22.0.0, which does not introduce that
+          # Kotlin 2.1 metadata dependency.
+          while IFS= read -r -d '' f; do
+            sed -i 's/22\.1\.0/22.0.0/g' "$f"
+          done < <(grep -RIlz --exclude-dir=.gradle --exclude-dir=build \
+            'play-services-cast-framework' . || true)
+
+          echo "=== Cast dependency declarations after patch ==="
+          grep -RIn --exclude-dir=.gradle --exclude-dir=build \
+            -E 'play-services-cast-framework|castFramework|22\.1\.0' . || true
 
           cat > cast-compat.init.gradle <<'EOF'
           allprojects {
               configurations.configureEach {
-                  resolutionStrategy.force(
-                      "com.google.android.gms:play-services-cast-framework:21.3.0",
-                      "org.jetbrains.kotlin:kotlin-stdlib:1.9.22",
-                      "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22",
-                      "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22"
-                  )
+                  resolutionStrategy.eachDependency { details ->
+                      if (details.requested.group == "com.google.android.gms" &&
+                          details.requested.name == "play-services-cast-framework" &&
+                          details.requested.version == "22.1.0") {
+                          details.useVersion("22.0.0")
+                          details.because("Kotlin 1.9.x compatibility")
+                      }
+                  }
               }
           }
           EOF
 
-          echo "=== Gradle compatibility init script ==="
-          cat cast-compat.init.gradle
-
+          echo "=== Cast dependency graph ==="
+          ./gradlew -I cast-compat.init.gradle :app:dependencyInsight \
+            --dependency play-services-cast-framework \
+            --configuration releaseCompileClasspath || true
+          
       - name: Verify Java
         run: java -version
 
