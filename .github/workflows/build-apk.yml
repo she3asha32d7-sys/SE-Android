@@ -89,17 +89,28 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "=== Checking Google Cast dependency ==="
-          grep -RIn --include='*.gradle' --include='*.gradle.kts' 'play-services-cast-framework' . || true
 
-          # This project uses Kotlin 1.9.x. Cast 22.1.0 pulls Kotlin 2.1 metadata,
-          # which makes kspReleaseKotlin fail before the APK is produced.
-          while IFS= read -r -d '' f; do
-            sed -i 's/com\.google\.android\.gms:play-services-cast-framework:22\.1\.0/com.google.android.gms:play-services-cast-framework:21.3.0/g' "$f"
-          done < <(find . -type f \( -name '*.gradle' -o -name '*.gradle.kts' \) -print0)
+          echo "=== Locating Cast/Kotlin dependency declarations ==="
+          grep -RIn \
+            --exclude-dir=.gradle \
+            --exclude-dir=build \
+            -E 'play-services-cast-framework|22\.1\.0|kotlin-stdlib' . || true
 
-          echo "=== Cast dependency after compatibility patch ==="
-          grep -RIn --include='*.gradle' --include='*.gradle.kts' 'play-services-cast-framework' . || true
+          cat > cast-compat.init.gradle <<'EOF'
+          allprojects {
+              configurations.configureEach {
+                  resolutionStrategy.force(
+                      "com.google.android.gms:play-services-cast-framework:21.3.0",
+                      "org.jetbrains.kotlin:kotlin-stdlib:1.9.22",
+                      "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22",
+                      "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22"
+                  )
+              }
+          }
+          EOF
+
+          echo "=== Gradle compatibility init script ==="
+          cat cast-compat.init.gradle
 
       - name: Verify Java
         run: java -version
@@ -113,7 +124,7 @@ jobs:
         shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew clean assembleRelease --stacktrace --no-daemon
+          ./gradlew -I cast-compat.init.gradle clean assembleRelease --stacktrace --no-daemon
 
       - name: Sign APK
         shell: bash
