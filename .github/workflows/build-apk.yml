@@ -152,31 +152,14 @@ jobs:
           echo "=== Checking EXTRA_OPEN_SETTINGS ==="
           grep -n "EXTRA_OPEN_SETTINGS" "$HOME_ACTIVITY" || true
 
-          # The SE navigation patches reference HomeActivity.EXTRA_OPEN_SETTINGS.
-          # Define the constant in HomeActivity's companion object so all callers
-          # (HomeActivity, SeriesActivity, VodActivity, MainSidebarController)
-          # resolve the same Intent extra key.
           if ! grep -q 'const val EXTRA_OPEN_SETTINGS' "$HOME_ACTIVITY"; then
-            python3 - "$HOME_ACTIVITY" <<'PY'
-            import pathlib
-            import re
-            import sys
-
-            path = pathlib.Path(sys.argv[1])
-            source = path.read_text(encoding="utf-8")
-
-            if "const val EXTRA_OPEN_SETTINGS" not in source:
-                class_match = re.search(r"^class\\s+HomeActivity\\b[^\\{]*\\{", source, re.MULTILINE)
-                if not class_match:
-                    raise SystemExit("HomeActivity class declaration not found")
-                insert = (
-                    "\\n\\n    companion object {\\n"
-                    "        const val EXTRA_OPEN_SETTINGS = \\"open_settings\\"\\n"
-                    "    }\\n"
-                )
-                source = source[:class_match.end()] + insert + source[class_match.end():]
-                path.write_text(source, encoding="utf-8")
-            PY
+            echo "Adding EXTRA_OPEN_SETTINGS to HomeActivity..."
+            sed -i '/^class HomeActivity[^\{]*{/a\
+          \
+              companion object {\
+                  const val EXTRA_OPEN_SETTINGS = "open_settings"\
+              }\
+          ' "$HOME_ACTIVITY"
           fi
 
           echo "=== EXTRA_OPEN_SETTINGS after repair ==="
