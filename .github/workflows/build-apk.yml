@@ -46,6 +46,13 @@ jobs:
 
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME"             "platform-tools"             "platforms;android-35"             "build-tools;35.0.0"
 
+      - name: Snapshot source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: SE-v10.1.0-source-snapshot
+          path: SE-v10.1.0-source.zip
+          retention-days: 2
+
       - name: Extract SE project
         shell: bash
         run: |
