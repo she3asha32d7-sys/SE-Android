@@ -46,7 +46,7 @@ jobs:
           rm -rf _artifact _source SE-Android-v10.1.0
           mkdir -p _artifact _source
 
-          if [ -f SE-v10.1.0-source.zip ]; then
+          if [ -f SE-v10.1.0-source-final.marker ]; then
             echo "Using repository source ZIP."
             cp SE-v10.1.0-source.zip _source/source.zip
           else
@@ -176,7 +176,7 @@ jobs:
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add SE-v10.1.0-source.zip
+          printf "SE IPTV PLAYER V10.1.0 finalized source\n" > SE-v10.1.0-source-final.marker\ngit add SE-v10.1.0-source.zip SE-v10.1.0-source-final.marker
           git diff --cached --quiet && exit 0
           git commit -m "Finalize SE V10.1.0 source ZIP"
           git push
