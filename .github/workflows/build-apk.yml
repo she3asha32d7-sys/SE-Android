@@ -114,32 +114,6 @@ jobs:
           }
           EOF
 
-      - name: Repair Activity imports
-        working-directory: SE-Android-v10.1.0
-        shell: bash
-        run: |
-          set -e
-          SERIES="app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt"
-          VOD="app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt"
-          test -f "$SERIES"
-          test -f "$VOD"
-          grep -q 'import com.orbital.iptv.ui.vod.VodActivity' "$SERIES" || sed -i '/^import android.content.Intent$/a import com.orbital.iptv.ui.vod.VodActivity' "$SERIES"
-          grep -q 'import com.orbital.iptv.ui.series.SeriesActivity' "$VOD" || sed -i '/^import android.content.Intent$/a import com.orbital.iptv.ui.series.SeriesActivity' "$VOD"
-
-      - name: Repair HomeActivity constant
-        working-directory: SE-Android-v10.1.0
-        shell: bash
-        run: |
-          set -e
-          HOME_ACTIVITY="app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt"
-          if ! grep -q 'const val EXTRA_OPEN_SETTINGS' "$HOME_ACTIVITY"; then
-            sed -i '/^class HomeActivity[^\{]*{/a\
-    companion object {
-        const val EXTRA_OPEN_SETTINGS = "open_settings"
-    }
-' "$HOME_ACTIVITY"
-          fi
-
       - name: Verify Java and Gradle
         working-directory: SE-Android-v10.1.0
         shell: bash
