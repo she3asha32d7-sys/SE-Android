@@ -11,3 +11,5 @@ Rebuild trigger.
 Corrected v100.0.7 rebuild trigger.
 
 Robust rebuild trigger.
+
+Verified script trigger.
