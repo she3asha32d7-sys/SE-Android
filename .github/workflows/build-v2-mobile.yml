@@ -86,11 +86,166 @@ jobs:
           # Compatibility cleanup for Media3 PlayerView XML attributes that are not
           # part of the installed Media3 UI schema.
           find project/app/src/main/res -type f -name '*.xml' -print0 | \
-            xargs -0 sed -i '/android:useController="false"/d' || true
+            xargs -0 sed -i 's/ android:useController="false"//' || true
 
           echo "=== PROJECT ROOT ==="
           pwd
           find project -maxdepth 2 -type f | sort | head -n 200
+
+      - name: Apply source compile fixes
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path(".")
+
+          # Keep the mini PlayerView in the generated ViewBinding; remove only
+          # the unsupported attribute, not the entire XML element.
+          p = root / "app/src/main/res/layout/activity_home.xml"
+          s = p.read_text(encoding="utf-8")
+          s = s.replace(' android:useController="false"', '')
+          p.write_text(s, encoding="utf-8")
+
+          p = root / "app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt"
+          s = p.read_text(encoding="utf-8")
+          s = s.replace('binding.root.findViewById<View>(R.id.tv_sidebar_time)?.let { (it as TextView).setTextColor(p.accent) }\n', '')
+          s = s.replace('android.widget.HorizontalScrollView.LayoutParams(-1, (64*d).toInt())',
+                        'ViewGroup.LayoutParams(-1, (64*d).toInt())')
+          p.write_text(s, encoding="utf-8")
+
+          p = root / "app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt"
+          s = p.read_text(encoding="utf-8")
+          if 'override fun onPause(){ super.onPause(); saveWatchHistory() }' in s:
+              s = s.replace('''        if (isLive) {
+            RecordingState.unregisterStopLiveTv()
+        }
+    }
+''', '''        if (isLive) {
+            RecordingState.unregisterStopLiveTv()
+        }
+        saveWatchHistory()
+    }
+''', 1)
+              s = s.replace('    override fun onPause(){ super.onPause(); saveWatchHistory() }\n', '')
+          p.write_text(s, encoding="utf-8")
+
+          p = root / "app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt"
+          s = p.read_text(encoding="utf-8")
+          if 'import com.orbital.iptv.R' not in s:
+              s = s.replace('import com.orbital.iptv.databinding.ActivitySeriesBinding\n',
+                            'import com.orbital.iptv.databinding.ActivitySeriesBinding\nimport com.orbital.iptv.R\n')
+          s = s.replace('import com.orbital.iptv.utils.WatchHistoryManager.Section\n',
+                        'import com.orbital.iptv.utils.MainSidebarController.Section\n')
+          p.write_text(s, encoding="utf-8")
+
+          p = root / "app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt"
+          s = p.read_text(encoding="utf-8")
+          if 'import com.orbital.iptv.utils.PrefsManager' not in s:
+              s = s.replace('import com.orbital.iptv.utils.PlayerLauncher\n',
+                            'import com.orbital.iptv.utils.PlayerLauncher\nimport com.orbital.iptv.utils.PrefsManager\n')
+          p.write_text(s, encoding="utf-8")
+
+          p = root / "app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt"
+          s = p.read_text(encoding="utf-8")
+          if 'import com.orbital.iptv.R' not in s:
+              s = s.replace('import com.orbital.iptv.databinding.ActivityVodBinding\n',
+                            'import com.orbital.iptv.databinding.ActivityVodBinding\nimport com.orbital.iptv.R\n')
+          s = s.replace('import com.orbital.iptv.ui.settings.SettingsActivity.Section\n',
+                        'import com.orbital.iptv.utils.MainSidebarController.Section\n')
+          s = s.replace('com.orbital.iptv.com.orbital.iptv.R.id.tv_header_datetime', 'R.id.tv_header_datetime')
+          p.write_text(s, encoding="utf-8")
+
+          p = root / "app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt"
+          s = p.read_text(encoding="utf-8")
+          s = s.replace('''card.addView(host, LinearLayout.LayoutParams
+            .apply { topMargin=(3*density).toInt() })
+        card.addView(username, LinearLayout.LayoutParams
+            .apply { topMargin=(3*density).toInt() })
+        card.addView(password, LinearLayout.LayoutParams
+            .apply { topMargin=(3*density).toInt() })
+''', '''card.addView(host, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).also { it.topMargin=(3*density).toInt() })
+        card.addView(username, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).also { it.topMargin=(3*density).toInt() })
+        card.addView(password, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).also { it.topMargin=(3*density).toInt() })
+''')
+          p.write_text(s, encoding="utf-8")
+
+          p = root / "app/src/main/java/com/orbital/iptv/utils/WatchHistoryManager.kt"
+          p.write_text(r'''package com.orbital.iptv.utils
+
+import android.content.Context
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+
+data class WatchHistoryItem(
+    val id: String,
+    val type: String,
+    val title: String,
+    val artUrl: String = "",
+    val streamUrl: String = "",
+    val streamId: Int = -1,
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+object WatchHistoryManager {
+    private const val PREFS = "se_watch_history"
+    private const val KEY = "items"
+    private const val MAX = 15
+    private val gson = Gson()
+    private val listType = object : TypeToken<List<WatchHistoryItem>>() {}.type
+
+    private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun load(c: Context): List<WatchHistoryItem> {
+        val raw = prefs(c).getString(KEY, null) ?: return emptyList()
+        return try {
+            gson.fromJson<List<WatchHistoryItem>>(raw, listType) ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun get(c: Context, type: String): List<WatchHistoryItem> {
+        return load(c)
+            .filter { it.type == type }
+            .sortedByDescending { it.updatedAt }
+            .take(MAX)
+    }
+
+    fun record(c: Context, item: WatchHistoryItem) {
+        val list = load(c).filterNot { it.id == item.id }.toMutableList()
+        list.add(0, item.copy(updatedAt = System.currentTimeMillis()))
+        prefs(c).edit().putString(KEY, gson.toJson(list.take(100), listType)).apply()
+    }
+
+    fun update(c: Context, id: String, pos: Long, dur: Long) {
+        val list = load(c).toMutableList()
+        val index = list.indexOfFirst { it.id == id }
+        if (index >= 0) {
+            list[index] = list[index].copy(
+                positionMs = pos,
+                durationMs = dur,
+                updatedAt = System.currentTimeMillis()
+            )
+            prefs(c).edit().putString(KEY, gson.toJson(list, listType)).apply()
+        }
+    }
+
+    fun remove(c: Context, id: String) {
+        val list = load(c).filterNot { it.id == id }
+        prefs(c).edit().putString(KEY, gson.toJson(list, listType)).apply()
+    }
+
+    fun clear(c: Context) {
+        prefs(c).edit().clear().apply()
+    }
+}
+''', encoding="utf-8")
+          PY
 
       - name: Static source sanity check
         working-directory: project
