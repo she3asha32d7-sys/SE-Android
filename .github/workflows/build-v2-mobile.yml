@@ -82,6 +82,12 @@ jobs:
 
           mv "$ROOT" project
           chmod +x project/gradlew
+
+          # Compatibility cleanup for Media3 PlayerView XML attributes that are not
+          # part of the installed Media3 UI schema.
+          find project/app/src/main/res -type f -name '*.xml' -print0 | \
+            xargs -0 sed -i '/android:useController="false"/d' || true
+
           echo "=== PROJECT ROOT ==="
           pwd
           find project -maxdepth 2 -type f | sort | head -n 200
