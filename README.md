@@ -7,3 +7,5 @@ v100.0.7 build pipeline active.
 Build trigger refreshed.
 
 Rebuild trigger.
+
+Corrected v100.0.7 rebuild trigger.
