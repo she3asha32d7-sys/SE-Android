@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 def text(path):
     return Path(path).read_text(encoding="utf-8")
@@ -6,7 +7,6 @@ def text(path):
 def write(path, s):
     Path(path).write_text(s, encoding="utf-8")
 
-# Release identity.
 p = Path("settings.gradle")
 s = text(p).replace('rootProject.name = "SEAndroid_v100.0.6"',
                    'rootProject.name = "SEAndroid_v100.0.7"')
@@ -43,20 +43,21 @@ lines[label_index:label_index+1] = [new_label]
 block2 = "".join(lines)
 s = s[:start] + block2 + s[end:]
 
-old_key = '"IPTV|' + chr(36) + '{src.serverUrl}|' + chr(36) + '{src.show.seriesId}"'
-new_key = '"IPTV|' + chr(36) + '{src.serverUrl}|' + chr(36) + '{src.username}|' + chr(36) + '{src.password.hashCode()}|' + chr(36) + '{src.show.seriesId}"'
+D = "$"
+old_key = '"IPTV|' + D + '{src.serverUrl}|' + D + '{src.show.seriesId}"'
+new_key = '"IPTV|' + D + '{src.serverUrl}|' + D + '{src.username}|' + D + '{src.password.hashCode()}|' + D + '{src.show.seriesId}"'
 if old_key not in s:
     raise SystemExit("IPTV source dedupe key context not found")
 s = s.replace(old_key, new_key, 1)
 write(g, s)
 
-checks = [
-    ("settings.gradle", 'rootProject.name = "SEAndroid_v100.0.7"'),
-    ("app/build.gradle", "versionCode 1000007"),
-    ("app/build.gradle", 'versionName "100.0.7"'),
-    ("GlobalSearchActivity.kt", "$username @ "),
-]
-for fn, needle in checks:
-    if needle not in text(fn):
-        raise SystemExit(f"verification failed: {fn}: {needle}")
+if 'rootProject.name = "SEAndroid_v100.0.7"' not in text("settings.gradle"):
+    raise SystemExit("version verification failed: settings.gradle")
+app_text = text("app/build.gradle")
+if "versionCode 1000007" not in app_text or 'versionName "100.0.7"' not in app_text:
+    raise SystemExit("version verification failed: app/build.gradle")
+if "$username @ " not in s:
+    raise SystemExit("search label verification failed")
+if new_key not in s:
+    raise SystemExit("search dedupe verification failed")
 print("SEAndroid v100.0.7 identity/search fixes applied.")
