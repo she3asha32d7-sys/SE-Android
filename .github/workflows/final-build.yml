@@ -3,27 +3,27 @@ run-name: SEAndroid_v100.0.7 Build
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Android SDK
+      - name: Setup Android SDK
         shell: bash
         run: |
           set -euo pipefail
@@ -32,132 +32,31 @@ jobs:
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Fetch and extract clean base
+      - name: Download last known good SEAndroid source
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          BASE_REF="b525ca3871089780e2525d620551a27336874363"
-          curl -fsSL "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/$BASE_REF/SEAndroid_v100.0.1.zip" -o base.zip
-          curl -fsSL "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/$BASE_REF/apply_v2_mobile_fixes.py" -o apply_v2_mobile_fixes.py
-          curl -fsSL "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/$BASE_REF/finalize_v201.py" -o finalize_v201.py
-          rm -rf work package
-          mkdir -p work/input package
-          unzip -q base.zip -d work/input
+          mkdir -p old_artifact work/input package signing
+          curl -fsSL             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GITHUB_TOKEN"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10722640126/zip"             -o old_artifact.zip
+          unzip -q old_artifact.zip -d old_artifact
+          test -s old_artifact/SEAndroid_v100.0.6.zip
+          unzip -q old_artifact/SEAndroid_v100.0.6.zip -d work/input
           ROOT="$(find work/input -type f -name gradlew -print -quit | xargs -r dirname)"
           test -n "$ROOT"
           cp -a "$ROOT"/. work/
           chmod +x work/gradlew
           test -f work/settings.gradle || test -f work/settings.gradle.kts
 
-      - name: Apply compile fixes
-        shell: bash
-        run: |
-          set -e
-          (cd work && python3 ../apply_v2_mobile_fixes.py)
-
-      - name: Apply final fixes
-        shell: bash
-        run: |
-          set -e
-          (cd work && python3 ../finalize_v201.py)
-
-      - name: Apply verified UI and favourites patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s se_v100_0_6.patch.gz.b64
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64, gzip
-          raw = Path("se_v100_0_6.patch.gz.b64").read_text(encoding="utf-8").strip()
-          Path("se_v100_0_6.patch.gz").write_bytes(base64.b64decode(raw))
-          Path("se_v100_0_6.patch").write_bytes(gzip.decompress(Path("se_v100_0_6.patch.gz").read_bytes()))
-          print("decoded patch bytes:", Path("se_v100_0_6.patch").stat().st_size)
-          PY
-          patch --batch --forward -p1 -d work < se_v100_0_6.patch
-          test "$(find work -name "*.rej" -o -name "*.orig" | wc -l)" -eq 0
-
-      - name: Set project name and installable release signing
-        shell: bash
-        run: |
-          set -e
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          for name in ("settings.gradle", "settings.gradle.kts"):
-              p = Path("work") / name
-              if p.exists():
-                  s = p.read_text()
-                  s = re.sub(
-                      r'rootProject\.name\s*=\s*["\'][^"\']+["\']',
-                      'rootProject.name = "SEAndroid_v100.0.7"',
-                      s
-                  )
-                  p.write_text(s)
-
-          app_gradle = Path("work/app/build.gradle")
-          if app_gradle.exists():
-              s = app_gradle.read_text()
-              if 'signingConfig signingConfigs.debug' not in s:
-                  s = s.replace(
-                      'release {\n            // Signing can be supplied by Android Studio/gradle properties for a local release build.\n            minifyEnabled false',
-                      'release {\n            signingConfig signingConfigs.debug\n            minifyEnabled false'
-                  )
-              app_gradle.write_text(s)
-
-          readme = Path("work/README.md")
-          readme.write_text(
-              "# SEAndroid_v100.0.7\n\n"
-              "Android Studio source package for the SE IPTV Player project.\n\n"
-              "Project/archive name: SEAndroid_v100.0.7\n"
-              "APK filename: SEAndroid_v100.0.7.apk\n"
-              "Source filename: SEAndroid_v100.0.7.zip\n"
-              "About screen: V10.0.1.\n"
-              "Application ID: com.se.iptv.player.\n"
-          )
-
-          audit = Path("work/FINAL_33_AUDIT.md")
-          if audit.exists():
-              s = audit.read_text()
-              s = s.replace("# SEAndroid_v2.0.1", "# SEAndroid_v100.0.7", 1)
-              audit.write_text(s)
-
-          manifest = Path("work/SE_BUILD_MANIFEST.txt")
-          if manifest.exists():
-              s = manifest.read_text()
-              if "Project package: SEAndroid_v100.0.7" not in s:
-                  s = s.replace(
-                      "Build task: :app:assembleRelease",
-                      "Project package: SEAndroid_v100.0.7\nBuild task: :app:assembleRelease"
-                  )
-              manifest.write_text(s)
-          PY
-
-      - name: Apply final v100.0.7 source fixes
+      - name: Apply v100.0.7 version and search-source fixes
         shell: bash
         run: |
           set -euo pipefail
           cp fix_v7.py work/fix_v7.py
           (cd work && python3 fix_v7.py)
 
-      - name: Align Kotlin with Cast dependency
-        shell: bash
-        run: |
-          set -e
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("work/build.gradle")
-          s = p.read_text()
-          s = s.replace('ext.kotlin_version = "1.9.0"', 'ext.kotlin_version = "2.1.0"')
-          s = s.replace(
-              'com.google.devtools.ksp.gradle.plugin:2.1.0-1.0.29',
-              'com.google.devtools.ksp.gradle.plugin:2.1.0-1.0.29'
-          )
-          p.write_text(s)
-          PY
-
-      - name: Verify v100.0.7 source changes
+      - name: Verify all requested changes
         shell: bash
         run: |
           set -euo pipefail
@@ -170,45 +69,53 @@ jobs:
           grep -q 'NestedScrollView' work/app/src/main/res/layout/activity_series_detail.xml
           grep -q 'tv_year_badge' work/app/src/main/java/com/orbital/iptv/ui/vod/MovieDetailActivity.kt
           grep -q 'btn_fav' work/app/src/main/res/layout/item_live_channel.xml
-          grep -Eq 'containsCategory|toggleCategory' work/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesManager.kt
+          grep -Eq 'containsCategory|toggleCategory' work/app/src/main/java/com/orbital/iptv/utils/FavouritesManager.kt
           grep -Eq 'rvMovies|rvSeries|rvLive|rvCategories' work/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt
           grep -Fq '$username @ $host' work/app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
 
-      - name: Build installable release APK
-        shell: bash
+      - name: Build release APK
         working-directory: work
+        shell: bash
         run: |
-          set -e
-          ./gradlew clean assembleRelease --no-daemon
+          set -euo pipefail
+          ./gradlew clean assembleRelease --stacktrace --no-daemon
           test -f app/build/outputs/apk/release/app-release.apk
 
-      - name: Package APK and source with matching names
+      - name: Sign and verify APK
         shell: bash
         run: |
-          set -e
-          cp work/app/build/outputs/apk/release/app-release.apk package/SEAndroid_v100.0.7.apk
+          set -euo pipefail
+          APK="work/app/build/outputs/apk/release/app-release.apk"
+          keytool -genkeypair -keystore signing/se-release.keystore -storepass changeit -keypass changeit -alias se-release -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=SE IPTV PLAYER, OU=SE, O=SE, L=Unknown, ST=Unknown, C=EG" -noprompt
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -perm -111 | sort -V | tail -n 1)"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign -perm -111 | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -perm -111 | sort -V | tail -n 1)"
+          test -n "$APKSIGNER" && test -n "$ZIPALIGN" && test -n "$AAPT"
+          "$ZIPALIGN" -f -p 4 "$APK" package/SEAndroid_v100.0.7-aligned.apk
+          "$APKSIGNER" sign --ks signing/se-release.keystore --ks-pass pass:changeit --key-pass pass:changeit --ks-key-alias se-release --out package/SEAndroid_v100.0.7.apk package/SEAndroid_v100.0.7-aligned.apk
+          rm -f package/SEAndroid_v100.0.7-aligned.apk
+          "$APKSIGNER" verify --verbose package/SEAndroid_v100.0.7.apk
+          "$AAPT" dump badging package/SEAndroid_v100.0.7.apk | grep -q 'versionName='\"100.0.7\"
 
-          mkdir -p package/SEAndroid_v100.0.7
-          cp -a work/. package/SEAndroid_v100.0.7/
-          rm -rf package/SEAndroid_v100.0.7/.gradle
-          rm -rf package/SEAndroid_v100.0.7/build
-          rm -rf package/SEAndroid_v100.0.7/app/build
-          rm -rf package/SEAndroid_v100.0.7/input
-          chmod +x package/SEAndroid_v100.0.7/gradlew
-
-          (cd package && zip -qr SEAndroid_v100.0.7.zip SEAndroid_v100.0.7)
-
-      - name: Verify outputs
+      - name: Package source ZIP
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
+          rm -rf work/.gradle work/.kotlin work/build work/app/build work/input work/fix_v7.py
+          rm -f signing/se-release.keystore
+          (cd work && zip -qr ../package/SEAndroid_v100.0.7.zip . -x ".git/*")
+          unzip -t package/SEAndroid_v100.0.7.zip >/dev/null
+
+      - name: Final verification
+        shell: bash
+        run: |
+          set -euo pipefail
           test -s package/SEAndroid_v100.0.7.apk
           test -s package/SEAndroid_v100.0.7.zip
-          unzip -t package/SEAndroid_v100.0.7.zip >/dev/null
-          echo "APK:"
-          ls -lh package/SEAndroid_v100.0.7.apk
-          echo "SOURCE:"
-          ls -lh package/SEAndroid_v100.0.7.zip
+          unzip -p package/SEAndroid_v100.0.7.zip app/build.gradle | grep -q 'versionName "100.0.7"'
+          unzip -p package/SEAndroid_v100.0.7.zip settings.gradle | grep -q 'SEAndroid_v100.0.7'
+          unzip -p package/SEAndroid_v100.0.7.zip app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt | grep -Fq '$username @ $host'
+          ls -lh package/SEAndroid_v100.0.7.apk package/SEAndroid_v100.0.7.zip
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
