@@ -55,6 +55,22 @@ jobs:
           set -e
           (cd work && python3 ../finalize_v201.py)
 
+      - name: Align Kotlin with Cast dependency
+        shell: bash
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("work/build.gradle")
+          s = p.read_text()
+          s = s.replace('ext.kotlin_version = "1.9.0"', 'ext.kotlin_version = "2.1.0"')
+          s = s.replace(
+              'com.google.devtools.ksp.gradle.plugin:1.9.0-1.0.13',
+              'com.google.devtools.ksp.gradle.plugin:2.1.0-1.0.29'
+          )
+          p.write_text(s)
+          PY
+
       - name: Build
         shell: bash
         working-directory: work
