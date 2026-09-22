@@ -59,11 +59,21 @@ jobs:
           set -e
           (cd work && python3 ../finalize_v201.py)
 
-      - name: Inspect v100.0.7 source
+      - name: Apply verified UI and favourites patch
         shell: bash
         run: |
-          set -e
-          (cd work && python3 ../inspect_v100_0_6.py) | tee v100_0_6_source_inspection.txt
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/main/se_v100_0_6.patch.gz.b64" -o se_v100_0_6.patch.gz.b64
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, gzip
+          raw = Path("se_v100_0_6.patch.gz.b64").read_text(encoding="utf-8").strip()
+          Path("se_v100_0_6.patch.gz").write_bytes(base64.b64decode(raw))
+          Path("se_v100_0_6.patch").write_bytes(gzip.decompress(Path("se_v100_0_6.patch.gz").read_bytes()))
+          print("decoded patch bytes:", Path("se_v100_0_6.patch").stat().st_size)
+          PY
+          patch --batch --forward -p1 -d work < se_v100_0_6.patch
+          test "$(find work -name "*.rej" -o -name "*.orig" | wc -l)" -eq 0
 
       - name: Set project name and installable release signing
         shell: bash
@@ -158,9 +168,9 @@ jobs:
           grep -q 'NestedScrollView' work/app/src/main/res/layout/activity_series_detail.xml
           grep -q 'tv_year_badge' work/app/src/main/java/com/orbital/iptv/ui/vod/MovieDetailActivity.kt
           grep -q 'btn_fav' work/app/src/main/res/layout/item_live_channel.xml
-          grep -q 'containsCategory|toggleCategory' work/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesManager.kt
-          grep -q 'rvMovies|rvSeries|rvLive|rvCategories' work/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt
-          grep -q '$username @ $host' work/app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
+          grep -Eq 'containsCategory|toggleCategory' work/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesManager.kt
+          grep -Eq 'rvMovies|rvSeries|rvLive|rvCategories' work/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt
+          grep -Fq '$username @ $host' work/app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
 
       - name: Build installable release APK
         shell: bash
