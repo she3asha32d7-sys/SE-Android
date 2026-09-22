@@ -1,0 +1,3 @@
+# SEAndroid
+
+Clean rebuild workspace.
