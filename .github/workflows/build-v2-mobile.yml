@@ -1,4 +1,4 @@
-name: SEAndroid v2.0.1 Mobile Build
+name: Build SEAndroid v2.0.1 Final Mobile
 
 on:
   workflow_dispatch:
