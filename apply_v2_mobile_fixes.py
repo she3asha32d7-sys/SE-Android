@@ -113,6 +113,17 @@ new = """card.addView(host, LinearLayout.LayoutParams(
 s = s.replace(old, new)
 p.write_text(s, encoding="utf-8")
 
+# Build-tool compatibility: the source bundle uses Kotlin 1.9.0 while
+# the current Google Cast dependency publishes Kotlin 2.1.0 metadata.
+# Keep compiler/plugin versions aligned so KSP can read all dependency metadata.
+root_build = ROOT / "build.gradle"
+if root_build.exists():
+    bs = root_build.read_text(encoding="utf-8")
+    bs = bs.replace('ext.kotlin_version = "1.9.0"', 'ext.kotlin_version = "2.1.0"')
+    bs = bs.replace('com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin:1.9.0-1.0.13',
+                    'com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin:2.1.0-1.0.29')
+    root_build.write_text(bs, encoding="utf-8")
+
 # WatchHistoryManager: make Gson typing explicit and keep history operations valid under Kotlin 1.9.
 write(
     "app/src/main/java/com/orbital/iptv/utils/WatchHistoryManager.kt",
