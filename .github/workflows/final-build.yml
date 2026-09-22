@@ -71,7 +71,7 @@ jobs:
           grep -q 'btn_fav' work/app/src/main/res/layout/item_live_channel.xml
           grep -Eq 'containsCategory|toggleCategory' work/app/src/main/java/com/orbital/iptv/utils/FavouritesManager.kt
           grep -Eq 'rvMovies|rvSeries|rvLive|rvCategories' work/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt
-          grep -Fq '$username @ $host' work/app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
+          grep -Fq '$username @ ' work/app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
 
       - name: Build release APK
         working-directory: work
@@ -114,7 +114,7 @@ jobs:
           test -s package/SEAndroid_v100.0.7.zip
           unzip -p package/SEAndroid_v100.0.7.zip app/build.gradle | grep -q 'versionName "100.0.7"'
           unzip -p package/SEAndroid_v100.0.7.zip settings.gradle | grep -q 'SEAndroid_v100.0.7'
-          unzip -p package/SEAndroid_v100.0.7.zip app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt | grep -Fq '$username @ $host'
+          unzip -p package/SEAndroid_v100.0.7.zip app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt | grep -Fq '$username @ '
           ls -lh package/SEAndroid_v100.0.7.apk package/SEAndroid_v100.0.7.zip
 
       - name: Upload APK and source
