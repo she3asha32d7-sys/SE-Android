@@ -1,5 +1,5 @@
 name: SEAndroid v2.0.1 Final Build
-version 2.0.1 build path stabilized
+# version 2.0.1 build path stabilized
 
 on:
   push:
