@@ -12,13 +12,54 @@ permissions:
 
 jobs:
   build:
-    name: Final Build Test
+    name: Final Source Patch Audit
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Validate workflow
+
+      - name: Extract v100 source
+        shell: bash
         run: |
-          echo "FINAL_WORKFLOW_OK"
-          test -f SEAndroid_v100.0.1.zip
-          test -f patch_parts/00.b64
+          set -euo pipefail
+          rm -rf work
+          mkdir -p work/input
+          unzip -q SEAndroid_v100.0.1.zip -d work/input
+          ROOT="$(find work/input -type f -name gradlew -print -quit | xargs -r dirname)"
+          test -n "$ROOT"
+          cp -a "$ROOT"/. work/
+          chmod +x work/gradlew
+          test -f work/settings.gradle || test -f work/settings.gradle.kts
+
+      - name: Apply complete patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d patch_parts/00.b64 > /tmp/se.patch.gz
+          gzip -cd /tmp/se.patch.gz > /tmp/se.patch
+          cd work
+          if patch --dry-run -p1 < /tmp/se.patch >/tmp/p1.log 2>&1; then
+            patch -p1 < /tmp/se.patch
+          elif patch --dry-run -p0 < /tmp/se.patch >/tmp/p0.log 2>&1; then
+            patch -p0 < /tmp/se.patch
+          else
+            echo "PATCH FAILED"
+            cat /tmp/p1.log || true
+            cat /tmp/p0.log || true
+            exit 1
+          fi
+
+      - name: Audit critical requested changes
+        working-directory: work
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Version:"
+          grep -RIn --include='*.gradle' --include='*.xml' --include='*.kt' '10.0.1' app/build.gradle app/src/main || true
+          echo "Legacy markers that should not be visible:"
+          ! grep -RIn --exclude-dir=.gradle --exclude-dir=build -E 'Box Office|>SCORES<|>NEWS<|>GOAL FLASH<' app/src/main
+          echo "Main sidebar order:"
+          grep -nE 'nav_favourites|nav_search|nav_downloads|nav_records' app/src/main/res/layout/layout_main_sidebar.xml
+          echo "Movies/Series columns:"
+          grep -RIn 'GridLayoutManager' app/src/main/java/com/orbital/iptv/ui/vod app/src/main/java/com/orbital/iptv/ui/series
+          echo "Audit complete"
