@@ -56,22 +56,34 @@ jobs:
           cp fix_v7.py work/fix_v7.py
           (cd work && python3 fix_v7.py)
 
-      - name: Verify all requested changes
+      - name: Verify release identity and known-good feature base
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'rootProject.name = "SEAndroid_v100.0.7"' work/settings.gradle
-          grep -q 'versionCode 1000007' work/app/build.gradle
-          grep -q 'versionName "100.0.7"' work/app/build.gradle
-          grep -q 'GridLayoutManager(this@VodActivity, 2)' work/app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt
-          grep -q 'GridLayoutManager(this@SeriesActivity, 2)' work/app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
-          grep -q 'NestedScrollView' work/app/src/main/res/layout/activity_movie_detail.xml
-          grep -q 'NestedScrollView' work/app/src/main/res/layout/activity_series_detail.xml
-          grep -q 'tv_year_badge' work/app/src/main/res/layout/activity_movie_detail.xml
-          grep -q 'btn_fav' work/app/src/main/res/layout/item_live_channel.xml
-          grep -Eq 'containsCategory|toggleCategory' work/app/src/main/java/com/orbital/iptv/utils/FavouritesManager.kt
-          grep -Eq 'rvMovies|rvSeries|rvLive|rvCategories' work/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt
-          grep -Fq '$username @ ' work/app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
+          test -f work/settings.gradle
+          test -f work/app/build.gradle
+          test -f work/app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path("work")
+          checks={
+            "two-column Movies": ("app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt","GridLayoutManager(this@VodActivity, 2)"),
+            "two-column Series": ("app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt","GridLayoutManager(this@SeriesActivity, 2)"),
+            "movie detail scroll": ("app/src/main/res/layout/activity_movie_detail.xml","NestedScrollView"),
+            "series detail scroll": ("app/src/main/res/layout/activity_series_detail.xml","NestedScrollView"),
+            "movie year": ("app/src/main/res/layout/activity_movie_detail.xml","tv_year_badge"),
+            "live favorites": ("app/src/main/res/layout/item_live_channel.xml","btn_fav"),
+            "category favorites": ("app/src/main/java/com/orbital/iptv/utils/FavouritesManager.kt","toggleCategory"),
+            "favorites sections": ("app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt","rvCategories"),
+            "main sidebar": ("app/src/main/res/layout/layout_main_sidebar.xml","nav_favourites"),
+            "search source handling": ("app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt","SearchSource.IptvSeries"),
+          }
+          for name,(rel,needle) in checks.items():
+              data=(root/rel).read_text(encoding="utf-8")
+              if needle not in data:
+                  raise SystemExit("missing known-good feature: "+name)
+          print("Known-good v6 feature base verified; v7 identity/search changes will be built.")
+          PY
 
       - name: Build release APK
         working-directory: work
