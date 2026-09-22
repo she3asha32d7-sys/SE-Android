@@ -112,12 +112,43 @@ jobs:
             -E 'SE IPTV PLAYER|Favorites|Downloads|Recordings|Open With|ADD USER|Disconnect Provider|Clear watch history|Clear Favorite|Reset app' \
             app/src/main | head -n 200 || true
 
+      - name: Kotlin and Cast compatibility
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # The uploaded source uses Kotlin 1.9.x. Some Cast dependencies can
+          # otherwise pull Kotlin 2.1 metadata, which the compiler cannot read.
+          while IFS= read -r -d '' f; do
+            sed -i 's/22\\.1\\.0/22.0.0/g' "$f"
+          done < <(grep -RIlz --exclude-dir=.gradle --exclude-dir=build \
+            'play-services-cast-framework' . || true)
+
+          cat > cast-compat.init.gradle <<'EOF'
+          allprojects {
+            configurations.configureEach {
+              resolutionStrategy.eachDependency { details ->
+                if (details.requested.group == "com.google.android.gms" &&
+                    (details.requested.name == "play-services-cast-framework" ||
+                     details.requested.name == "play-services-cast")) {
+                  details.useVersion("22.0.0")
+                }
+                if (details.requested.group == "org.jetbrains.kotlin" &&
+                    details.requested.name.startsWith("kotlin-stdlib")) {
+                  details.useVersion("1.9.25")
+                }
+              }
+            }
+          }
+          EOF
+
       - name: Gradle build
         working-directory: project
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew clean assembleRelease --stacktrace --no-daemon
+          ./gradlew -I cast-compat.init.gradle clean assembleRelease --stacktrace --no-daemon
 
       - name: Verify APK
         working-directory: project
