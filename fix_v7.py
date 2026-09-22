@@ -26,23 +26,25 @@ write(p, s)
 g = Path("app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt")
 s = text(g)
 
-# Replace the IPTV-series display label robustly inside the IptvSeries data class.
 start = s.index("data class IptvSeries")
 end = s.index("data class EmbyShow", start)
 block = s[start:end]
+
+D = "$"
+old_label = '        override val label get() = "' + D + 'serverName  •  SERIES #' + D + '{show.seriesId}"'
 new_label = (
     '        private val host: String\n'
     '            get() = serverUrl.removePrefix("https://").removePrefix("http://").trimEnd('/').substringBefore('/')\n\n'
     '        override val label: String\n'
-    '            get() = "' + chr(36) + 'serverName  •  "' + ' + "' + chr(36) + 'username @ "' + ' + host\n'
+    '            get() = "' + D + 'serverName  •  "' + ' + "' + D + 'username @ "' + ' + host\n'
 )
 block2, n = re.subn(r'(?m)^\s*override val label get\(\) = .*\n', new_label, block, count=1)
-if n != 1:
-    raise SystemExit("IptvSeries label line not found")
+if n != 1 or old_label not in block:
+    raise SystemExit("IptvSeries label context not found")
 s = s[:start] + block2 + s[end:]
 
-old_key = '"IPTV|' + chr(36) + '{src.serverUrl}|' + chr(36) + '{src.show.seriesId}"'
-new_key = '"IPTV|' + chr(36) + '{src.serverUrl}|' + chr(36) + '{src.username}|' + chr(36) + '{src.password.hashCode()}|' + chr(36) + '{src.show.seriesId}"'
+old_key = '"IPTV|' + D + '{src.serverUrl}|' + D + '{src.show.seriesId}"'
+new_key = '"IPTV|' + D + '{src.serverUrl}|' + D + '{src.username}|' + D + '{src.password.hashCode()}|' + D + '{src.show.seriesId}"'
 if old_key not in s:
     raise SystemExit("IPTV source dedupe key context not found")
 s = s.replace(old_key, new_key, 1)
