@@ -1,16 +1,13 @@
 name: Build SEAndroid v2.0.1 Final Mobile
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
-      - 'SEAndroid_v2.0.1-FINAL.zip'
-      - 'SEAndroid_v2.0.1-FINAL-2.zip'
-      - 'SEAndroid_v2.0.1-SOURCE.zip'
-      - 'SEAndroid_v2.0.1-source.zip'
+      - 'patch_parts/00.b64'
+      - 'SEAndroid_v100.0.1.zip'
       - '.github/workflows/build-v2-mobile.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,7 +15,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    name: Build SEAndroid v2.0.1
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -29,164 +26,137 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Install Android 35
         shell: bash
         run: |
           set -euo pipefail
-          SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager -perm -111 | head -n 1 || true)"
-          test -n "$SDKMANAGER"
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Locate uploaded source ZIP
+      - name: Extract source
         shell: bash
         run: |
           set -euo pipefail
-          ZIP=""
-          for candidate in \
-            "SEAndroid_v2.0.1-FINAL.zip" \
-            "SEAndroid_v2.0.1-FINAL-2.zip" \
-            "SEAndroid_v2.0.1-SOURCE.zip" \
-            "SEAndroid_v2.0.1-source.zip"; do
-            if [ -f "$candidate" ]; then
-              ZIP="$candidate"
-              break
-            fi
-          done
-          if [ -z "$ZIP" ]; then
-            echo "ERROR: Upload one of: SEAndroid_v2.0.1-FINAL.zip / SEAndroid_v2.0.1-FINAL-2.zip / SEAndroid_v2.0.1-SOURCE.zip / SEAndroid_v2.0.1-source.zip"
-            exit 1
-          fi
-          echo "SOURCE_ZIP=$ZIP" >> "$GITHUB_ENV"
-          ls -lh "$ZIP"
+          rm -rf work
+          mkdir -p work/input work/output
+          unzip -q SEAndroid_v100.0.1.zip -d work/input
+          ROOT="$(find work/input -type f -name gradlew -print -quit | xargs -r dirname)"
+          test -n "$ROOT"
+          cp -a "$ROOT"/. work/
+          chmod +x work/gradlew
+          test -f work/settings.gradle || test -f work/settings.gradle.kts
+          test -f work/app/build.gradle || test -f work/app/build.gradle.kts
 
-      - name: Extract source project
+      - name: Apply final modification patch
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf _src project
-          mkdir -p _src
-          unzip -q "$SOURCE_ZIP" -d _src
-
-          ROOT="$(find _src -type f -name gradlew -print -quit | xargs -r dirname)"
-          if [ -z "$ROOT" ]; then
-            echo "ERROR: gradlew not found in uploaded source ZIP"
-            find _src -maxdepth 6 -type f | head -n 200
+          base64 -d patch_parts/00.b64 > /tmp/final.patch.gz
+          gzip -cd /tmp/final.patch.gz > /tmp/final.patch
+          cd work
+          if patch --dry-run -p1 < /tmp/final.patch >/tmp/p1.log 2>&1; then
+            patch -p1 < /tmp/final.patch
+          elif patch --dry-run -p0 < /tmp/final.patch >/tmp/p0.log 2>&1; then
+            patch -p0 < /tmp/final.patch
+          else
+            echo "Patch failed with both -p1 and -p0"
+            cat /tmp/p1.log || true
+            cat /tmp/p0.log || true
             exit 1
           fi
 
-          if [ ! -f "$ROOT/settings.gradle" ] && [ ! -f "$ROOT/settings.gradle.kts" ]; then
-            echo "ERROR: settings.gradle/settings.gradle.kts not found"
+      - name: Remove obsolete Box Office and player controls
+        working-directory: work
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RIn --exclude-dir=.gradle --exclude-dir=build -E 'Box Office|btn_hud_scores|btn_hud_news|Goal Flash|GoalFlashOverlay|btn_scores|btn_news|btn_goal_flash' app/src/main; then
+            echo "ERROR: obsolete UI markers remain after final patch"
             exit 1
           fi
 
-          mv "$ROOT" project
-          chmod +x project/gradlew
-
-          # Compatibility cleanup for Media3 PlayerView XML attributes that are not
-          # part of the installed Media3 UI schema.
-          find project/app/src/main/res -type f -name '*.xml' -print0 | \
-            xargs -0 sed -i 's/ android:useController="false"//' || true
-
-          echo "=== PROJECT ROOT ==="
-          pwd
-          find project -maxdepth 2 -type f | sort | head -n 200
-
-      - name: Apply source compile fixes
-        working-directory: project
+      - name: Create Gradle compatibility init
+        working-directory: work
         shell: bash
         run: |
           set -euo pipefail
-          python3 ../apply_v2_mobile_fixes.py
-
-      - name: Static source sanity check
-        working-directory: project
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f app/src/main/AndroidManifest.xml
-          test -f app/build.gradle || test -f app/build.gradle.kts
-
-          echo "=== Application ID ==="
-          grep -RIn --include='*.gradle' --include='*.gradle.kts' 'applicationId' app || true
-
-          echo "=== Version declarations ==="
-          grep -RIn --include='*.gradle' --include='*.gradle.kts' --include='*.xml' \
-            -E 'versionName|versionCode' app | head -n 50 || true
-
-          echo "=== Key SE UI/source markers ==="
-          grep -RIn --exclude-dir=.gradle --exclude-dir=build \
-            -E 'SE IPTV PLAYER|Favorites|Downloads|Recordings|Open With|ADD USER|Disconnect Provider|Clear watch history|Clear Favorite|Reset app' \
-            app/src/main | head -n 200 || true
-
-      - name: Kotlin and Cast compatibility
-        working-directory: project
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # The uploaded source uses Kotlin 1.9.x. Some Cast dependencies can
-          # otherwise pull Kotlin 2.1 metadata, which the compiler cannot read.
-          while IFS= read -r -d '' f; do
-            sed -i 's/22\\.1\\.0/22.0.0/g' "$f"
-          done < <(grep -RIlz --exclude-dir=.gradle --exclude-dir=build \
-            'play-services-cast-framework' . || true)
-
           cat > cast-compat.init.gradle <<'EOF'
-          allprojects {
-            configurations.configureEach {
-              resolutionStrategy.eachDependency { details ->
-                if (details.requested.group == "com.google.android.gms" &&
-                    (details.requested.name == "play-services-cast-framework" ||
-                     details.requested.name == "play-services-cast")) {
-                  details.useVersion("22.0.0")
-                }
-                if (details.requested.group == "org.jetbrains.kotlin" &&
-                    details.requested.name.startsWith("kotlin-stdlib")) {
-                  details.useVersion("1.9.25")
-                }
-              }
-            }
-          }
-          EOF
+allprojects {
+  configurations.configureEach {
+    resolutionStrategy.eachDependency { d ->
+      if (d.requested.group == "com.google.android.gms" &&
+          (d.requested.name == "play-services-cast-framework" ||
+           d.requested.name == "play-services-cast") ) {
+        d.useVersion("22.0.0")
+      }
+      if (d.requested.group == "org.jetbrains.kotlin" &&
+          d.requested.name.startsWith("kotlin-stdlib")) {
+        d.useVersion("1.9.25")
+      }
+    }
+  }
+  plugins.withId("org.jetbrains.kotlin.android") {
+    tasks.configureEach { t ->
+      if (t.hasProperty("kotlinOptions")) {
+        t.kotlinOptions.freeCompilerArgs += "-Xskip-metadata-version-check"
+      }
+    }
+  }
+}
+EOF
 
-      - name: Gradle build
-        working-directory: project
+      - name: Build release APK
+        working-directory: work
         shell: bash
         run: |
           set -euo pipefail
           ./gradlew -I cast-compat.init.gradle clean assembleRelease --stacktrace --no-daemon
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g
 
-      - name: Verify APK
-        working-directory: project
+      - name: Sign APK
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(find app/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
+          APK="$(find work/app/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
           test -n "$APK"
-          echo "APK=$APK"
-          ls -lh "$APK"
+          keytool -genkeypair -v \
+            -keystore work/se-final.keystore \
+            -storepass changeit -keypass changeit \
+            -alias sefinal -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=SE IPTV PLAYER, O=SE, C=EG" -noprompt
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign -perm -111 | sort -V | tail -n 1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -perm -111 | sort -V | tail -n 1)"
+          "$ZIPALIGN" -f -p 4 "$APK" work/output/SEAndroid_v2.0.1-aligned.apk
+          "$APKSIGNER" sign \
+            --ks work/se-final.keystore \
+            --ks-pass pass:changeit --key-pass pass:changeit \
+            --ks-key-alias sefinal \
+            --out work/output/SEAndroid_v2.0.1.apk \
+            work/output/SEAndroid_v2.0.1-aligned.apk
+          rm -f work/output/SEAndroid_v2.0.1-aligned.apk
+          "$APKSIGNER" verify --verbose work/output/SEAndroid_v2.0.1.apk
+          sha256sum work/output/SEAndroid_v2.0.1.apk > work/output/SEAndroid_v2.0.1.apk.sha256
 
-      - name: Package source snapshot
+      - name: Package patched source
         shell: bash
         run: |
           set -euo pipefail
-          zip -qr SEAndroid_v2.0.1-source-built.zip project \
-            -x 'project/.gradle/*' \
-               'project/**/build/*' \
-               'project/.idea/*' \
-               'project/signing/*'
+          rm -f work/se-final.keystore
+          (
+            cd work
+            zip -q -r ../work/output/SEAndroid_v2.0.1-source.zip . \
+              -x '.gradle/*' 'app/build/*' '.idea/*'
+          )
+          sha256sum work/output/SEAndroid_v2.0.1-source.zip > work/output/SEAndroid_v2.0.1-source.zip.sha256
 
-      - name: Upload APK
+      - name: Upload final artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v2.0.1-APK
-          path: project/app/build/outputs/apk/release/*.apk
-          retention-days: 30
-
-      - name: Upload source
-        uses: actions/upload-artifact@v4
-        with:
-          name: SEAndroid_v2.0.1-SOURCE
-          path: SEAndroid_v2.0.1-source-built.zip
+          name: SEAndroid_v2.0.1-FINAL
+          path: work/output/*
           retention-days: 30
