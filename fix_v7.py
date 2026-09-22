@@ -7,7 +7,6 @@ def text(path):
 def write(path, s):
     Path(path).write_text(s, encoding="utf-8")
 
-# Release identity.
 p = Path("settings.gradle")
 s = text(p).replace('rootProject.name = "SEAndroid_v100.0.6"',
                    'rootProject.name = "SEAndroid_v100.0.7"')
@@ -31,16 +30,16 @@ end = s.index("data class EmbyShow", start)
 block = s[start:end]
 
 D = "$"
-old_label = '        override val label get() = "' + D + 'serverName  •  SERIES #' + D + '{show.seriesId}"'
-new_label = (
-    '        private val host: String\n'
-    '            get() = serverUrl.removePrefix("https://").removePrefix("http://").trimEnd('/').substringBefore('/')\n\n'
-    '        override val label: String\n'
-    '            get() = "' + D + 'serverName  •  "' + ' + "' + D + 'username @ "' + ' + host\n'
-)
-block2, n = re.subn(r'(?m)^\s*override val label get\(\) = .*\n', new_label, block, count=1)
-if n != 1 or old_label not in block:
-    raise SystemExit("IptvSeries label context not found")
+new_label = """        private val host: String
+            get() = serverUrl.removePrefix("https://").removePrefix("http://").trimEnd('/').substringBefore('/')
+
+        override val label: String
+            get() = "$serverName  •  $username @ $host"
+"""
+block2, n = re.subn(r'(?m)^s*override val label get() = .*
+', new_label, block, count=1)
+if n != 1:
+    raise SystemExit("IptvSeries label line not found")
 s = s[:start] + block2 + s[end:]
 
 old_key = '"IPTV|' + D + '{src.serverUrl}|' + D + '{src.show.seriesId}"'
