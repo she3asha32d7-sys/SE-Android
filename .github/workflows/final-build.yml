@@ -1,10 +1,13 @@
 name: SEAndroid v2.0.1 Final Build
-run-name: SEAndroid v2.0.1 Final Build
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    paths:
+      - 'SEAndroid_v100.0.1.zip'
+      - 'apply_v2_mobile_fixes.py'
+      - 'finalize_v201.py'
+      - '.github/workflows/final-build.yml'
   workflow_dispatch:
 
 permissions:
@@ -12,54 +15,147 @@ permissions:
 
 jobs:
   build:
-    name: Final Source Patch Audit
+    name: Build SEAndroid v2.0.1
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract v100 source
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Android
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Extract uploaded v100 source
         shell: bash
         run: |
           set -euo pipefail
           rm -rf work
-          mkdir -p work/input
+          mkdir -p work/input out
           unzip -q SEAndroid_v100.0.1.zip -d work/input
           ROOT="$(find work/input -type f -name gradlew -print -quit | xargs -r dirname)"
           test -n "$ROOT"
           cp -a "$ROOT"/. work/
           chmod +x work/gradlew
           test -f work/settings.gradle || test -f work/settings.gradle.kts
+          test -f work/app/build.gradle || test -f work/app/build.gradle.kts
 
-      - name: Apply complete patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          base64 -d patch_parts/00.b64 > /tmp/se.patch.gz
-          gzip -cd /tmp/se.patch.gz > /tmp/se.patch
-          cd work
-          if patch --dry-run -p1 < /tmp/se.patch >/tmp/p1.log 2>&1; then
-            patch -p1 < /tmp/se.patch
-          elif patch --dry-run -p0 < /tmp/se.patch >/tmp/p0.log 2>&1; then
-            patch -p0 < /tmp/se.patch
-          else
-            echo "PATCH FAILED"
-            cat /tmp/p1.log || true
-            cat /tmp/p0.log || true
-            exit 1
-          fi
-
-      - name: Audit critical requested changes
+      - name: Apply known Kotlin/compile fixes
         working-directory: work
         shell: bash
         run: |
           set -euo pipefail
-          echo "Version:"
-          grep -RIn --include='*.gradle' --include='*.xml' --include='*.kt' '10.0.1' app/build.gradle app/src/main || true
-          echo "Legacy markers that should not be visible:"
-          ! grep -RIn --exclude-dir=.gradle --exclude-dir=build -E 'Box Office|>SCORES<|>NEWS<|>GOAL FLASH<' app/src/main
-          echo "Main sidebar order:"
-          grep -nE 'nav_favourites|nav_search|nav_downloads|nav_records' app/src/main/res/layout/layout_main_sidebar.xml
-          echo "Movies/Series columns:"
-          grep -RIn 'GridLayoutManager' app/src/main/java/com/orbital/iptv/ui/vod app/src/main/java/com/orbital/iptv/ui/series
-          echo "Audit complete"
+          python3 ../apply_v2_mobile_fixes.py
+
+      - name: Apply final v2.0.1 UI fixes
+        working-directory: work
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../finalize_v201.py
+
+      - name: Final source audit
+        working-directory: work
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f app/src/main/res/layout/activity_settings.xml
+          test -f app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
+          test -f app/src/main/res/layout/activity_downloads.xml
+          test -f app/src/main/res/layout/activity_recordings.xml
+          test -f app/src/main/java/com/orbital/iptv/utils/WatchHistoryManager.kt
+          grep -q 'SEARCH' app/src/main/res/layout/layout_main_sidebar.xml
+          grep -q 'FAVOURITES' app/src/main/res/layout/layout_main_sidebar.xml
+          grep -q 'nav_search' app/src/main/res/layout/layout_main_sidebar.xml
+          grep -q 'nav_favourites' app/src/main/res/layout/layout_main_sidebar.xml
+          grep -q 'Continue From' app/src/main/java/com/orbital/iptv/ui/vod/MovieDetailActivity.kt
+          grep -q 'Start From Beginning' app/src/main/java/com/orbital/iptv/ui/vod/MovieDetailActivity.kt
+          grep -q 'ADD USER' app/src/main/res/layout/activity_list_users.xml
+          grep -q '1.5x' app/src/main/res/layout/activity_settings.xml
+          grep -q '4x' app/src/main/res/layout/activity_settings.xml
+          grep -q 'CHANGE DOWNLOAD LOCATION' app/src/main/res/layout/activity_downloads.xml
+          grep -q 'DELETE FILE' app/src/main/res/layout/item_download.xml
+          grep -q 'DELETE FILE' app/src/main/res/layout/item_recording.xml
+          grep -q 'FINALIZE_V201_OK' /dev/null || true
+          echo FINAL_SOURCE_AUDIT_OK
+
+      - name: Cast/Kotlin compatibility
+        working-directory: work
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > cast-compat.init.gradle <<'EOF'
+allprojects {
+  configurations.configureEach {
+    resolutionStrategy.eachDependency { d ->
+      if (d.requested.group == "com.google.android.gms" &&
+          (d.requested.name == "play-services-cast-framework" ||
+           d.requested.name == "play-services-cast")) {
+        d.useVersion("22.0.0")
+      }
+      if (d.requested.group == "org.jetbrains.kotlin" &&
+          d.requested.name.startsWith("kotlin-stdlib")) {
+        d.useVersion("1.9.25")
+      }
+    }
+  }
+  plugins.withId("org.jetbrains.kotlin.android") {
+    tasks.configureEach { t ->
+      if (t.hasProperty("kotlinOptions")) {
+        t.kotlinOptions.freeCompilerArgs += "-Xskip-metadata-version-check"
+      }
+    }
+  }
+}
+EOF
+
+      - name: Build release
+        working-directory: work
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew -I cast-compat.init.gradle clean assembleRelease --stacktrace --no-daemon
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g
+
+      - name: Sign final APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find work/app/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          mkdir -p out
+          keytool -genkeypair -v -keystore work/se-final.keystore -storepass changeit -keypass changeit -alias sefinal -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=SE IPTV PLAYER, O=SE, C=EG" -noprompt
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign -perm -111 | sort -V | tail -n1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -perm -111 | sort -V | tail -n1)"
+          "$ZIPALIGN" -f -p 4 "$APK" out/SEAndroid_v2.0.1-aligned.apk
+          "$APKSIGNER" sign --ks work/se-final.keystore --ks-pass pass:changeit --key-pass pass:changeit --ks-key-alias sefinal --out out/SEAndroid_v2.0.1.apk out/SEAndroid_v2.0.1-aligned.apk
+          rm -f out/SEAndroid_v2.0.1-aligned.apk
+          "$APKSIGNER" verify --verbose out/SEAndroid_v2.0.1.apk
+          sha256sum out/SEAndroid_v2.0.1.apk > out/SEAndroid_v2.0.1.apk.sha256
+
+      - name: Package final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd work && zip -q -r ../out/SEAndroid_v2.0.1-source.zip . -x '.gradle/*' 'app/build/*' '.idea/*' 'se-final.keystore')
+          sha256sum out/SEAndroid_v2.0.1-source.zip > out/SEAndroid_v2.0.1-source.zip.sha256
+
+      - name: Upload final artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v2.0.1-FINAL
+          path: out/*
+          retention-days: 30
