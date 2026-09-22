@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 apply_v2_mobile_fixes.py
+          python3 ../apply_v2_mobile_fixes.py
 
       - name: Static source sanity check
         working-directory: project
