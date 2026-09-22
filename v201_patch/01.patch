@@ -1,0 +1,196 @@
+diff --git a/app/build.gradle b/app/build.gradle
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -91,5 +91,6 @@
+     implementation 'androidx.room:room-ktx:2.6.1'
+     ksp 'androidx.room:room-compiler:2.6.1'
+     implementation 'androidx.work:work-runtime-ktx:2.9.0'
++    implementation 'androidx.documentfile:documentfile:1.0.1'
+ 
+ }
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -29,7 +29,7 @@
+         <activity
+             android:name=".ui.login.LoginActivity"
+             android:exported="true"
+-                        android:screenOrientation="landscape"
++                        android:screenOrientation="unspecified"
+             android:windowSoftInputMode="adjustResize">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+@@ -41,133 +41,135 @@
+             </intent-filter>
+         </activity>
+ 
++        <activity android:name=".ui.shell.MainShellActivity" android:exported="false" android:screenOrientation="unspecified" />
++
+         <activity
+             android:name=".ui.home.HomeActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.player.PlayerActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape"
++            android:screenOrientation="unspecified"
+             android:supportsPictureInPicture="true"
+             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
+ 
+         <activity
+             android:name=".ui.epg.EpgActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape"
++            android:screenOrientation="unspecified"
+             android:configChanges="orientation|screenSize|keyboardHidden" />
+ 
+         <activity
+             android:name=".ui.vod.VodActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.vod.MovieDetailActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.series.SeriesActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.series.SeriesDetailActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.games.GamesActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.games.BubbleShooterActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.sports.SportsActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.favourites.FavouritesActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.catchup.CatchupActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.catchup.CatchupEpgActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.radio.RadioActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.games.TeletextActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.emby.EmbyLoginActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape"
++            android:screenOrientation="unspecified"
+             android:windowSoftInputMode="adjustResize" />
+ 
+         <activity
+             android:name=".ui.emby.EmbyBrowserActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.plex.PlexLoginActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape"
++            android:screenOrientation="unspecified"
+             android:windowSoftInputMode="adjustResize" />
+ 
+         <activity
+             android:name=".ui.plex.PlexBrowserActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+-        <activity android:name=".ui.downloads.DownloadsActivity" android:exported="false" android:screenOrientation="landscape" />
++        <activity android:name=".ui.downloads.DownloadsActivity" android:exported="false" android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.users.ListUsersActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.search.GlobalSearchActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape"
++            android:screenOrientation="unspecified"
+             android:windowSoftInputMode="stateHidden|adjustPan" />
+ 
+         <activity
+             android:name=".recording.RecordingsActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.torbox.TorboxBrowserActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape" />
++            android:screenOrientation="unspecified" />
+ 
+         <activity
+             android:name=".ui.tv.TvModeActivity"
+             android:exported="false"
+-            android:screenOrientation="landscape"
++            android:screenOrientation="unspecified"
+             android:supportsPictureInPicture="true"
+             android:configChanges="orientation|screenSize|keyboardHidden" />
+ 
+diff --git a/app/src/main/java/com/orbital/iptv/OrbitalApp.kt b/app/src/main/java/com/orbital/iptv/OrbitalApp.kt
+--- a/app/src/main/java/com/orbital/iptv/OrbitalApp.kt
++++ b/app/src/main/java/com/orbital/iptv/OrbitalApp.kt
+@@ -13,10 +13,12 @@
+         super.onCreate()
+         com.orbital.iptv.utils.TickerManager.pruneStale(this)
+         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+-            override fun onActivityCreated(a: Activity, b: Bundle?) =
++            override fun onActivityCreated(a: Activity, b: Bundle?) {
+                 a.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
++                applyOrientation(a)
++            }
+             override
