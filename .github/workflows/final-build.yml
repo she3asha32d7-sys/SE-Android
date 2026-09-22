@@ -1,5 +1,5 @@
-name: SEAndroid_v100.0.5 Build
-run-name: SEAndroid_v100.0.5 Build
+name: SEAndroid_v100.0.6 Build
+run-name: SEAndroid_v100.0.6 Build
 
 on:
   push:
@@ -55,6 +55,12 @@ jobs:
           set -e
           (cd work && python3 ../finalize_v201.py)
 
+      - name: Inspect v100.0.6 source
+        shell: bash
+        run: |
+          set -e
+          (cd work && python3 ../inspect_v100_0_6.py) | tee v100_0_6_source_inspection.txt
+
       - name: Set project name and installable release signing
         shell: bash
         run: |
@@ -69,7 +75,7 @@ jobs:
                   s = p.read_text()
                   s = re.sub(
                       r'rootProject\.name\s*=\s*["\'][^"\']+["\']',
-                      'rootProject.name = "SEAndroid_v100.0.5"',
+                      'rootProject.name = "SEAndroid_v100.0.6"',
                       s
                   )
                   p.write_text(s)
@@ -86,11 +92,11 @@ jobs:
 
           readme = Path("work/README.md")
           readme.write_text(
-              "# SEAndroid_v100.0.5\n\n"
+              "# SEAndroid_v100.0.6\n\n"
               "Android Studio source package for the SE IPTV Player project.\n\n"
-              "Project/archive name: SEAndroid_v100.0.5\n"
-              "APK filename: SEAndroid_v100.0.5.apk\n"
-              "Source filename: SEAndroid_v100.0.5.zip\n"
+              "Project/archive name: SEAndroid_v100.0.6\n"
+              "APK filename: SEAndroid_v100.0.6.apk\n"
+              "Source filename: SEAndroid_v100.0.6.zip\n"
               "About screen: V10.0.1.\n"
               "Application ID: com.se.iptv.player.\n"
           )
@@ -98,16 +104,16 @@ jobs:
           audit = Path("work/FINAL_33_AUDIT.md")
           if audit.exists():
               s = audit.read_text()
-              s = s.replace("# SEAndroid_v2.0.1", "# SEAndroid_v100.0.5", 1)
+              s = s.replace("# SEAndroid_v2.0.1", "# SEAndroid_v100.0.6", 1)
               audit.write_text(s)
 
           manifest = Path("work/SE_BUILD_MANIFEST.txt")
           if manifest.exists():
               s = manifest.read_text()
-              if "Project package: SEAndroid_v100.0.5" not in s:
+              if "Project package: SEAndroid_v100.0.6" not in s:
                   s = s.replace(
                       "Build task: :app:assembleRelease",
-                      "Project package: SEAndroid_v100.0.5\nBuild task: :app:assembleRelease"
+                      "Project package: SEAndroid_v100.0.6\nBuild task: :app:assembleRelease"
                   )
               manifest.write_text(s)
           PY
@@ -140,35 +146,35 @@ jobs:
         shell: bash
         run: |
           set -e
-          cp work/app/build/outputs/apk/release/app-release.apk package/SEAndroid_v100.0.5.apk
+          cp work/app/build/outputs/apk/release/app-release.apk package/SEAndroid_v100.0.6.apk
 
-          mkdir -p package/SEAndroid_v100.0.5
-          cp -a work/. package/SEAndroid_v100.0.5/
-          rm -rf package/SEAndroid_v100.0.5/.gradle
-          rm -rf package/SEAndroid_v100.0.5/build
-          rm -rf package/SEAndroid_v100.0.5/app/build
-          rm -rf package/SEAndroid_v100.0.5/input
-          chmod +x package/SEAndroid_v100.0.5/gradlew
+          mkdir -p package/SEAndroid_v100.0.6
+          cp -a work/. package/SEAndroid_v100.0.6/
+          rm -rf package/SEAndroid_v100.0.6/.gradle
+          rm -rf package/SEAndroid_v100.0.6/build
+          rm -rf package/SEAndroid_v100.0.6/app/build
+          rm -rf package/SEAndroid_v100.0.6/input
+          chmod +x package/SEAndroid_v100.0.6/gradlew
 
-          (cd package && zip -qr SEAndroid_v100.0.5.zip SEAndroid_v100.0.5)
+          (cd package && zip -qr SEAndroid_v100.0.6.zip SEAndroid_v100.0.6)
 
       - name: Verify outputs
         shell: bash
         run: |
           set -e
-          test -s package/SEAndroid_v100.0.5.apk
-          test -s package/SEAndroid_v100.0.5.zip
-          unzip -t package/SEAndroid_v100.0.5.zip >/dev/null
+          test -s package/SEAndroid_v100.0.6.apk
+          test -s package/SEAndroid_v100.0.6.zip
+          unzip -t package/SEAndroid_v100.0.6.zip >/dev/null
           echo "APK:"
-          ls -lh package/SEAndroid_v100.0.5.apk
+          ls -lh package/SEAndroid_v100.0.6.apk
           echo "SOURCE:"
-          ls -lh package/SEAndroid_v100.0.5.zip
+          ls -lh package/SEAndroid_v100.0.6.zip
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v100.0.5
+          name: SEAndroid_v100.0.6
           path: |
-            package/SEAndroid_v100.0.5.apk
-            package/SEAndroid_v100.0.5.zip
+            package/SEAndroid_v100.0.6.apk
+            package/SEAndroid_v100.0.6.zip
           retention-days: 30
