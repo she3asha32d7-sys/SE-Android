@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 def text(path):
     return Path(path).read_text(encoding="utf-8")
@@ -7,6 +6,7 @@ def text(path):
 def write(path, s):
     Path(path).write_text(s, encoding="utf-8")
 
+# Release identity.
 p = Path("settings.gradle")
 s = text(p).replace('rootProject.name = "SEAndroid_v100.0.6"',
                    'rootProject.name = "SEAndroid_v100.0.7"')
@@ -28,22 +28,23 @@ s = text(g)
 start = s.index("data class IptvSeries")
 end = s.index("data class EmbyShow", start)
 block = s[start:end]
+lines = block.splitlines(True)
+label_index = next((i for i, line in enumerate(lines) if "override val label get()" in line), None)
+if label_index is None:
+    raise SystemExit("IptvSeries label line not found")
 
-D = "$"
 new_label = """        private val host: String
             get() = serverUrl.removePrefix("https://").removePrefix("http://").trimEnd('/').substringBefore('/')
 
         override val label: String
             get() = "$serverName  •  $username @ $host"
 """
-block2, n = re.subn(r'(?m)^s*override val label get() = .*
-', new_label, block, count=1)
-if n != 1:
-    raise SystemExit("IptvSeries label line not found")
+lines[label_index:label_index+1] = [new_label]
+block2 = "".join(lines)
 s = s[:start] + block2 + s[end:]
 
-old_key = '"IPTV|' + D + '{src.serverUrl}|' + D + '{src.show.seriesId}"'
-new_key = '"IPTV|' + D + '{src.serverUrl}|' + D + '{src.username}|' + D + '{src.password.hashCode()}|' + D + '{src.show.seriesId}"'
+old_key = '"IPTV|' + chr(36) + '{src.serverUrl}|' + chr(36) + '{src.show.seriesId}"'
+new_key = '"IPTV|' + chr(36) + '{src.serverUrl}|' + chr(36) + '{src.username}|' + chr(36) + '{src.password.hashCode()}|' + chr(36) + '{src.show.seriesId}"'
 if old_key not in s:
     raise SystemExit("IPTV source dedupe key context not found")
 s = s.replace(old_key, new_key, 1)
