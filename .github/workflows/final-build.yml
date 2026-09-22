@@ -67,7 +67,7 @@ jobs:
           grep -q 'GridLayoutManager(this@SeriesActivity, 2)' work/app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
           grep -q 'NestedScrollView' work/app/src/main/res/layout/activity_movie_detail.xml
           grep -q 'NestedScrollView' work/app/src/main/res/layout/activity_series_detail.xml
-          grep -q 'tv_year_badge' work/app/src/main/java/com/orbital/iptv/ui/vod/MovieDetailActivity.kt
+          grep -q 'tv_year_badge' work/app/src/main/res/layout/activity_movie_detail.xml
           grep -q 'btn_fav' work/app/src/main/res/layout/item_live_channel.xml
           grep -Eq 'containsCategory|toggleCategory' work/app/src/main/java/com/orbital/iptv/utils/FavouritesManager.kt
           grep -Eq 'rvMovies|rvSeries|rvLive|rvCategories' work/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt
