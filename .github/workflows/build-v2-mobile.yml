@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - 'SEAndroid_v2.0.1-FINAL.zip'
+      - 'SEAndroid_v2.0.1-FINAL-2.zip'
       - 'SEAndroid_v2.0.1-SOURCE.zip'
       - 'SEAndroid_v2.0.1-source.zip'
       - '.github/workflows/build-v2-mobile.yml'
@@ -44,6 +45,7 @@ jobs:
           ZIP=""
           for candidate in \
             "SEAndroid_v2.0.1-FINAL.zip" \
+            "SEAndroid_v2.0.1-FINAL-2.zip" \
             "SEAndroid_v2.0.1-SOURCE.zip" \
             "SEAndroid_v2.0.1-source.zip"; do
             if [ -f "$candidate" ]; then
@@ -52,7 +54,7 @@ jobs:
             fi
           done
           if [ -z "$ZIP" ]; then
-            echo "ERROR: Upload one of: SEAndroid_v2.0.1-FINAL.zip / SEAndroid_v2.0.1-SOURCE.zip / SEAndroid_v2.0.1-source.zip"
+            echo "ERROR: Upload one of: SEAndroid_v2.0.1-FINAL.zip / SEAndroid_v2.0.1-FINAL-2.zip / SEAndroid_v2.0.1-SOURCE.zip / SEAndroid_v2.0.1-source.zip"
             exit 1
           fi
           echo "SOURCE_ZIP=$ZIP" >> "$GITHUB_ENV"
