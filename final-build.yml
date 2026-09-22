@@ -1,4 +1,5 @@
 name: SEAndroid v2.0.1 Final Build
+# trigger final build after workflow installation
 
 on:
   push:
