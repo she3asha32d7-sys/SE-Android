@@ -27,3 +27,5 @@ Search verification fixed.
 Robust feature verification trigger.
 
 Grid verification trigger.
+
+Proceed to v100.0.7 build.
