@@ -26,8 +26,10 @@ jobs:
       - name: Android SDK
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager -perm -111 | head -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Fetch and extract clean base
