@@ -49,6 +49,21 @@ jobs:
         run: |
           python3 audit_v100_33.py "$SOURCE_ROOT"
 
+      - name: Package extracted source for review
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f SEAndroid_v100.0.1-extracted-source.zip
+          zip -qr SEAndroid_v100.0.1-extracted-source.zip "$SOURCE_ROOT"
+          ls -lh SEAndroid_v100.0.1-extracted-source.zip
+
+      - name: Upload extracted source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.1-EXTRACTED-SOURCE
+          path: SEAndroid_v100.0.1-extracted-source.zip
+          retention-days: 30
+
       - name: Upload audit report
         uses: actions/upload-artifact@v4
         with:
