@@ -1,5 +1,5 @@
-name: SEAndroid v2.0.1 Final Build
-run-name: SEAndroid v2.0.1 Final Build
+name: SEAndroid_v100.0.5 Build
+run-name: SEAndroid_v100.0.5 Build
 
 on:
   push:
@@ -34,8 +34,8 @@ jobs:
         shell: bash
         run: |
           set -e
-          rm -rf work
-          mkdir -p work/input
+          rm -rf work package
+          mkdir -p work/input package
           unzip -q SEAndroid_v100.0.1.zip -d work/input
           ROOT="$(find work/input -type f -name gradlew -print -quit | xargs -r dirname)"
           test -n "$ROOT"
@@ -55,6 +55,63 @@ jobs:
           set -e
           (cd work && python3 ../finalize_v201.py)
 
+      - name: Set project name and installable release signing
+        shell: bash
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          for name in ("settings.gradle", "settings.gradle.kts"):
+              p = Path("work") / name
+              if p.exists():
+                  s = p.read_text()
+                  s = re.sub(
+                      r'rootProject\.name\s*=\s*["\'][^"\']+["\']',
+                      'rootProject.name = "SEAndroid_v100.0.5"',
+                      s
+                  )
+                  p.write_text(s)
+
+          app_gradle = Path("work/app/build.gradle")
+          if app_gradle.exists():
+              s = app_gradle.read_text()
+              if 'signingConfig signingConfigs.debug' not in s:
+                  s = s.replace(
+                      'release {\n            // Signing can be supplied by Android Studio/gradle properties for a local release build.\n            minifyEnabled false',
+                      'release {\n            signingConfig signingConfigs.debug\n            minifyEnabled false'
+                  )
+              app_gradle.write_text(s)
+
+          readme = Path("work/README.md")
+          readme.write_text(
+              "# SEAndroid_v100.0.5\n\n"
+              "Android Studio source package for the SE IPTV Player project.\n\n"
+              "Project/archive name: SEAndroid_v100.0.5\n"
+              "APK filename: SEAndroid_v100.0.5.apk\n"
+              "Source filename: SEAndroid_v100.0.5.zip\n"
+              "About screen: V10.0.1.\n"
+              "Application ID: com.se.iptv.player.\n"
+          )
+
+          audit = Path("work/FINAL_33_AUDIT.md")
+          if audit.exists():
+              s = audit.read_text()
+              s = s.replace("# SEAndroid_v2.0.1", "# SEAndroid_v100.0.5", 1)
+              audit.write_text(s)
+
+          manifest = Path("work/SE_BUILD_MANIFEST.txt")
+          if manifest.exists():
+              s = manifest.read_text()
+              if "Project package: SEAndroid_v100.0.5" not in s:
+                  s = s.replace(
+                      "Build task: :app:assembleRelease",
+                      "Project package: SEAndroid_v100.0.5\nBuild task: :app:assembleRelease"
+                  )
+              manifest.write_text(s)
+          PY
+
       - name: Align Kotlin with Cast dependency
         shell: bash
         run: |
@@ -71,18 +128,47 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Build
+      - name: Build installable release APK
         shell: bash
         working-directory: work
         run: |
           set -e
           ./gradlew clean assembleRelease --no-daemon
+          test -f app/build/outputs/apk/release/app-release.apk
+
+      - name: Package APK and source with matching names
+        shell: bash
+        run: |
+          set -e
+          cp work/app/build/outputs/apk/release/app-release.apk package/SEAndroid_v100.0.5.apk
+
+          mkdir -p package/SEAndroid_v100.0.5
+          cp -a work/. package/SEAndroid_v100.0.5/
+          rm -rf package/SEAndroid_v100.0.5/.gradle
+          rm -rf package/SEAndroid_v100.0.5/build
+          rm -rf package/SEAndroid_v100.0.5/app/build
+          rm -rf package/SEAndroid_v100.0.5/input
+          chmod +x package/SEAndroid_v100.0.5/gradlew
+
+          (cd package && zip -qr SEAndroid_v100.0.5.zip SEAndroid_v100.0.5)
+
+      - name: Verify outputs
+        shell: bash
+        run: |
+          set -e
+          test -s package/SEAndroid_v100.0.5.apk
+          test -s package/SEAndroid_v100.0.5.zip
+          unzip -t package/SEAndroid_v100.0.5.zip >/dev/null
+          echo "APK:"
+          ls -lh package/SEAndroid_v100.0.5.apk
+          echo "SOURCE:"
+          ls -lh package/SEAndroid_v100.0.5.zip
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v2.0.1-FINAL
+          name: SEAndroid_v100.0.5
           path: |
-            work/app/build/outputs/apk/release/*.apk
-            work
+            package/SEAndroid_v100.0.5.apk
+            package/SEAndroid_v100.0.5.zip
           retention-days: 30
