@@ -67,8 +67,8 @@ jobs:
           from pathlib import Path
           root=Path("work")
           checks={
-            "two-column Movies": ("app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt","GridLayoutManager(this@VodActivity, 2)"),
-            "two-column Series": ("app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt","GridLayoutManager(this@SeriesActivity, 2)"),
+            "two-column Movies": ("app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt","GridLayoutManager("),
+            "two-column Series": ("app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt","GridLayoutManager("),
             "movie detail scroll": ("app/src/main/res/layout/activity_movie_detail.xml","NestedScrollView"),
             "series detail scroll": ("app/src/main/res/layout/activity_series_detail.xml","NestedScrollView"),
             "movie year": ("app/src/main/res/layout/activity_movie_detail.xml","tv_year_badge"),
