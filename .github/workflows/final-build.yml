@@ -65,7 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/main/se_v100_0_6.patch.gz.b64" -o se_v100_0_6.patch.gz.b64
+          test -s se_v100_0_6.patch.gz.b64
           python3 - <<'PY'
           from pathlib import Path
           import base64, gzip
