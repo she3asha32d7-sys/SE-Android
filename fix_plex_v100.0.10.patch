@@ -170,4 +170,4 @@
 +import java.util.Date
 +import java.util.Locale
  
- class RecordingsActivity : AppCompatActivity {
+ class RecordingsActivity : AppCompatActivity() {
