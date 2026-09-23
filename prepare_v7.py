@@ -14,6 +14,10 @@ for p,first,nexttag in [('app/src/main/res/layout/activity_movie_detail.xml','an
         s=s[:a]+'<androidx.core.widget.NestedScrollView android:id="@+id/detail_info_scroll" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true" android:scrollbars="none"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">'+mid+'</LinearLayout></androidx.core.widget.NestedScrollView>'+s[b:]
         w(p,s)
 
+p='app/src/main/java/com/orbital/iptv/ui/vod/MovieDetailActivity.kt'
+s=t(p).replace('movieYear = info.releaseDate?.take(4)?.takeIf { it.all(Char::isDigit) }','movieYear = Regex("\\\\d{4}").find(info.releaseDate.orEmpty())?.value')
+w(p,s)
+
 for p in ['app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt','app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt']:
     s=t(p).replace(', 3)',', 2)',1); w(p,s)
 
