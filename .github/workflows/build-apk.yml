@@ -70,6 +70,30 @@ jobs:
             "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/fix_plex_v100.0.10.patch" \
             -o "$GITHUB_WORKSPACE/fix_plex_v100.0.10.patch"
           patch -p1 --forward < "$GITHUB_WORKSPACE/fix_plex_v100.0.10.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("app/src/main/java/com/orbital/iptv/data/plex/PlexRepository.kt")
+          s = p.read_text(encoding="utf-8")
+          marker = "    // ── Playback reporting"
+          start = s.find("    suspend fun getChildren(")
+          end = s.find(marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit("PlexRepository getChildren/playback block not found")
+          block = s[start:end]
+          fixed, removed = re.subn(r"(\n    \}\n)(?:[ \t]*\}\n)+(?=\s*$)", r"\1", block)
+          if removed:
+              s = s[:start] + fixed + s[end:]
+              p.write_text(s, encoding="utf-8")
+          print(f"PlexRepository extra-brace groups removed: {removed}")
+          check = p.read_text(encoding="utf-8")
+          start = check.find("    suspend fun getChildren(")
+          end = check.find(marker, start)
+          between = check[start:end]
+          if re.search(r"\n    \}\n(?:[ \t]*\}\n)+\s*$", between):
+              raise SystemExit("PlexRepository still has extra top-level braces")
+          PY
+          sed -n '330,345p' app/src/main/java/com/orbital/iptv/data/plex/PlexRepository.kt
           grep -q 'versionName "100.0.10"' app/build.gradle
           grep -q 'versionCode 1000010' app/build.gradle
           test ! -e app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
