@@ -50,16 +50,17 @@ jobs:
         continue-on-error: true
         working-directory: source
         run: |
-          python3 ../finalize_v7.py 2>&1 | tee ../../finalizer.log
-          test ${PIPESTATUS[0]} -eq 0
+          python3 ../finalize_debug.py
+          cp finalizer_trace.txt ../../finalizer_trace.txt
+          grep -q 'FINALIZER_OK' finalizer_trace.txt
 
-      - name: Upload finalizer log
+      - name: Upload finalizer trace
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v100.0.7-finalizer-log
-          path: finalizer.log
-          if-no-files-found: ignore
+          name: SEAndroid_v100.0.7-finalizer-trace
+          path: finalizer_trace.txt
+          if-no-files-found: error
 
       - name: Stop after finalizer failure
         if: steps.finalize.outcome != 'success'
