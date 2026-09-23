@@ -91,37 +91,3 @@ class FavouritesActivity:AppCompatActivity(){
 w('app/src/main/res/layout/activity_favourites.xml','''<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal" android:background="@color/orbital_dark_blue"><include android:id="@+id/main_sidebar" layout="@layout/layout_main_sidebar"/><LinearLayout android:id="@+id/layout_content" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical"><LinearLayout android:id="@+id/layout_header" android:layout_width="match_parent" android:layout_height="48dp" android:background="@color/sky_header_blue"><TextView android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="start|center_vertical" android:paddingStart="16dp" android:text="FAVOURITES" android:textColor="@color/sky_yellow" android:textSize="13sp" android:textStyle="bold"/></LinearLayout><View android:id="@+id/view_accent" android:layout_width="match_parent" android:layout_height="2dp" android:background="@color/sky_cyan"/><androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"><TextView android:id="@+id/header_movies" android:layout_width="match_parent" android:layout_height="34dp" android:gravity="start|center_vertical" android:paddingStart="16dp" android:text="MOVIES" android:textColor="@color/sky_yellow" android:background="@color/sky_mid_blue" android:visibility="gone"/><androidx.recyclerview.widget.RecyclerView android:id="@+id/rv_movies" android:layout_width="match_parent" android:layout_height="wrap_content" android:nestedScrollingEnabled="false" android:visibility="gone"/><TextView android:id="@+id/header_series" android:layout_width="match_parent" android:layout_height="34dp" android:gravity="start|center_vertical" android:paddingStart="16dp" android:text="SERIES" android:textColor="@color/sky_yellow" android:background="@color/sky_mid_blue" android:visibility="gone"/><androidx.recyclerview.widget.RecyclerView android:id="@+id/rv_series" android:layout_width="match_parent" android:layout_height="wrap_content" android:nestedScrollingEnabled="false" android:visibility="gone"/><TextView android:id="@+id/header_live" android:layout_width="match_parent" android:layout_height="34dp" android:gravity="start|center_vertical" android:paddingStart="16dp" android:text="LIVE TV" android:textColor="@color/sky_yellow" android:background="@color/sky_mid_blue" android:visibility="gone"/><androidx.recyclerview.widget.RecyclerView android:id="@+id/rv_live" android:layout_width="match_parent" android:layout_height="wrap_content" android:nestedScrollingEnabled="false" android:visibility="gone"/><TextView android:id="@+id/header_categories" android:layout_width="match_parent" android:layout_height="34dp" android:gravity="start|center_vertical" android:paddingStart="16dp" android:text="CATEGORIES" android:textColor="@color/sky_yellow" android:background="@color/sky_mid_blue" android:visibility="gone"/><androidx.recyclerview.widget.RecyclerView android:id="@+id/rv_categories" android:layout_width="match_parent" android:layout_height="wrap_content" android:nestedScrollingEnabled="false" android:visibility="gone"/><TextView android:id="@+id/tv_empty" android:layout_width="match_parent" android:layout_height="260dp" android:gravity="center" android:text="NO FAVOURITES YET&#10;&#10;ADD MOVIES, SERIES, LIVE CHANNELS OR CATEGORIES TO YOUR FAVOURITES" android:textColor="#668899" android:textSize="13sp" android:visibility="gone"/></LinearLayout></androidx.core.widget.NestedScrollView><TextView android:id="@+id/tv_count" android:layout_width="match_parent" android:layout_height="24dp" android:gravity="end|center_vertical" android:paddingEnd="8dp" android:textColor="@color/sky_cyan" android:textSize="9sp"/></LinearLayout></LinearLayout>''')
 w('SE_BUILD_MANIFEST.txt','SE IPTV PLAYER — SEAndroid v100.0.7\nBase source: SEAndroid_v100.0.6.zip\nAPK: SEAndroid_v100.0.7.apk\nSource: SEAndroid_v100.0.7.zip\n10 requested changes applied and audited.\n')
 print('OK')
-
-# Final deterministic repair pass.
-p='app/src/main/res/layout/activity_login.xml'; s=t(p).replace('android:layout_width="80dp"\n            android:layout_height="80dp"','android:layout_width="96dp"\n            android:layout_height="96dp"',1); w(p,s)
-p='app/src/main/res/layout/activity_home.xml'; s=t(p).replace('layout_width="240dp"','layout_width="200dp"',1).replace('android:layout_width="280dp" android:layout_height="190dp"','android:layout_width="180dp" android:layout_height="120dp"',1); w(p,s)
-for p in ['app/src/main/res/layout/activity_vod.xml','app/src/main/res/layout/activity_series.xml']:
-    s=t(p).replace('android:layout_width="240dp"','android:layout_width="200dp"',1); w(p,s)
-
-p='app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt'; s=t(p)
-pos=s.find('data class IptvSeries'); end=s.find('data class EmbyShow',pos)
-if pos>=0 and end>pos:
-    block=s[pos:end]
-    block=block.replace('override val label get() = serverName','private val host get() = serverUrl.removePrefix("https://").removePrefix("http://").trimEnd(chr(47)).substringBefore(chr(47))\n        override val label get() = "$serverName  •  $username @ $host"')
-    s=s[:pos]+block+s[end:]
-d=chr(36)
-s=s.replace('is SearchSource.IptvSeries -> "IPTV|'+d+'{src.serverUrl}|'+d+'{src.show.seriesId}"','is SearchSource.IptvSeries -> "IPTV|'+d+'{src.serverUrl}|'+d+'{src.username}|'+d+'{src.show.seriesId}"')
-w(p,s)
-
-p='app/src/main/java/com/orbital/iptv/utils/FavouritesManager.kt'; s=t(p)
-lines=s.splitlines()
-for i,line in enumerate(lines):
-    if 'fun categoryFavoriteId' in line:
-        lines[i]='    fun categoryFavoriteId(categoryType: String, serverUrl: String, categoryId: String): String = "category_'+d+'{categoryType}_'+d+'{serverUrl.hashCode()}_'+d+'categoryId"'
-w(p,'\n'.join(lines)+'\n')
-
-p='app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt'; s=t(p)
-s=s.replace('"'+d+"{'"+d+"'}"+'{m.size+s.size+l.size+c.size} ITEMS"','"'+d+'{m.size+s.size+l.size+c.size} ITEMS"')
-w(p,s)
-
-p='app/src/main/java/com/orbital/iptv/ui/home/ChannelAdapter.kt'; s=t(p)
-s=s.replace('import com.orbital.iptv.utils.FavouritesManager\n','')
-s=s.replace('        val favButton: TextView? = itemView.findViewById(R.id.btn_fav)\n','')
-s=re.sub(r'\n        favButton\?\.let \{ fav ->.*?\n        \}\n\n        // TV D-pad focus highlight','\n\n        // TV D-pad focus highlight',s,flags=re.S)
-w(p,s)
-p='app/src/main/res/layout/item_channel.xml'; s=t(p); s=re.sub(r'\s*<TextView android:id="@\+id/btn_fav"[^>]+/>\s*','\n',s,count=1); w(p,s)
