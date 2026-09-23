@@ -98,6 +98,7 @@ jobs:
           from textwrap import dedent
 
           # Remove the old title bars directly under the main sidebar.
+          import re
           header_specs = [
               ("app/src/main/res/layout/activity_vod.xml", "MOVIES"),
               ("app/src/main/res/layout/activity_series.xml", "SERIES"),
@@ -105,22 +106,18 @@ jobs:
           ]
           for filename, label in header_specs:
               p = Path(filename)
-              lines = p.read_text(encoding="utf-8").splitlines()
-              removed = False
-              out = []
-              for line in lines:
-                  if (
-                      not removed
-                      and 'android:layout_height="46dp"' in line
-                      and f'android:text="{label}"' in line
-                  ):
-                      removed = True
-                      continue
-                  out.append(line)
-              if not removed:
-                  raise SystemExit(f"Expected {label} header not found in {filename}")
-              p.write_text("\n".join(out) + "\n", encoding="utf-8")
-
+              s = p.read_text(encoding="utf-8")
+              pattern = re.compile(
+                  r'\\s*<LinearLayout\\b[^>]*android:layout_height="46dp"[^>]*>.*?'
+                  r'<TextView\\b[^>]*android:text="' + re.escape(label) + r'"[^>]*/>\\s*</LinearLayout>',
+                  re.S
+              )
+              s2, removed = pattern.subn("", s, count=1)
+              if removed:
+                  p.write_text(s2, encoding="utf-8")
+              if re.search(r'<TextView\\b[^>]*android:text="' + re.escape(label) + r'"', p.read_text(encoding="utf-8")):
+                  raise SystemExit(f"{label} header still present in {filename}")
+              print(f"{label} title bar removed/passed: {removed}")
           rec = Path("app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt")
           rs = rec.read_text(encoding="utf-8")
           required = [
