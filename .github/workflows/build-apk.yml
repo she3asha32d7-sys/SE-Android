@@ -44,6 +44,8 @@ jobs:
           xz -dc patch.xz > patch.diff
           cd base7work
           patch -p1 --forward < "$GITHUB_WORKSPACE/patch.diff"
+          base64 -d "$GITHUB_WORKSPACE/fix_search_enum.diff.b64" > "$GITHUB_WORKSPACE/fix_search_enum.diff"
+          patch -p1 --forward < "$GITHUB_WORKSPACE/fix_search_enum.diff"
           cd "$GITHUB_WORKSPACE"
           mv base7work SEAndroid_v100.0.9
           mkdir -p SEAndroid_v100.0.9/.github/workflows
