@@ -39,6 +39,7 @@ jobs:
       - name: Apply the final category and Favorites changes
         working-directory: source
         run: python3 ../finish_v7.py
+          python3 ../finish_fix_v7.py
 
       - name: Verify v7 source
         working-directory: source/SEAndroid_v100.0.6
