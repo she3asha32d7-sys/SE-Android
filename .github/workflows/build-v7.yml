@@ -2,6 +2,8 @@ name: SEAndroid v100.0.7 Build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -20,7 +22,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          curl -fL             -H "Authorization: Bearer $GITHUB_TOKEN"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/$REPO/actions/artifacts/10722640126/zip"             -o base-artifact.zip
+          curl -fL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/actions/artifacts/10722640126/zip" -o base-artifact.zip
           unzip -q base-artifact.zip -d base-artifact
           SRCZIP=$(find base-artifact -type f -name 'SEAndroid_v100.0.6.zip' | head -1)
           test -n "$SRCZIP"
