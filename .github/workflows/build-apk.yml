@@ -91,7 +91,7 @@ jobs:
               p = Path(filename)
               s = p.read_text(encoding="utf-8")
               pattern = re.compile(
-                  r'\s*<LinearLayout\b[^>]*layout_height="46dp"[^>]*>.*?'
+                  r'\s*<LinearLayout\b[^>]*android:layout_height="46dp"[^>]*>.*?'
                   r'android:text="' + re.escape(label) + r'".*?</LinearLayout>',
                   re.S
               )
