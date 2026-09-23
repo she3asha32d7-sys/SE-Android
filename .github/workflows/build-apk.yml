@@ -93,7 +93,102 @@ jobs:
           if re.search(r"\n    \}\n(?:[ \t]*\}\n)+\s*$", between):
               raise SystemExit("PlexRepository still has extra top-level braces")
           PY
-          sed -n '330,345p' app/src/main/java/com/orbital/iptv/data/plex/PlexRepository.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          rec = Path("app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt")
+          rs = rec.read_text(encoding="utf-8")
+          required = [
+              "import java.text.SimpleDateFormat",
+              "import java.util.Date",
+              "import java.util.Locale",
+          ]
+          anchor = "import java.io.File"
+          for imp in required:
+              if imp not in rs:
+                  rs = rs.replace(anchor, anchor + "\n" + imp, 1)
+                  anchor = imp
+          rec.write_text(rs, encoding="utf-8")
+
+          ser = Path("app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt")
+          ss = ser.read_text(encoding="utf-8")
+          if "private fun buildCategoryMenu(" not in ss:
+              marker = "    private fun recentSortKey("
+              fn = dedent(r'''
+                  private fun buildCategoryMenu(categories: List<SeriesCategory>, selected: SeriesCategory?) {
+                      val container = binding.catContainer
+                      container.removeAllViews()
+                      val palette = ThemeManager.palette()
+                      val density = resources.displayMetrics.density
+                      val rowH = (46 * density).toInt()
+                      val pad = (16 * density).toInt()
+
+                      fun addRow(label: String, selectedRow: Boolean, onClick: () -> Unit) {
+                          val tv = TextView(this)
+                          tv.layoutParams = LinearLayout.LayoutParams(
+                              LinearLayout.LayoutParams.MATCH_PARENT,
+                              rowH
+                          )
+                          tv.setPadding(pad, 0, pad, 0)
+                          tv.gravity = Gravity.CENTER_VERTICAL
+                          tv.text = label
+                          tv.textSize = 15f
+                          tv.setTextColor(if (selectedRow) palette.accent else palette.textPrimary)
+                          tv.typeface = if (selectedRow) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                          tv.setOnClickListener { onClick() }
+                          container.addView(tv)
+                      }
+
+                      addRow("RECENTLY ADDED", showingRecentlyAdded) {
+                          showingRecentlyAdded = true
+                          showingContinueWatching = false
+                          val sorted = allShows.sortedByDescending { recentSortKey(it.added ?: it.lastModified) }
+                          adapter.submitList(sorted)
+                          binding.tvShowCount.text = "${sorted.size} SHOWS"
+                          buildCategoryMenu(categories, selected)
+                      }
+
+                      val profile = PrefsManager.getActiveProfile(this@SeriesActivity)
+                      if (profile != null && FavouritesManager.hasProfileSeries(profile.id)) {
+                          addRow("★ FAVOURITES", showingFavourites) {
+                              showingRecentlyAdded = false
+                              showingContinueWatching = false
+                              showingFavourites = true
+                              viewModel.selectFavourites()
+                          }
+                      }
+
+                      if (continueShows.isNotEmpty()) {
+                          addRow("▶ CONTINUE WATCHING", showingContinueWatching) {
+                              showingRecentlyAdded = false
+                              showingFavourites = false
+                              showingContinueWatching = true
+                              adapter.submitList(continueShows)
+                              binding.tvShowCount.text = "${continueShows.size} SHOWS"
+                              buildCategoryMenu(categories, selected)
+                          }
+                      }
+
+                      categories
+                          .filter { !it.categoryName.equals("SERIES", ignoreCase = true) }
+                          .forEach { cat ->
+                              addRow(cat.categoryName, !showingRecentlyAdded && !showingFavourites && selected?.categoryId == cat.categoryId) {
+                                  showingRecentlyAdded = false
+                                  showingContinueWatching = false
+                                  showingFavourites = false
+                                  viewModel.selectCategory(cat)
+                              }
+                          }
+                  }
+
+              ''')
+              if marker not in ss:
+                  raise SystemExit("SeriesActivity recentSortKey marker not found")
+              ss = ss.replace(marker, fn + marker, 1)
+              ser.write_text(ss, encoding="utf-8")
+          PY
+          sed -n '330,350p' app/src/main/java/com/orbital/iptv/data/plex/PlexRepository.kt
           grep -q 'versionName "100.0.10"' app/build.gradle
           grep -q 'versionCode 1000010' app/build.gradle
           test ! -e app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
