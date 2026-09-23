@@ -29,8 +29,9 @@ jobs:
           unzip -q "$SRCZIP" -d source
 
       - name: Apply all 10 requested changes
+        working-directory: source
         run: |
-          python3 patch_v7.py
+          python3 ../patch_v7.py
           mv SEAndroid_v100.0.6 SEAndroid_v100.0.7
           test -f SEAndroid_v100.0.7/settings.gradle
           grep -q 'SEAndroid_v100.0.7' SEAndroid_v100.0.7/settings.gradle
@@ -47,17 +48,17 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build APK
-        working-directory: SEAndroid_v100.0.7
+        working-directory: source/SEAndroid_v100.0.7
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
       - name: Package final APK and source
         run: |
-          cp SEAndroid_v100.0.7/app/build/outputs/apk/debug/app-debug.apk SEAndroid_v100.0.7.apk
-          cd SEAndroid_v100.0.7
-          zip -qr ../SEAndroid_v100.0.7.zip . -x '*/build/*' '*/.gradle/*'
-          cd ..
+          cp source/SEAndroid_v100.0.7/app/build/outputs/apk/debug/app-debug.apk SEAndroid_v100.0.7.apk
+          cd source/SEAndroid_v100.0.7
+          zip -qr ../../SEAndroid_v100.0.7.zip . -x '*/build/*' '*/.gradle/*'
+          cd ../..
           test -s SEAndroid_v100.0.7.apk
           test -s SEAndroid_v100.0.7.zip
 
