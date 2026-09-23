@@ -35,4 +35,15 @@ with zipfile.ZipFile(base) as z:
     for rel in ['app/src/main/java/com/orbital/iptv/ui/home/ChannelAdapter.kt','app/src/main/res/layout/item_channel.xml']:
         data=z.read('SEAndroid_v100.0.6/'+rel)
         (R/rel).write_bytes(data)
+# Remove category-navigation constants that do not exist in the v100.0.6 Activities.
+p='app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt'; s=t(p)
+s=s.replace('Intent(this,VodActivity::class.java).putExtra(VodActivity.EXTRA_OPEN_CATEGORY_ID,i.categoryId)','Intent(this,VodActivity::class.java)')
+s=s.replace('Intent(this,SeriesActivity::class.java).putExtra(SeriesActivity.EXTRA_OPEN_CATEGORY_ID,i.categoryId)','Intent(this,SeriesActivity::class.java)')
+s=s.replace('Intent(this,HomeActivity::class.java).putExtra(HomeActivity.EXTRA_OPEN_CATEGORY_ID,i.categoryId)','Intent(this,HomeActivity::class.java)')
+w(p,s)
+
+# Kotlin must receive '/' characters, not Python chr() calls.
+p='app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt'; s=t(p)
+s=s.replace('trimEnd(chr(47)).substringBefore(chr(47))',"trimEnd('/').substringBefore('/')")
+w(p,s)
 print('OK')
