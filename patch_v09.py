@@ -174,7 +174,7 @@ s = s.replace('import com.orbital.iptv.ui.settings.SettingsActivity\n',
 s = s.replace('''        ReminderBus.register { r -> showReminderDialog(r) }
     }
 
-    override fun onPause()''', '''        ReminderBus.register { r -> showReminderDialog(r) }
+    override fun onPause() {''', '''        ReminderBus.register { r -> showReminderDialog(r) }
         if (::binding.isInitialized && ::liveAdapter.isInitialized) {
             val saved = SearchStateManager.load(this, "live")
             if (binding.etLiveSearch.text?.toString() != saved) {
