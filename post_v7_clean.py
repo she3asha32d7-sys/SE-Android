@@ -5,6 +5,10 @@ def w(p,s): (R/p).write_text(s)
 d=chr(36)
 
 p='app/src/main/res/layout/activity_login.xml'; s=t(p).replace('android:layout_width="80dp"\n            android:layout_height="80dp"','android:layout_width="96dp"\n            android:layout_height="96dp"',1); w(p,s)
+# App launcher/logo: scale the existing launcher drawable by 30%.
+for p in ['app/src/main/res/mipmap-hdpi/ic_launcher.xml','app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml']:
+    s=t(p).replace('@drawable/se_launcher','@drawable/se_launcher_scaled')
+    w(p,s)
 p='app/src/main/res/layout/activity_home.xml'; s=t(p).replace('layout_width="240dp"','layout_width="200dp"',1).replace('android:layout_width="280dp" android:layout_height="190dp"','android:layout_width="180dp" android:layout_height="120dp"',1); w(p,s)
 for p in ['app/src/main/res/layout/activity_vod.xml','app/src/main/res/layout/activity_series.xml']:
     s=t(p).replace('android:layout_width="240dp"','android:layout_width="200dp"',1); w(p,s)
