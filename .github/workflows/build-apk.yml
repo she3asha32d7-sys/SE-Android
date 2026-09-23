@@ -98,33 +98,27 @@ jobs:
           from textwrap import dedent
 
           # Remove the old title bars directly under the main sidebar.
+          import re
           header_specs = [
-              (
-                  "app/src/main/res/layout/activity_vod.xml",
-                  '<LinearLayout android:layout_width="match_parent" android:layout_height="46dp" android:orientation="horizontal" android:gravity="center_vertical" android:background="@color/se_panel_alt"><TextView android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="start|center_vertical" android:paddingStart="12dp" android:text="MOVIES" android:textColor="@color/sky_white" android:textSize="13sp" android:textStyle="bold"/><TextView android:id="@+id/tv_movie_count" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp" android:text="0 TITLES" android:textColor="@color/sky_cyan" android:textSize="9sp" android:textStyle="bold"/></LinearLayout>'
-              ),
-              (
-                  "app/src/main/res/layout/activity_series.xml",
-                  '<LinearLayout android:layout_width="match_parent" android:layout_height="46dp" android:orientation="horizontal" android:gravity="center_vertical" android:background="@color/se_panel_alt"><TextView android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="start|center_vertical" android:paddingStart="12dp" android:text="SERIES" android:textColor="@color/sky_white" android:textSize="13sp" android:textStyle="bold"/><TextView android:id="@+id/tv_show_count" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp" android:text="0 SHOWS" android:textColor="@color/sky_cyan" android:textSize="9sp" android:textStyle="bold"/></LinearLayout>'
-              ),
-              (
-                  "app/src/main/res/layout/activity_home.xml",
-                  '<LinearLayout android:layout_width="match_parent" android:layout_height="46dp" android:orientation="horizontal" android:gravity="center_vertical" android:background="@color/se_panel_alt"><TextView android:id="@+id/header_tv_listings" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="start|center_vertical" android:paddingStart="12dp" android:text="LIVE TV" android:textColor="@color/sky_white" android:textSize="13sp" android:textStyle="bold" android:focusable="true" android:clickable="true" android:nextFocusRight="@id/rv_live_channels" /></LinearLayout>'
-              ),
+              ("app/src/main/res/layout/activity_vod.xml", "MOVIES"),
+              ("app/src/main/res/layout/activity_series.xml", "SERIES"),
+              ("app/src/main/res/layout/activity_home.xml", "LIVE TV"),
           ]
-          for filename, old in header_specs:
+          for filename, label in header_specs:
               p = Path(filename)
               s = p.read_text(encoding="utf-8")
-              if old in s:
-                  s = s.replace(old, "", 1)
-                  p.write_text(s, encoding="utf-8")
-                  print(f"Removed title bar from {filename}")
-              else:
-                  print(f"Title bar already absent in {filename}")
+              pattern = re.compile(
+                  r'\s*<LinearLayout\b[^>]*layout_height="46dp"[^>]*>.*?'
+                  r'<TextView\b[^>]*android:text="' + re.escape(label) + r'"[^>]*/>\s*</LinearLayout>',
+                  re.S
+              )
+              s2, removed = pattern.subn("", s, count=1)
+              if removed:
+                  p.write_text(s2, encoding="utf-8")
               check = p.read_text(encoding="utf-8")
-              label = {"activity_vod.xml":"MOVIES", "activity_series.xml":"SERIES", "activity_home.xml":"LIVE TV"}[Path(filename).name]
               if f'android:text="{label}"' in check:
-                  raise SystemExit(f"Old title label still present in {filename}")
+                  raise SystemExit(f"Old {label} title bar still present in {filename}")
+              print(f"{label} title bar removed: {removed}")
           rec = Path("app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt")
           rs = rec.read_text(encoding="utf-8")
           required = [
