@@ -66,6 +66,10 @@ jobs:
           xz -t "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz"
           xz -dc "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz" > "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch"
           patch -p1 --forward < "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch"
+          curl -fL \
+            "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/fix_plex_v100.0.10.patch" \
+            -o "$GITHUB_WORKSPACE/fix_plex_v100.0.10.patch"
+          patch -p1 --forward < "$GITHUB_WORKSPACE/fix_plex_v100.0.10.patch"
           grep -q 'versionName "100.0.10"' app/build.gradle
           grep -q 'versionCode 1000010' app/build.gradle
           test ! -e app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
