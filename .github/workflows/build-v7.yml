@@ -36,35 +36,9 @@ jobs:
         working-directory: source
         run: python3 ../patch_v7.py
 
-      - name: Apply Favorites base changes
+      - name: Apply all final category, Favorites, sizing and Search fixes
         working-directory: source
-        run: |
-          python3 ../finish_v7.py
-
-      - name: Validate finalizer syntax
-        working-directory: source
-        run: python3 -m py_compile ../finalize_v7.py
-
-      - name: Apply final v7 repairs
-        id: finalize
-        continue-on-error: true
-        working-directory: source
-        run: |
-          python3 ../finalize_debug.py
-          cp finalizer_trace.txt ../../finalizer_trace.txt
-          grep -q 'FINALIZER_OK' finalizer_trace.txt
-
-      - name: Upload finalizer trace
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: SEAndroid_v100.0.7-finalizer-trace
-          path: finalizer_trace.txt
-          if-no-files-found: error
-
-      - name: Stop after finalizer failure
-        if: steps.finalize.outcome != 'success'
-        run: exit 1
+        run: python3 ../finish_v7.py
 
       - name: Verify v7 source
         working-directory: source/SEAndroid_v100.0.6
