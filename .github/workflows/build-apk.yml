@@ -23,7 +23,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          curl -fL -H Authorization: Bearer $GH_TOKEN -H Accept: application/vnd.github+json https://api.github.com/repos/$REPO/actions/artifacts/10737831779/zip -o base-artifact.zip
+          curl -fL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/actions/artifacts/10737831779/zip" -o base-artifact.zip
           mkdir -p base-artifact
           unzip -q base-artifact.zip -d base-artifact
 
