@@ -38,7 +38,7 @@ jobs:
           ROOT=$(find source -maxdepth 5 -type f -name gradlew -print -quit | xargs -r dirname)
           test -n "$ROOT"
           mv "$ROOT" base7work
-          cat v7_v9_source.diff.gz.b64 v7_v9_source.diff.gz.02.b64 > patch.gz.b64
+          cp v7_v9_source.diff.gz.b64 patch.gz.b64
           base64 -d patch.gz.b64 > patch.gz
           gzip -t patch.gz
           gzip -dc patch.gz > patch.diff
