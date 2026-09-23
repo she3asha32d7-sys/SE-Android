@@ -28,18 +28,11 @@ p='app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt'; s=t(
 s=s.replace('tvCount.text="'+d+'{m.size+s.size+l.size+c.size} ITEMS"','tvCount.text="'+d+'{m.size+s.size+l.size+c.size} ITEMS"')
 w(p,s)
 
-p='app/src/main/java/com/orbital/iptv/ui/home/ChannelAdapter.kt'; lines=t(p).splitlines(); out=[]; skip=False
-for line in lines:
-    if 'import com.orbital.iptv.utils.FavouritesManager' in line: continue
-    if 'val favButton:' in line: continue
-    if 'favButton?.let { fav ->' in line:
-        skip=True; continue
-    if skip:
-        if line.strip()=='}': skip=False
-        continue
-    out.append(line)
-w(p,'\n'.join(out)+'\n')
-p='app/src/main/res/layout/item_channel.xml'; s=t(p)
-s='\n'.join(line for line in s.splitlines() if 'android:id="@+id/btn_fav"' not in line)+'\n'
-w(p,s)
+# Restore the two files touched by the redundant core-patch heart hook from the exact v100.0.6 source.
+import zipfile
+base=next(Path('../base-artifact').rglob('SEAndroid_v100.0.6.zip'))
+with zipfile.ZipFile(base) as z:
+    for rel in ['app/src/main/java/com/orbital/iptv/ui/home/ChannelAdapter.kt','app/src/main/res/layout/item_channel.xml']:
+        data=z.read('SEAndroid_v100.0.6/'+rel)
+        (R/rel).write_bytes(data)
 print('OK')
