@@ -120,6 +120,223 @@ jobs:
               if f'android:text="{label}"' in check:
                   raise SystemExit(f"Old {label} title bar still present in {filename}")
               print(f"{label} title bar removed: {removed}")
+          # Remove Kotlin references to UI views that were intentionally deleted with the old title bars.
+          home = Path("app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt")
+          hs = home.read_text(encoding="utf-8")
+          hs = re.sub(
+              r'\n\s*binding\.headerTvListings\.setOnClickListener \{.*?\n\s*binding\.headerTvListings\.text = "LIVE TV"\n',
+              '\n',
+              hs,
+              flags=re.S
+          )
+          hs = re.sub(r'^\s*binding\.headerTvListings\.(?:setBackgroundColor|setTextColor).*\n', '', hs, flags=re.M)
+          if "headerTvListings" in hs:
+              raise SystemExit("Stale headerTvListings reference remains")
+          home.write_text(hs, encoding="utf-8")
+
+          for filename, field in [
+              ("app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt", "tvMovieCount"),
+              ("app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt", "tvShowCount"),
+          ]:
+              p = Path(filename)
+              s = p.read_text(encoding="utf-8")
+              s = re.sub(rf'^\s*binding\.{field}\.text = .*
+          rs = rec.read_text(encoding="utf-8")
+          required = [
+              "import java.text.SimpleDateFormat",
+              "import java.util.Date",
+              "import java.util.Locale",
+          ]
+          anchor = "import java.io.File"
+          for imp in required:
+              if imp not in rs:
+                  rs = rs.replace(anchor, anchor + "\n" + imp, 1)
+                  anchor = imp
+          rec.write_text(rs, encoding="utf-8")
+
+          ser = Path("app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt")
+          ss = ser.read_text(encoding="utf-8")
+          if "private fun buildCategoryMenu(" not in ss:
+              marker = "    private fun recentSortKey("
+              fn = dedent(r'''
+                  private fun buildCategoryMenu(categories: List<SeriesCategory>, selected: SeriesCategory?) {
+                      val container = binding.catContainer
+                      container.removeAllViews()
+                      val p = ThemeManager.palette()
+                      val density = resources.displayMetrics.density
+                      val rowH = (46 * density).toInt()
+                      val pad = (16 * density).toInt()
+                      val marginPx = (p.itemMarginDp * density).toInt()
+                      val allFavs = FavouritesManager.getAll(this)
+                      val favItems = allFavs.filter {
+                          it.type == FavType.SERIES ||
+                              (it.type == FavType.EPISODE && !it.hasResume && !it.isUpNext && it.seriesId >= 0)
+                      }
+                      val continueItems = allFavs.filter {
+                          it.type == FavType.EPISODE && (it.hasResume || it.isUpNext)
+                      }
+
+                      fun addRow(label: String, selectedRow: Boolean, onClick: () -> Unit) {
+                          val tv = TextView(this).apply {
+                              val lp = LinearLayout.LayoutParams(
+                                  LinearLayout.LayoutParams.MATCH_PARENT, rowH
+                              )
+                              if (marginPx > 0) lp.setMargins(marginPx, marginPx / 2, marginPx, marginPx / 2)
+                              layoutParams = lp
+                              gravity = Gravity.CENTER_VERTICAL
+                              setPadding(pad, 0, 0, 0)
+                              text = label
+                              textSize = 13f
+                              typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+                              isClickable = true
+                              isFocusable = true
+                              background = ThemeManager.roundedBg(
+                                  if (selectedRow) p.highlight else p.bgMid, density
+                              )
+                              setTextColor(
+                                  if (selectedRow) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+                              )
+                              setOnFocusChangeListener { v, hasFocus ->
+                                  if (!selectedRow) {
+                                      v.background = ThemeManager.focusRowDrawable(density, p.bgMid, hasFocus)
+                                  }
+                              }
+                              setOnClickListener { onClick() }
+                          }
+                          container.addView(tv)
+                      }
+
+                      addRow("RECENTLY ADDED", showingRecentlyAdded) {
+                          showingRecentlyAdded = true
+                          showingFavourites = false
+                          showingContinue = false
+                          val sorted = allShows.sortedByDescending {
+                              recentSortKey(it.added ?: it.lastModified)
+                          }
+                          adapter.submitList(sorted)
+                          binding.tvShowCount.text = "${sorted.size} SHOWS"
+                          buildCategoryMenu(categories, selected)
+                      }
+
+                      if (favItems.isNotEmpty()) {
+                          addRow("★ FAVOURITES", showingFavourites) {
+                              showingRecentlyAdded = false
+                              showingContinue = false
+                              showingFavourites = true
+                              showFavouritesSeries()
+                              buildCategoryMenu(categories, selected)
+                          }
+                      }
+
+                      if (continueItems.isNotEmpty()) {
+                          addRow("▶ CONTINUE WATCHING", showingContinue) {
+                              showingRecentlyAdded = false
+                              showingFavourites = false
+                              showingContinue = true
+                              showContinueWatching()
+                              buildCategoryMenu(categories, selected)
+                          }
+                      }
+
+                      val offset = 1 +
+                          if (favItems.isNotEmpty()) 1 else 0 +
+                          if (continueItems.isNotEmpty()) 1 else 0
+                      categories
+                          .filter { !it.categoryName.equals("SERIES", ignoreCase = true) }
+                          .forEachIndexed { index, cat ->
+                              val isSelected =
+                                  !showingContinue && !showingFavourites && !showingRecentlyAdded &&
+                                      cat.categoryId == selected?.categoryId
+                              val normalBg = if ((index + offset) % 2 == 0) p.bgMid else p.bgPrimary
+                              val profile = PrefsManager.getActiveProfile(this@SeriesActivity)
+                              val favNow = profile?.let {
+                                  FavouritesManager.containsCategory(
+                                      this@SeriesActivity, "SERIES", it.serverUrl, cat.categoryId
+                                  )
+                              } == true
+                              val label = cat.categoryName + if (favNow) "   ♥" else "   ♡"
+                              addRow(label, isSelected) {
+                                  showingContinue = false
+                                  showingFavourites = false
+                                  showingRecentlyAdded = false
+                                  viewModel.selectCategory(cat)
+                              }
+                              container.getChildAt(container.childCount - 1)?.background =
+                                  if (isSelected) ThemeManager.roundedBg(p.highlight, density)
+                                  else ThemeManager.roundedBg(normalBg, density)
+                          }
+                  }
+
+              ''')
+              if marker not in ss:
+                  raise SystemExit("SeriesActivity recentSortKey marker not found")
+              ss = ss.replace(marker, fn + marker, 1)
+              ser.write_text(ss, encoding="utf-8")
+          PY
+          sed -n '330,350p' app/src/main/java/com/orbital/iptv/data/plex/PlexRepository.kt
+          grep -q 'versionName "100.0.10"' app/build.gradle
+          grep -q 'versionCode 1000010' app/build.gradle
+          test ! -e app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
+          test ! -e app/src/main/res/layout/activity_global_search.xml
+          test ! -e app/src/main/res/layout/item_global_search.xml
+          if grep -R -n -E 'etSearch|et_search|et_live_search|nav_search|btnGlobalSearch' app/src/main; then
+            echo "Search UI references remain"
+            exit 1
+          fi
+          if grep -R -n 'AUTO ROTATE' app/src/main/res/layout; then
+            echo "Old AUTO ROTATE label remains"
+            exit 1
+          fi
+          if grep -R -n 'MAIN MENU' app/src/main/res/layout; then
+            echo "Old MAIN MENU label remains"
+            exit 1
+          fi
+          grep -R -n 'SCREEN_ORIENTATION_REVERSE_LANDSCAPE' app/src/main/java/com/orbital/iptv/OrbitalApp.kt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Package APK and source
+        run: |
+          set -euo pipefail
+          rm -rf output source-for-zip
+          mkdir -p output source-for-zip
+          cp -a source/. source-for-zip/
+          rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
+          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.10.apk
+          cd source-for-zip
+          zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.10.zip" .
+          cd "$GITHUB_WORKSPACE"
+          test -s output/SEAndroid_v100.0.10.apk
+          test -s output/SEAndroid_v100.0.10.zip
+
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.10
+          path: |
+            output/SEAndroid_v100.0.10.apk
+            output/SEAndroid_v100.0.10.zip
+          if-no-files-found: error
+          retention-days: 30
+, '', s, flags=re.M)
+              if f"binding.{field}" in s:
+                  raise SystemExit(f"Stale {field} binding remains")
+              p.write_text(s, encoding="utf-8")
+
           rec = Path("app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt")
           rs = rec.read_text(encoding="utf-8")
           required = [
