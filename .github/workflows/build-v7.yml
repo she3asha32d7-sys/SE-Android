@@ -36,11 +36,18 @@ jobs:
         working-directory: source
         run: python3 ../patch_v7.py
 
-      - name: Apply final v7 changes and repairs
+      - name: Apply Favorites base changes
         working-directory: source
         run: |
           python3 ../finish_v7.py
-          python3 ../finalize_v7.py
+
+      - name: Validate finalizer syntax
+        working-directory: source
+        run: python3 -m py_compile ../finalize_v7.py
+
+      - name: Apply final v7 repairs
+        working-directory: source
+        run: python3 ../finalize_v7.py
 
       - name: Verify v7 source
         working-directory: source/SEAndroid_v100.0.6
