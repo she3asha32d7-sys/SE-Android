@@ -102,7 +102,7 @@ p='app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt'; s=t(p)
 pos=s.find('data class IptvSeries'); end=s.find('data class EmbyShow',pos)
 if pos>=0 and end>pos:
     block=s[pos:end]
-    block=block.replace('override val label get() = serverName','private val host get() = serverUrl.removePrefix("https://").removePrefix("http://").trimEnd(chr(39)).substringBefore(chr(39))\n        override val label get() = "$serverName  •  $username @ $host"')
+    block=block.replace('override val label get() = serverName','private val host get() = serverUrl.removePrefix("https://").removePrefix("http://").trimEnd(chr(47)).substringBefore(chr(47))\n        override val label get() = "$serverName  •  $username @ $host"')
     s=s[:pos]+block+s[end:]
 d=chr(36)
 s=s.replace('is SearchSource.IptvSeries -> "IPTV|'+d+'{src.serverUrl}|'+d+'{src.show.seriesId}"','is SearchSource.IptvSeries -> "IPTV|'+d+'{src.serverUrl}|'+d+'{src.username}|'+d+'{src.show.seriesId}"')
