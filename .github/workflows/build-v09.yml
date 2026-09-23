@@ -1,0 +1,116 @@
+name: SEAndroid v100.0.9 Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download successful v100.0.7 base artifact
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          curl -fL             -H "Authorization: Bearer $GITHUB_TOKEN"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/$REPO/actions/artifacts/10737831779/zip"             -o base-artifact.zip
+          rm -rf base-artifact source
+          mkdir -p base-artifact source
+          unzip -q base-artifact.zip -d base-artifact
+          SRCZIP="$(find base-artifact -type f -name 'SEAndroid_v100.0.7.zip' -print -quit)"
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d source
+
+      - name: Locate Android project
+        id: project
+        run: |
+          set -e
+          PROJECT_ROOT="$(find source -maxdepth 4 -type f -name gradlew -print -quit | xargs -r dirname)"
+          test -n "$PROJECT_ROOT"
+          echo "root=$PROJECT_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Apply v100.0.9 fixes
+        run: |
+          set -e
+          python3 patch_v09.py "${{ steps.project.outputs.root }}"
+
+      - name: Verify requested changes
+        run: |
+          set -e
+          ROOT="${{ steps.project.outputs.root }}"
+          grep -q 'versionCode 1000009' "$ROOT/app/build.gradle"
+          grep -q 'versionName "100.0.9"' "$ROOT/app/build.gradle"
+          grep -q 'rootProject.name = "SEAndroid_v100.0.9"' "$ROOT/settings.gradle"
+          grep -q 'GridLayoutManager(this@HomeActivity, 1)' "$ROOT/app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt"
+          grep -q 'SeriesInfoResponse?' "$ROOT/app/src/main/java/com/orbital/iptv/data/api/XtreamApiService.kt"
+          grep -q 'resolvedSeriesId' "$ROOT/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt"
+          grep -q 'SearchStateManager' "$ROOT/app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt"
+          grep -q 'SearchStateManager' "$ROOT/app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt"
+          grep -q 'SearchStateManager' "$ROOT/app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt"
+          grep -q 'SearchStateManager' "$ROOT/app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt"
+          grep -q 'android:drawable="@drawable/se_logo_full"' "$ROOT/app/src/main/res/drawable/se_launcher_scaled.xml"
+          grep -q 'android:layout_width="120dp"' "$ROOT/app/src/main/res/layout/activity_login.xml"
+          ! grep -Rqs 'btn_category_back' "$ROOT/app/src/main/res/layout/activity_vod.xml"
+          ! grep -Rqs 'btn_category_back' "$ROOT/app/src/main/res/layout/activity_series.xml"
+          ! grep -Rqs 'btn_live_category_back' "$ROOT/app/src/main/res/layout/activity_home.xml"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build APK
+        id: build_apk
+        working-directory: ${{ steps.project.outputs.root }}
+        shell: bash
+        run: |
+          set -e
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Rename source root to final version
+        run: |
+          set -e
+          OLD_ROOT="${{ steps.project.outputs.root }}"
+          NEW_ROOT="$(dirname "$OLD_ROOT")/SEAndroid_v100.0.9"
+          if [ "$OLD_ROOT" != "$NEW_ROOT" ]; then
+            mv "$OLD_ROOT" "$NEW_ROOT"
+          fi
+          echo "FINAL_ROOT=$NEW_ROOT" >> "$GITHUB_ENV"
+
+      - name: Package final APK and source
+        run: |
+          set -e
+          mkdir -p output
+          APK="$FINAL_ROOT/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          cp "$APK" output/SEAndroid_v100.0.9.apk
+          cd "$FINAL_ROOT"
+          zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.9.zip" . -x '*/build/*' '*/.gradle/*' '*.iml'
+          cd "$GITHUB_WORKSPACE"
+          test -s output/SEAndroid_v100.0.9.apk
+          test -s output/SEAndroid_v100.0.9.zip
+
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.9
+          path: |
+            output/SEAndroid_v100.0.9.apk
+            output/SEAndroid_v100.0.9.zip
+          if-no-files-found: error
+          retention-days: 30
