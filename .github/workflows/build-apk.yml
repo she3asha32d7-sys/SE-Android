@@ -124,7 +124,9 @@ jobs:
           ]:
               p = Path(filename)
               s = p.read_text(encoding="utf-8")
-              s = re.sub(r'^\s*binding\.' + re.escape(field) + r'\.text\s*=.*\n?', '', s, flags=re.M)
+              # Remove assignments even when they share a line with another statement.
+              s = re.sub(r'\s*binding\.' + re.escape(field) + r'\.text\s*=\s*[^;\n]*(?:;|(?=\n)|$)', '', s)
+              s = re.sub(r'\s*binding\.' + re.escape(field) + r'\.text\s*=\s*\$\{[^}]*\}\s*(?:TITLES|SHOWS)\s*', '', s)
               if f"binding.{field}" in s:
                   raise SystemExit(f"{field} binding reference remains")
               p.write_text(s, encoding="utf-8")
