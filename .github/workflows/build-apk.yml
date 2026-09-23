@@ -107,6 +107,7 @@ jobs:
           for filename, label in header_specs:
               p = Path(filename)
               s = p.read_text(encoding="utf-8")
+              s = s.replace(' android:nextFocusLeft="@id/header_tv_listings"', '')
               pattern = re.compile(
                   r'\s*<LinearLayout\b[^>]*layout_height="46dp"[^>]*>.*?'
                   r'android:text="' + re.escape(label) + r'".*?</LinearLayout>',
