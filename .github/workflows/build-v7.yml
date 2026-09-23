@@ -44,6 +44,7 @@ jobs:
           python3 ../finish_fix2_v7.py
           python3 ../finish_fix3_v7.py
           python3 ../finish_fix4_v7.py
+          python3 ../finish_fix5_v7.py
 
       - name: Verify v7 source
         working-directory: source/SEAndroid_v100.0.6
