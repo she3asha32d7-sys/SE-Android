@@ -38,7 +38,8 @@ jobs:
 
       - name: Apply the final category and Favorites changes
         working-directory: source
-        run: python3 ../finish_v7.py
+        run: |
+          python3 ../finish_v7.py
           python3 ../finish_fix_v7.py
           python3 ../finish_fix2_v7.py
           python3 ../finish_fix3_v7.py
