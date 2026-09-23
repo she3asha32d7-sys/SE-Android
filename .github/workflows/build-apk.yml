@@ -97,6 +97,30 @@ jobs:
           from pathlib import Path
           from textwrap import dedent
 
+          # Remove the old title bars directly under the main sidebar.
+          header_specs = [
+              ("app/src/main/res/layout/activity_vod.xml", "MOVIES"),
+              ("app/src/main/res/layout/activity_series.xml", "SERIES"),
+              ("app/src/main/res/layout/activity_home.xml", "LIVE TV"),
+          ]
+          for filename, label in header_specs:
+              p = Path(filename)
+              lines = p.read_text(encoding="utf-8").splitlines()
+              removed = False
+              out = []
+              for line in lines:
+                  if (
+                      not removed
+                      and 'android:layout_height="46dp"' in line
+                      and f'android:text="{label}"' in line
+                  ):
+                      removed = True
+                      continue
+                  out.append(line)
+              if not removed:
+                  raise SystemExit(f"Expected {label} header not found in {filename}")
+              p.write_text("\n".join(out) + "\n", encoding="utf-8")
+
           rec = Path("app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt")
           rs = rec.read_text(encoding="utf-8")
           required = [
