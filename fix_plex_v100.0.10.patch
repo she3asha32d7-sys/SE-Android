@@ -1,0 +1,12 @@
+--- a/app/src/main/java/com/orbital/iptv/data/plex/PlexRepository.kt
++++ b/app/src/main/java/com/orbital/iptv/data/plex/PlexRepository.kt
+@@ -334,9 +334,6 @@
+         val req = serverBuilder(serverUrl, "/library/metadata/$ratingKey/children", token).build()
+         parseMetadata(client.newCall(req).execute().use { it.body?.string() ?: "" })
+     }
+-            }
+-        }
+-    }
+ 
+     // ── Playback reporting ────────────────────────────────────────────────────
+ 
