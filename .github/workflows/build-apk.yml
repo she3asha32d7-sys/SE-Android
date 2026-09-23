@@ -119,66 +119,108 @@ jobs:
                   private fun buildCategoryMenu(categories: List<SeriesCategory>, selected: SeriesCategory?) {
                       val container = binding.catContainer
                       container.removeAllViews()
-                      val palette = ThemeManager.palette()
+                      val p = ThemeManager.palette()
                       val density = resources.displayMetrics.density
                       val rowH = (46 * density).toInt()
                       val pad = (16 * density).toInt()
+                      val marginPx = (p.itemMarginDp * density).toInt()
+                      val allFavs = FavouritesManager.getAll(this)
+                      val favItems = allFavs.filter {
+                          it.type == FavType.SERIES ||
+                              (it.type == FavType.EPISODE && !it.hasResume && !it.isUpNext && it.seriesId >= 0)
+                      }
+                      val continueItems = allFavs.filter {
+                          it.type == FavType.EPISODE && (it.hasResume || it.isUpNext)
+                      }
 
                       fun addRow(label: String, selectedRow: Boolean, onClick: () -> Unit) {
-                          val tv = TextView(this)
-                          tv.layoutParams = LinearLayout.LayoutParams(
-                              LinearLayout.LayoutParams.MATCH_PARENT,
-                              rowH
-                          )
-                          tv.setPadding(pad, 0, pad, 0)
-                          tv.gravity = Gravity.CENTER_VERTICAL
-                          tv.text = label
-                          tv.textSize = 15f
-                          tv.setTextColor(if (selectedRow) palette.accent else palette.textPrimary)
-                          tv.typeface = if (selectedRow) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                          tv.setOnClickListener { onClick() }
+                          val tv = TextView(this).apply {
+                              val lp = LinearLayout.LayoutParams(
+                                  LinearLayout.LayoutParams.MATCH_PARENT, rowH
+                              )
+                              if (marginPx > 0) lp.setMargins(marginPx, marginPx / 2, marginPx, marginPx / 2)
+                              layoutParams = lp
+                              gravity = Gravity.CENTER_VERTICAL
+                              setPadding(pad, 0, 0, 0)
+                              text = label
+                              textSize = 13f
+                              typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+                              isClickable = true
+                              isFocusable = true
+                              background = ThemeManager.roundedBg(
+                                  if (selectedRow) p.highlight else p.bgMid, density
+                              )
+                              setTextColor(
+                                  if (selectedRow) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+                              )
+                              setOnFocusChangeListener { v, hasFocus ->
+                                  if (!selectedRow) {
+                                      v.background = ThemeManager.focusRowDrawable(density, p.bgMid, hasFocus)
+                                  }
+                              }
+                              setOnClickListener { onClick() }
+                          }
                           container.addView(tv)
                       }
 
                       addRow("RECENTLY ADDED", showingRecentlyAdded) {
                           showingRecentlyAdded = true
-                          showingContinueWatching = false
-                          val sorted = allShows.sortedByDescending { recentSortKey(it.added ?: it.lastModified) }
+                          showingFavourites = false
+                          showingContinue = false
+                          val sorted = allShows.sortedByDescending {
+                              recentSortKey(it.added ?: it.lastModified)
+                          }
                           adapter.submitList(sorted)
                           binding.tvShowCount.text = "${sorted.size} SHOWS"
                           buildCategoryMenu(categories, selected)
                       }
 
-                      val profile = PrefsManager.getActiveProfile(this@SeriesActivity)
-                      if (profile != null && FavouritesManager.hasProfileSeries(profile.id)) {
+                      if (favItems.isNotEmpty()) {
                           addRow("★ FAVOURITES", showingFavourites) {
                               showingRecentlyAdded = false
-                              showingContinueWatching = false
+                              showingContinue = false
                               showingFavourites = true
-                              viewModel.selectFavourites()
-                          }
-                      }
-
-                      if (continueShows.isNotEmpty()) {
-                          addRow("▶ CONTINUE WATCHING", showingContinueWatching) {
-                              showingRecentlyAdded = false
-                              showingFavourites = false
-                              showingContinueWatching = true
-                              adapter.submitList(continueShows)
-                              binding.tvShowCount.text = "${continueShows.size} SHOWS"
+                              showFavouritesSeries()
                               buildCategoryMenu(categories, selected)
                           }
                       }
 
+                      if (continueItems.isNotEmpty()) {
+                          addRow("▶ CONTINUE WATCHING", showingContinue) {
+                              showingRecentlyAdded = false
+                              showingFavourites = false
+                              showingContinue = true
+                              showContinueWatching()
+                              buildCategoryMenu(categories, selected)
+                          }
+                      }
+
+                      val offset = 1 +
+                          if (favItems.isNotEmpty()) 1 else 0 +
+                          if (continueItems.isNotEmpty()) 1 else 0
                       categories
                           .filter { !it.categoryName.equals("SERIES", ignoreCase = true) }
-                          .forEach { cat ->
-                              addRow(cat.categoryName, !showingRecentlyAdded && !showingFavourites && selected?.categoryId == cat.categoryId) {
-                                  showingRecentlyAdded = false
-                                  showingContinueWatching = false
+                          .forEachIndexed { index, cat ->
+                              val isSelected =
+                                  !showingContinue && !showingFavourites && !showingRecentlyAdded &&
+                                      cat.categoryId == selected?.categoryId
+                              val normalBg = if ((index + offset) % 2 == 0) p.bgMid else p.bgPrimary
+                              val profile = PrefsManager.getActiveProfile(this@SeriesActivity)
+                              val favNow = profile?.let {
+                                  FavouritesManager.containsCategory(
+                                      this@SeriesActivity, "SERIES", it.serverUrl, cat.categoryId
+                                  )
+                              } == true
+                              val label = cat.categoryName + if (favNow) "   ♥" else "   ♡"
+                              addRow(label, isSelected) {
+                                  showingContinue = false
                                   showingFavourites = false
+                                  showingRecentlyAdded = false
                                   viewModel.selectCategory(cat)
                               }
+                              container.getChildAt(container.childCount - 1)?.background =
+                                  if (isSelected) ThemeManager.roundedBg(p.highlight, density)
+                                  else ThemeManager.roundedBg(normalBg, density)
                           }
                   }
 
