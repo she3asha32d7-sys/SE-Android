@@ -60,9 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fL \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/contents/se_v9_to_v10_source.patch.xz.b64?ref=${{ github.sha }}" \
+            "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/se_v9_to_v10_source.patch.xz.b64" \
             -o "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz.b64"
           base64 -d "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz.b64" > "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz"
           xz -t "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz"
@@ -73,9 +71,18 @@ jobs:
           test ! -e app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
           test ! -e app/src/main/res/layout/activity_global_search.xml
           test ! -e app/src/main/res/layout/item_global_search.xml
-          ! grep -R -n -E 'etSearch|et_search|et_live_search|nav_search|btnGlobalSearch' app/src/main || true
-          ! grep -R -n 'AUTO ROTATE' app/src/main/res/layout || true
-          ! grep -R -n 'MAIN MENU' app/src/main/res/layout || true
+          if grep -R -n -E 'etSearch|et_search|et_live_search|nav_search|btnGlobalSearch' app/src/main; then
+            echo "Search UI references remain"
+            exit 1
+          fi
+          if grep -R -n 'AUTO ROTATE' app/src/main/res/layout; then
+            echo "Old AUTO ROTATE label remains"
+            exit 1
+          fi
+          if grep -R -n 'MAIN MENU' app/src/main/res/layout; then
+            echo "Old MAIN MENU label remains"
+            exit 1
+          fi
           grep -R -n 'SCREEN_ORIENTATION_REVERSE_LANDSCAPE' app/src/main/java/com/orbital/iptv/OrbitalApp.kt
 
       - name: Set up JDK 17
