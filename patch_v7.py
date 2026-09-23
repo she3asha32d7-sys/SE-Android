@@ -17,7 +17,8 @@ for x in ('activity_movie_detail.xml','activity_series_detail.xml'):
 
 s=t('app/src/main/res/layout/activity_home.xml')
 s=s.replace('android:id="@+id/layout_live_categories" android:layout_width="220dp"','android:id="@+id/layout_live_categories" android:layout_width="200dp"',1)
-s=s.replace('android:layout_width="210dp" android:layout_height="140dp" android:layout_margin="10dp"','android:layout_width="180dp" android:layout_height="120dp" android:layout_margin="10dp"',1); w('app/src/main/res/layout/activity_home.xml',s)
+s=s.replace('android:layout_width="210dp" android:layout_height="140dp" android:layout_margin="10dp"','android:layout_width="180dp" android:layout_height="120dp" android:layout_margin="10dp"',1)
+w('app/src/main/res/layout/activity_home.xml',s)
 
 s=t('app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt')
 s=s.replace('''data class Iptv(
@@ -52,12 +53,12 @@ s=s.replace('''SearchSource.Iptv(
                                 streamUrl  = url,''',1)
 s=s.replace('distinctBy { "${it.serverUrl}|${it.show.seriesId}" }','distinctBy { "${it.serverUrl}|${it.username}|${it.show.seriesId}" }')
 s=s.replace('is SearchSource.IptvSeries -> "IPTV|${src.serverUrl}|${src.show.seriesId}"','is SearchSource.IptvSeries -> "IPTV|${src.serverUrl}|${src.username}|${src.show.seriesId}"')
-const anchor='''SearchResultItem(bucket.canonical, bucket.year, thumb, bucket.sources)
+anchor='''SearchResultItem(bucket.canonical, bucket.year, thumb, bucket.sources)
         }
     }
 
     private fun groupSeriesResults'''
-const replacement='''val uniqueSources = bucket.sources.distinctBy { src -> when (src) {
+replace='''val uniqueSources = bucket.sources.distinctBy { src -> when (src) {
                 is SearchSource.Iptv -> "IPTV|${src.serverUrl}|${src.username}|${src.streamUrl}"
                 is SearchSource.Emby -> "EMBY|${src.serverUrl}|${src.itemId}"
                 is SearchSource.Plex -> "PLEX|${src.serverUrl}|${src.item.ratingKey}"
@@ -68,29 +69,31 @@ const replacement='''val uniqueSources = bucket.sources.distinctBy { src -> when
     }
 
     private fun groupSeriesResults'''
-if (!s.includes(anchor)) throw new Error("search group anchor missing");
-s=s.replace(anchor,replacement,1); w('app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt',s)
+if anchor not in s: raise SystemExit('search group anchor missing')
+s=s.replace(anchor,replace,1); w('app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt',s)
 
-for (const x of ['activity_vod.xml','activity_series.xml']) {
-  s=t('app/src/main/res/layout/'+x).replace('android:layout_width="220dp" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/se_panel"','android:layout_width="200dp" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/se_panel"',1); w('app/src/main/res/layout/'+x,s)
-}
+for x in ('activity_vod.xml','activity_series.xml'):
+    s=t('app/src/main/res/layout/'+x).replace('android:layout_width="220dp" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/se_panel"','android:layout_width="200dp" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/se_panel"',1); w('app/src/main/res/layout/'+x,s)
 
-if (!t('app/src/main/java/com/orbital/iptv/ui/vod/MovieDetailActivity.kt').includes('movieYear = Regex("\\\\d{4}")')) throw new Error('movie year logic missing');
-for (const x of ['app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt','app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt']) {
-  const q=t(x); if (!q.includes('GridLayoutManager(this@') || !q.includes(', 2)')) throw new Error(x+' is not 2-column');
-}
+md=t('app/src/main/java/com/orbital/iptv/ui/vod/MovieDetailActivity.kt')
+if 'movieYear = Regex("\\\\d{4}")' not in md: raise SystemExit('movie year logic missing')
+for x in ('app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt','app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt'):
+    if 'GridLayoutManager(this@' not in t(x) or ', 2)' not in t(x): raise SystemExit(x+' is not 2-column')
 
-s=t('app/src/main/res/layout/item_channel.xml');
-if (!s.includes('btn_fav')) s=s.replace('    <!-- Live indicator dot -->','    <TextView android:id="@+id/btn_fav" android:layout_width="38dp" android:layout_height="match_parent" android:gravity="center" android:text="♡" android:textColor="@color/sky_white" android:textSize="22sp" android:textStyle="bold" android:focusable="true" android:clickable="true" android:contentDescription="Favorite channel" />\n\n    <!-- Live indicator dot -->',1);
+s=t('app/src/main/res/layout/item_channel.xml')
+if 'btn_fav' not in s:
+    s=s.replace('''    <!-- Live indicator dot -->''','''    <TextView android:id="@+id/btn_fav" android:layout_width="38dp" android:layout_height="match_parent" android:gravity="center" android:text="♡" android:textColor="@color/sky_white" android:textSize="22sp" android:textStyle="bold" android:focusable="true" android:clickable="true" android:contentDescription="Favorite channel" />
+
+    <!-- Live indicator dot -->''',1)
 w('app/src/main/res/layout/item_channel.xml',s)
-let ca=t('app/src/main/java/com/orbital/iptv/ui/home/ChannelAdapter.kt');
-if (!ca.includes('favButton')) {
-  ca=ca.replace('import com.orbital.iptv.utils.ThemeManager','import com.orbital.iptv.utils.ThemeManager\nimport com.orbital.iptv.utils.FavouritesManager');
-  ca=ca.replace('val epgNow: TextView? = itemView.findViewById(R.id.tv_epg_now)','val epgNow: TextView? = itemView.findViewById(R.id.tv_epg_now)\n        val favButton: TextView? = itemView.findViewById(R.id.btn_fav)');
-  const marker='''holder.channelName.setTextColor(textColor)
+ca=t('app/src/main/java/com/orbital/iptv/ui/home/ChannelAdapter.kt')
+if 'favButton' not in ca:
+    ca=ca.replace('import com.orbital.iptv.utils.ThemeManager','import com.orbital.iptv.utils.ThemeManager\nimport com.orbital.iptv.utils.FavouritesManager')
+    ca=ca.replace('val epgNow: TextView? = itemView.findViewById(R.id.tv_epg_now)','val epgNow: TextView? = itemView.findViewById(R.id.tv_epg_now)\n        val favButton: TextView? = itemView.findViewById(R.id.btn_fav)')
+    marker='''holder.channelName.setTextColor(textColor)
 
-        // TV D-pad focus highlight''';
-  const inject='''holder.channelName.setTextColor(textColor)
+        // TV D-pad focus highlight'''
+    inject='''holder.channelName.setTextColor(textColor)
         favButton?.let { fav ->
             val ctx = holder.itemView.context
             val on = FavouritesManager.containsLive(ctx, stream.streamId)
@@ -106,16 +109,15 @@ if (!ca.includes('favButton')) {
             }
         }
 
-        // TV D-pad focus highlight''';
-  if (!ca.includes(marker)) throw new Error('channel adapter marker missing');
-  ca=ca.replace(marker,inject,1);
-}
+        // TV D-pad focus highlight'''
+    if marker not in ca: raise SystemExit('channel adapter marker missing')
+    ca=ca.replace(marker,inject,1)
 w('app/src/main/java/com/orbital/iptv/ui/home/ChannelAdapter.kt',ca)
 
-s=t('app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt')
-s=s.replace('val movies = all.filter { it.type == FavType.MOVIE }','val movies = all.filter { it.type == FavType.MOVIE && !it.hasResume }')
-s=s.replace('val series = all.filter { it.type == FavType.SERIES }','val series = all.filter { it.type == FavType.SERIES && !it.hasResume && !it.isUpNext }')
-w('app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt',s)
+fa=t('app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt')
+fa=fa.replace('val movies = all.filter { it.type == FavType.MOVIE }','val movies = all.filter { it.type == FavType.MOVIE && !it.hasResume }')
+fa=fa.replace('val series = all.filter { it.type == FavType.SERIES }','val series = all.filter { it.type == FavType.SERIES && !it.hasResume && !it.isUpNext }')
+w('app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt',fa)
 
 w('SE_BUILD_MANIFEST.txt','''SE IPTV PLAYER — SEAndroid v100.0.7
 =================================
