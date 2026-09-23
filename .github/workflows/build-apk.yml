@@ -109,7 +109,7 @@ jobs:
               s = p.read_text(encoding="utf-8")
               pattern = re.compile(
                   r'\s*<LinearLayout\b[^>]*layout_height="46dp"[^>]*>.*?'
-                  r'<TextView\b[^>]*android:text="' + re.escape(label) + r'"[^>]*/>\s*</LinearLayout>',
+                  r'android:text="' + re.escape(label) + r'".*?</LinearLayout>',
                   re.S
               )
               s2, removed = pattern.subn("", s, count=1)
