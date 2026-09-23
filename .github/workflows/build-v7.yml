@@ -46,8 +46,24 @@ jobs:
         run: python3 -m py_compile ../finalize_v7.py
 
       - name: Apply final v7 repairs
+        id: finalize
+        continue-on-error: true
         working-directory: source
-        run: python3 ../finalize_v7.py
+        run: |
+          python3 ../finalize_v7.py 2>&1 | tee ../../finalizer.log
+          test ${PIPESTATUS[0]} -eq 0
+
+      - name: Upload finalizer log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.7-finalizer-log
+          path: finalizer.log
+          if-no-files-found: ignore
+
+      - name: Stop after finalizer failure
+        if: steps.finalize.outcome != 'success'
+        run: exit 1
 
       - name: Verify v7 source
         working-directory: source/SEAndroid_v100.0.6
