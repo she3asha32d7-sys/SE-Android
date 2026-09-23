@@ -1,0 +1,81 @@
+name: SEAndroid_v100.0.7 Build
+run-name: SEAndroid_v100.0.7 Build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Setup Android SDK
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager -perm -111 | head -n 1)"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - name: Restore v100.0.7 source
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p work package signing old_artifact
+          curl -fsSL -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10733922966/zip" -o old_artifact.zip
+          unzip -q old_artifact.zip -d old_artifact
+          unzip -q old_artifact/SEAndroid_v100.0.7.zip -d work
+          chmod +x work/gradlew
+      - name: Apply requested changes
+        run: |
+          set -euo pipefail
+          cp patch_v7_new.py work/patch_v7_new.py
+          python3 work/patch_v7_new.py
+          rm work/patch_v7_new.py
+      - name: Verify requested changes
+        run: |
+          set -euo pipefail
+          grep -Fq 'FavType.MOVIE -> openMovie(i)' work/app/src/main/java/com/orbital/iptv/ui/favourites/FavouritesActivity.kt
+          grep -Fq 'miniPlayer?.stop()' work/app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
+          grep -Fq 'GridLayoutManager(this@HomeActivity, 2)' work/app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
+          grep -Fq 'GridLayoutManager(this@VodActivity, 3)' work/app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt
+          grep -Fq 'GridLayoutManager(this@SeriesActivity, 3)' work/app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
+          grep -Fq 'open_category_only' work/app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt
+          grep -Fq 'detail_page_scroll' work/app/src/main/res/layout/activity_movie_detail.xml
+          grep -Fq 'detail_page_scroll' work/app/src/main/res/layout/activity_series_detail.xml
+          echo "SOURCE VERIFICATION OK"
+      - name: Build release
+        working-directory: work
+        run: ./gradlew clean assembleRelease --stacktrace --no-daemon
+      - name: Sign APK
+        run: |
+          set -euo pipefail
+          APK=work/app/build/outputs/apk/release/app-release.apk
+          keytool -genkeypair -keystore signing/se-release.keystore -storepass changeit -keypass changeit -alias se-release -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=SE IPTV PLAYER, C=EG" -noprompt
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -perm -111 | sort -V | tail -n1)"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign -perm -111 | sort -V | tail -n1)"
+          "$ZIPALIGN" -f -p 4 "$APK" package/aligned.apk
+          "$APKSIGNER" sign --ks signing/se-release.keystore --ks-pass pass:changeit --key-pass pass:changeit --ks-key-alias se-release --out package/SEAndroid_v100.0.7.apk package/aligned.apk
+          rm package/aligned.apk
+          "$APKSIGNER" verify --verbose package/SEAndroid_v100.0.7.apk
+      - name: Package source
+        run: |
+          set -euo pipefail
+          rm -rf work/.gradle work/.kotlin work/build work/app/build signing old_artifact
+          (cd work && zip -qr ../package/SEAndroid_v100.0.7.zip . -x ".git/*")
+          unzip -t package/SEAndroid_v100.0.7.zip >/dev/null
+          test -s package/SEAndroid_v100.0.7.apk
+          test -s package/SEAndroid_v100.0.7.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.7
+          path: |
+            package/SEAndroid_v100.0.7.apk
+            package/SEAndroid_v100.0.7.zip
+          retention-days: 30
