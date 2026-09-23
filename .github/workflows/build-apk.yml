@@ -1,9 +1,9 @@
 name: SEAndroid v100.0.10 Build
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,6 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     steps:
       - name: Checkout repository history
         uses: actions/checkout@v4
@@ -55,7 +56,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           mv base7work source
 
-      - name: Apply SE v100.0.10 source changes
+      - name: Apply v100.0.10 source patch
         working-directory: source
         run: |
           set -euo pipefail
@@ -66,39 +67,21 @@ jobs:
           xz -t "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz"
           xz -dc "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz" > "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch"
           patch -p1 --forward < "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch"
+
           curl -fL \
             "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/fix_plex_v100.0.10.patch" \
             -o "$GITHUB_WORKSPACE/fix_plex_v100.0.10.patch"
           patch -p1 --forward < "$GITHUB_WORKSPACE/fix_plex_v100.0.10.patch"
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p = Path("app/src/main/java/com/orbital/iptv/data/plex/PlexRepository.kt")
-          s = p.read_text(encoding="utf-8")
-          marker = "    // ── Playback reporting"
-          start = s.find("    suspend fun getChildren(")
-          end = s.find(marker, start)
-          if start < 0 or end < 0:
-              raise SystemExit("PlexRepository getChildren/playback block not found")
-          block = s[start:end]
-          fixed, removed = re.subn(r"(\n    \}\n)(?:[ \t]*\}\n)+(?=\s*$)", r"\1", block)
-          if removed:
-              s = s[:start] + fixed + s[end:]
-              p.write_text(s, encoding="utf-8")
-          print(f"PlexRepository extra-brace groups removed: {removed}")
-          check = p.read_text(encoding="utf-8")
-          start = check.find("    suspend fun getChildren(")
-          end = check.find(marker, start)
-          between = check[start:end]
-          if re.search(r"\n    \}\n(?:[ \t]*\}\n)+\s*$", between):
-              raise SystemExit("PlexRepository still has extra top-level braces")
-          PY
-          python3 - <<'PY'
-          from pathlib import Path
-          from textwrap import dedent
 
-          # Remove the old title bars directly under the main sidebar.
+      - name: Remove deleted UI remnants
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
           import re
+
+          # Remove the title bar immediately under the main sidebar on Movies, Series and Live.
           header_specs = [
               ("app/src/main/res/layout/activity_vod.xml", "MOVIES"),
               ("app/src/main/res/layout/activity_series.xml", "SERIES"),
@@ -107,388 +90,82 @@ jobs:
           for filename, label in header_specs:
               p = Path(filename)
               s = p.read_text(encoding="utf-8")
-              s = s.replace(' android:nextFocusLeft="@id/header_tv_listings"', '')
               pattern = re.compile(
                   r'\s*<LinearLayout\b[^>]*layout_height="46dp"[^>]*>.*?'
                   r'android:text="' + re.escape(label) + r'".*?</LinearLayout>',
                   re.S
               )
-              s2, removed = pattern.subn("", s, count=1)
-              if removed:
-                  p.write_text(s2, encoding="utf-8")
-              check = p.read_text(encoding="utf-8")
-              if f'android:text="{label}"' in check:
-                  raise SystemExit(f"Old {label} title bar still present in {filename}")
-              print(f"{label} title bar removed: {removed}")
-          # Remove Kotlin references to UI views that were intentionally deleted with the old title bars.
+              s, removed = pattern.subn("", s, count=1)
+              if removed != 1:
+                  raise SystemExit(f"Could not remove {label} title bar from {filename}")
+              s = s.replace(' android:nextFocusLeft="@id/header_tv_listings"', "")
+              if f'android:text="{label}"' in s:
+                  raise SystemExit(f"{label} title bar still present in {filename}")
+              p.write_text(s, encoding="utf-8")
+
+          # Remove Kotlin references to deleted Live header.
           home = Path("app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt")
           hs = home.read_text(encoding="utf-8")
           hs = re.sub(
-              r'\n\s*binding\.headerTvListings\.setOnClickListener \{.*?\n\s*binding\.headerTvListings\.text = "LIVE TV"\n',
+              r'\n\s*binding\.headerTvListings\.setOnClickListener\s*\{.*?\n\s*binding\.headerTvListings\.text\s*=\s*"LIVE TV"\s*\n',
               '\n',
               hs,
               flags=re.S
           )
           hs = re.sub(r'^\s*binding\.headerTvListings\.(?:setBackgroundColor|setTextColor).*\n', '', hs, flags=re.M)
           if "headerTvListings" in hs:
-              raise SystemExit("Stale headerTvListings reference remains")
+              raise SystemExit("headerTvListings reference remains")
           home.write_text(hs, encoding="utf-8")
 
+          # Remove Kotlin references to deleted title-bar counters.
           for filename, field in [
               ("app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt", "tvMovieCount"),
               ("app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt", "tvShowCount"),
           ]:
               p = Path(filename)
               s = p.read_text(encoding="utf-8")
-              s = re.sub(rf'^\s*binding\.{field}\.text = .*
-          rs = rec.read_text(encoding="utf-8")
-          required = [
-              "import java.text.SimpleDateFormat",
-              "import java.util.Date",
-              "import java.util.Locale",
-          ]
-          anchor = "import java.io.File"
-          for imp in required:
-              if imp not in rs:
-                  rs = rs.replace(anchor, anchor + "\n" + imp, 1)
-                  anchor = imp
-          rec.write_text(rs, encoding="utf-8")
-
-          ser = Path("app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt")
-          ss = ser.read_text(encoding="utf-8")
-          if "private fun buildCategoryMenu(" not in ss:
-              marker = "    private fun recentSortKey("
-              fn = dedent(r'''
-                  private fun buildCategoryMenu(categories: List<SeriesCategory>, selected: SeriesCategory?) {
-                      val container = binding.catContainer
-                      container.removeAllViews()
-                      val p = ThemeManager.palette()
-                      val density = resources.displayMetrics.density
-                      val rowH = (46 * density).toInt()
-                      val pad = (16 * density).toInt()
-                      val marginPx = (p.itemMarginDp * density).toInt()
-                      val allFavs = FavouritesManager.getAll(this)
-                      val favItems = allFavs.filter {
-                          it.type == FavType.SERIES ||
-                              (it.type == FavType.EPISODE && !it.hasResume && !it.isUpNext && it.seriesId >= 0)
-                      }
-                      val continueItems = allFavs.filter {
-                          it.type == FavType.EPISODE && (it.hasResume || it.isUpNext)
-                      }
-
-                      fun addRow(label: String, selectedRow: Boolean, onClick: () -> Unit) {
-                          val tv = TextView(this).apply {
-                              val lp = LinearLayout.LayoutParams(
-                                  LinearLayout.LayoutParams.MATCH_PARENT, rowH
-                              )
-                              if (marginPx > 0) lp.setMargins(marginPx, marginPx / 2, marginPx, marginPx / 2)
-                              layoutParams = lp
-                              gravity = Gravity.CENTER_VERTICAL
-                              setPadding(pad, 0, 0, 0)
-                              text = label
-                              textSize = 13f
-                              typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
-                              isClickable = true
-                              isFocusable = true
-                              background = ThemeManager.roundedBg(
-                                  if (selectedRow) p.highlight else p.bgMid, density
-                              )
-                              setTextColor(
-                                  if (selectedRow) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
-                              )
-                              setOnFocusChangeListener { v, hasFocus ->
-                                  if (!selectedRow) {
-                                      v.background = ThemeManager.focusRowDrawable(density, p.bgMid, hasFocus)
-                                  }
-                              }
-                              setOnClickListener { onClick() }
-                          }
-                          container.addView(tv)
-                      }
-
-                      addRow("RECENTLY ADDED", showingRecentlyAdded) {
-                          showingRecentlyAdded = true
-                          showingFavourites = false
-                          showingContinue = false
-                          val sorted = allShows.sortedByDescending {
-                              recentSortKey(it.added ?: it.lastModified)
-                          }
-                          adapter.submitList(sorted)
-                          binding.tvShowCount.text = "${sorted.size} SHOWS"
-                          buildCategoryMenu(categories, selected)
-                      }
-
-                      if (favItems.isNotEmpty()) {
-                          addRow("★ FAVOURITES", showingFavourites) {
-                              showingRecentlyAdded = false
-                              showingContinue = false
-                              showingFavourites = true
-                              showFavouritesSeries()
-                              buildCategoryMenu(categories, selected)
-                          }
-                      }
-
-                      if (continueItems.isNotEmpty()) {
-                          addRow("▶ CONTINUE WATCHING", showingContinue) {
-                              showingRecentlyAdded = false
-                              showingFavourites = false
-                              showingContinue = true
-                              showContinueWatching()
-                              buildCategoryMenu(categories, selected)
-                          }
-                      }
-
-                      val offset = 1 +
-                          if (favItems.isNotEmpty()) 1 else 0 +
-                          if (continueItems.isNotEmpty()) 1 else 0
-                      categories
-                          .filter { !it.categoryName.equals("SERIES", ignoreCase = true) }
-                          .forEachIndexed { index, cat ->
-                              val isSelected =
-                                  !showingContinue && !showingFavourites && !showingRecentlyAdded &&
-                                      cat.categoryId == selected?.categoryId
-                              val normalBg = if ((index + offset) % 2 == 0) p.bgMid else p.bgPrimary
-                              val profile = PrefsManager.getActiveProfile(this@SeriesActivity)
-                              val favNow = profile?.let {
-                                  FavouritesManager.containsCategory(
-                                      this@SeriesActivity, "SERIES", it.serverUrl, cat.categoryId
-                                  )
-                              } == true
-                              val label = cat.categoryName + if (favNow) "   ♥" else "   ♡"
-                              addRow(label, isSelected) {
-                                  showingContinue = false
-                                  showingFavourites = false
-                                  showingRecentlyAdded = false
-                                  viewModel.selectCategory(cat)
-                              }
-                              container.getChildAt(container.childCount - 1)?.background =
-                                  if (isSelected) ThemeManager.roundedBg(p.highlight, density)
-                                  else ThemeManager.roundedBg(normalBg, density)
-                          }
-                  }
-
-              ''')
-              if marker not in ss:
-                  raise SystemExit("SeriesActivity recentSortKey marker not found")
-              ss = ss.replace(marker, fn + marker, 1)
-              ser.write_text(ss, encoding="utf-8")
-          PY
-          sed -n '330,350p' app/src/main/java/com/orbital/iptv/data/plex/PlexRepository.kt
-          grep -q 'versionName "100.0.10"' app/build.gradle
-          grep -q 'versionCode 1000010' app/build.gradle
-          test ! -e app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
-          test ! -e app/src/main/res/layout/activity_global_search.xml
-          test ! -e app/src/main/res/layout/item_global_search.xml
-          if grep -R -n -E 'etSearch|et_search|et_live_search|nav_search|btnGlobalSearch' app/src/main; then
-            echo "Search UI references remain"
-            exit 1
-          fi
-          if grep -R -n 'AUTO ROTATE' app/src/main/res/layout; then
-            echo "Old AUTO ROTATE label remains"
-            exit 1
-          fi
-          if grep -R -n 'MAIN MENU' app/src/main/res/layout; then
-            echo "Old MAIN MENU label remains"
-            exit 1
-          fi
-          grep -R -n 'SCREEN_ORIENTATION_REVERSE_LANDSCAPE' app/src/main/java/com/orbital/iptv/OrbitalApp.kt
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-
-      - name: Build APK
-        working-directory: source
-        run: |
-          set -euo pipefail
-          chmod +x gradlew
-          ./gradlew clean assembleDebug --no-daemon --stacktrace
-
-      - name: Package APK and source
-        run: |
-          set -euo pipefail
-          rm -rf output source-for-zip
-          mkdir -p output source-for-zip
-          cp -a source/. source-for-zip/
-          rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
-          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.10.apk
-          cd source-for-zip
-          zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.10.zip" .
-          cd "$GITHUB_WORKSPACE"
-          test -s output/SEAndroid_v100.0.10.apk
-          test -s output/SEAndroid_v100.0.10.zip
-
-      - name: Upload APK and source
-        uses: actions/upload-artifact@v4
-        with:
-          name: SEAndroid_v100.0.10
-          path: |
-            output/SEAndroid_v100.0.10.apk
-            output/SEAndroid_v100.0.10.zip
-          if-no-files-found: error
-          retention-days: 30
-, '', s, flags=re.M)
+              s = re.sub(r'^\s*binding\.' + re.escape(field) + r'\.text\s*=.*\n?', '', s, flags=re.M)
               if f"binding.{field}" in s:
-                  raise SystemExit(f"Stale {field} binding remains")
+                  raise SystemExit(f"{field} binding reference remains")
               p.write_text(s, encoding="utf-8")
 
-          rec = Path("app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt")
-          rs = rec.read_text(encoding="utf-8")
-          required = [
-              "import java.text.SimpleDateFormat",
-              "import java.util.Date",
-              "import java.util.Locale",
-          ]
-          anchor = "import java.io.File"
-          for imp in required:
-              if imp not in rs:
-                  rs = rs.replace(anchor, anchor + "\n" + imp, 1)
-                  anchor = imp
-          rec.write_text(rs, encoding="utf-8")
-
-          ser = Path("app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt")
-          ss = ser.read_text(encoding="utf-8")
-          if "private fun buildCategoryMenu(" not in ss:
-              marker = "    private fun recentSortKey("
-              fn = dedent(r'''
-                  private fun buildCategoryMenu(categories: List<SeriesCategory>, selected: SeriesCategory?) {
-                      val container = binding.catContainer
-                      container.removeAllViews()
-                      val p = ThemeManager.palette()
-                      val density = resources.displayMetrics.density
-                      val rowH = (46 * density).toInt()
-                      val pad = (16 * density).toInt()
-                      val marginPx = (p.itemMarginDp * density).toInt()
-                      val allFavs = FavouritesManager.getAll(this)
-                      val favItems = allFavs.filter {
-                          it.type == FavType.SERIES ||
-                              (it.type == FavType.EPISODE && !it.hasResume && !it.isUpNext && it.seriesId >= 0)
-                      }
-                      val continueItems = allFavs.filter {
-                          it.type == FavType.EPISODE && (it.hasResume || it.isUpNext)
-                      }
-
-                      fun addRow(label: String, selectedRow: Boolean, onClick: () -> Unit) {
-                          val tv = TextView(this).apply {
-                              val lp = LinearLayout.LayoutParams(
-                                  LinearLayout.LayoutParams.MATCH_PARENT, rowH
-                              )
-                              if (marginPx > 0) lp.setMargins(marginPx, marginPx / 2, marginPx, marginPx / 2)
-                              layoutParams = lp
-                              gravity = Gravity.CENTER_VERTICAL
-                              setPadding(pad, 0, 0, 0)
-                              text = label
-                              textSize = 13f
-                              typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
-                              isClickable = true
-                              isFocusable = true
-                              background = ThemeManager.roundedBg(
-                                  if (selectedRow) p.highlight else p.bgMid, density
-                              )
-                              setTextColor(
-                                  if (selectedRow) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
-                              )
-                              setOnFocusChangeListener { v, hasFocus ->
-                                  if (!selectedRow) {
-                                      v.background = ThemeManager.focusRowDrawable(density, p.bgMid, hasFocus)
-                                  }
-                              }
-                              setOnClickListener { onClick() }
-                          }
-                          container.addView(tv)
-                      }
-
-                      addRow("RECENTLY ADDED", showingRecentlyAdded) {
-                          showingRecentlyAdded = true
-                          showingFavourites = false
-                          showingContinue = false
-                          val sorted = allShows.sortedByDescending {
-                              recentSortKey(it.added ?: it.lastModified)
-                          }
-                          adapter.submitList(sorted)
-                          binding.tvShowCount.text = "${sorted.size} SHOWS"
-                          buildCategoryMenu(categories, selected)
-                      }
-
-                      if (favItems.isNotEmpty()) {
-                          addRow("★ FAVOURITES", showingFavourites) {
-                              showingRecentlyAdded = false
-                              showingContinue = false
-                              showingFavourites = true
-                              showFavouritesSeries()
-                              buildCategoryMenu(categories, selected)
-                          }
-                      }
-
-                      if (continueItems.isNotEmpty()) {
-                          addRow("▶ CONTINUE WATCHING", showingContinue) {
-                              showingRecentlyAdded = false
-                              showingFavourites = false
-                              showingContinue = true
-                              showContinueWatching()
-                              buildCategoryMenu(categories, selected)
-                          }
-                      }
-
-                      val offset = 1 +
-                          if (favItems.isNotEmpty()) 1 else 0 +
-                          if (continueItems.isNotEmpty()) 1 else 0
-                      categories
-                          .filter { !it.categoryName.equals("SERIES", ignoreCase = true) }
-                          .forEachIndexed { index, cat ->
-                              val isSelected =
-                                  !showingContinue && !showingFavourites && !showingRecentlyAdded &&
-                                      cat.categoryId == selected?.categoryId
-                              val normalBg = if ((index + offset) % 2 == 0) p.bgMid else p.bgPrimary
-                              val profile = PrefsManager.getActiveProfile(this@SeriesActivity)
-                              val favNow = profile?.let {
-                                  FavouritesManager.containsCategory(
-                                      this@SeriesActivity, "SERIES", it.serverUrl, cat.categoryId
-                                  )
-                              } == true
-                              val label = cat.categoryName + if (favNow) "   ♥" else "   ♡"
-                              addRow(label, isSelected) {
-                                  showingContinue = false
-                                  showingFavourites = false
-                                  showingRecentlyAdded = false
-                                  viewModel.selectCategory(cat)
-                              }
-                              container.getChildAt(container.childCount - 1)?.background =
-                                  if (isSelected) ThemeManager.roundedBg(p.highlight, density)
-                                  else ThemeManager.roundedBg(normalBg, density)
-                          }
-                  }
-
-              ''')
-              if marker not in ss:
-                  raise SystemExit("SeriesActivity recentSortKey marker not found")
-              ss = ss.replace(marker, fn + marker, 1)
-              ser.write_text(ss, encoding="utf-8")
+          # The user-facing Search feature is removed entirely from the app.
+          for path in [
+              "app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt",
+              "app/src/main/res/layout/activity_global_search.xml",
+              "app/src/main/res/layout/item_global_search.xml",
+          ]:
+              Path(path).unlink(missing_ok=True)
           PY
-          sed -n '330,350p' app/src/main/java/com/orbital/iptv/data/plex/PlexRepository.kt
-          grep -q 'versionName "100.0.10"' app/build.gradle
+
+      - name: Verify requested changes
+        working-directory: source
+        run: |
+          set -euo pipefail
           grep -q 'versionCode 1000010' app/build.gradle
+          grep -q 'versionName "100.0.10"' app/build.gradle
+
           test ! -e app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
           test ! -e app/src/main/res/layout/activity_global_search.xml
           test ! -e app/src/main/res/layout/item_global_search.xml
-          if grep -R -n -E 'etSearch|et_search|et_live_search|nav_search|btnGlobalSearch' app/src/main; then
-            echo "Search UI references remain"
+          if grep -R -n -E 'etSearch|et_search|et_live_search|nav_search|btnGlobalSearch|headerTvListings|tvMovieCount|tvShowCount' app/src/main; then
+            echo "Deleted UI/search bindings still referenced"
             exit 1
           fi
-          if grep -R -n 'AUTO ROTATE' app/src/main/res/layout; then
-            echo "Old AUTO ROTATE label remains"
+          if grep -R -n -E 'MAIN MENU|AUTO ROTATE' app/src/main/res/layout; then
+            echo "Old menu labels remain"
             exit 1
           fi
-          if grep -R -n 'MAIN MENU' app/src/main/res/layout; then
-            echo "Old MAIN MENU label remains"
+          grep -q 'SCREEN_ORIENTATION_REVERSE_LANDSCAPE' app/src/main/java/com/orbital/iptv/OrbitalApp.kt
+
+          if grep -n 'android:text="MOVIES"' app/src/main/res/layout/activity_vod.xml; then exit 1; fi
+          if grep -n 'android:text="SERIES"' app/src/main/res/layout/activity_series.xml; then exit 1; fi
+          if grep -n 'android:text="LIVE TV"' app/src/main/res/layout/activity_home.xml; then exit 1; fi
+          if grep -R -n -E 'bg_btn_back|@id/btn_back|@\+id/btn_back|nav_back' app/src/main/res/layout/activity_vod.xml app/src/main/res/layout/activity_series.xml app/src/main/res/layout/activity_home.xml; then
+            echo "Small back arrow reference remains on Movies/Series/Live"
             exit 1
           fi
-          grep -R -n 'SCREEN_ORIENTATION_REVERSE_LANDSCAPE' app/src/main/java/com/orbital/iptv/OrbitalApp.kt
+          grep -q 'tv_global_datetime' app/src/main/res/layout/layout_main_sidebar.xml
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -511,12 +188,14 @@ jobs:
           set -euo pipefail
           rm -rf output source-for-zip
           mkdir -p output source-for-zip
+          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.10.apk
           cp -a source/. source-for-zip/
           rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
-          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.10.apk
           cd source-for-zip
           zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.10.zip" .
           cd "$GITHUB_WORKSPACE"
+          unzip -t output/SEAndroid_v100.0.10.zip >/dev/null
+          unzip -t output/SEAndroid_v100.0.10.apk >/dev/null
           test -s output/SEAndroid_v100.0.10.apk
           test -s output/SEAndroid_v100.0.10.zip
 
