@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -311,6 +311,7 @@ jobs:
         run: exit 1
 
       - name: Upload APK
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: SEAndroid_v100.0.13-apk
@@ -319,9 +320,23 @@ jobs:
           retention-days: 30
 
       - name: Upload source
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: SEAndroid_v100.0.13-source
           path: output/SEAndroid_v100.0.13.zip
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: SEAndroid_v100.0.13
+          name: SEAndroid v100.0.13
+          body: |
+            SE Android v100.0.13
+            Genç-style Media3 player UI/options, Live TV channel re-selection fix and spacing, and Android PiP/media controls.
+          files: |
+            output/SEAndroid_v100.0.13.apk
+            output/SEAndroid_v100.0.13.zip
+          fail_on_unmatched_files: true
