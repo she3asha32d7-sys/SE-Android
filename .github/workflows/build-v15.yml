@@ -49,7 +49,6 @@ jobs:
           base64 -d build_payload/v15_text_git.patch.gz.b64 | gzip -d > /tmp/v15.patch
           patch --dry-run -p1 -d source < /tmp/v15.patch
           patch -p1 -d source < /tmp/v15.patch
-          echo "Version after patch:"
           grep -n -E 'versionCode|versionName' source/app/build.gradle
 
       - name: Verify v100.0.15 changes
@@ -62,10 +61,7 @@ jobs:
           grep -Fq 'android:visibility="gone"' app/src/main/res/layout/activity_player.xml
           grep -Fq 'android:text="SE"' app/src/main/res/layout/activity_settings.xml
           grep -Fq 'b.tvBuiltinPlayerValue.text = "SE"' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
-          if grep -RIn 'Genç IPTV Player' app/src/main/java app/src/main/res/layout >/tmp/old-genc-labels.txt; then
-            cat /tmp/old-genc-labels.txt
-            exit 1
-          fi
+          if grep -RIn 'Genç IPTV Player' app/src/main/java app/src/main/res/layout >/tmp/old-genc-labels.txt; then cat /tmp/old-genc-labels.txt; exit 1; fi
           echo "v100.0.15 source verification passed."
 
       - name: Set up JDK 17
@@ -116,10 +112,9 @@ jobs:
         run: |
           set -euo pipefail
           TAG="SEAndroid_v100.0.15"
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release delete "${TAG}" --yes --cleanup-tag
-          fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then gh release delete "${TAG}" --yes --cleanup-tag; fi
           gh release create "${TAG}" output/SEAndroid_v100.0.15.apk output/SEAndroid_v100.0.15.zip \
             --title "SEAndroid v100.0.15" \
-            --notes "SE IPTV PLAYER — removes the legacy player HUD from the active playback path and keeps the SE player interface as the only visible player UI; Media Player setting label changed to SE." \
+            --notes "SE IPTV PLAYER — legacy player HUD no longer appears over the SE player; Media Player setting label is SE." \
             --target "${GITHUB_SHA}"
+# trigger rebuild
