@@ -328,57 +328,46 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish binaries through Git Data API
+      - name: Publish artifact IDs
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          BRANCH: builds/SEAndroid_v100.0.13-files
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          API="https://api.github.com/repos/${REPO}"
-          headers=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" > /tmp/artifacts.json
+          python3 - <<'PY'
+          import base64, json, pathlib
+          src=json.load(open("/tmp/artifacts.json"))
+          out={"run_id":src.get("total_count",0),"artifacts":[
+              {"id":a.get("id"),"name":a.get("name"),"size_in_bytes":a.get("size_in_bytes"),"expired":a.get("expired")}
+              for a in src.get("artifacts",[])
+          ]}
+          pathlib.Path("artifact-ids-v100.0.13.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
+          PY
 
           python3 - <<'PY'
           import base64, json, pathlib
-          for src in [
-              "output/SEAndroid_v100.0.13.apk",
-              "output/SEAndroid_v100.0.13.zip",
-          ]:
-              dst = "/tmp/" + pathlib.Path(src).name + ".blob.json"
-              payload = {
-                  "content": base64.b64encode(pathlib.Path(src).read_bytes()).decode("ascii"),
-                  "encoding": "base64",
-              }
-              pathlib.Path(dst).write_text(json.dumps(payload), encoding="utf-8")
+          p=pathlib.Path("artifact-ids-v100.0.13.json")
+          payload={
+              "message":"Publish v100.0.13 artifact IDs",
+              "content":base64.b64encode(p.read_bytes()).decode("ascii"),
+              "branch":"main",
+          }
+          pathlib.Path("/tmp/artifact-ids-payload.json").write_text(json.dumps(payload), encoding="utf-8")
           PY
 
-          apk_sha=$(curl -fsS -X POST "${headers[@]}" "${API}/git/blobs"             --data-binary @/tmp/SEAndroid_v100.0.13.apk.blob.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
-          src_sha=$(curl -fsS -X POST "${headers[@]}" "${API}/git/blobs"             --data-binary @/tmp/SEAndroid_v100.0.13.zip.blob.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
-
-          cat > /tmp/tree.json <<JSON
-          {
-            "tree": [
-              {"path":"artifacts/SEAndroid_v100.0.13.apk","mode":"100644","type":"blob","sha":"${apk_sha}"},
-              {"path":"artifacts/SEAndroid_v100.0.13.zip","mode":"100644","type":"blob","sha":"${src_sha}"}
-            ]
-          }
-          JSON
-
-          tree_sha=$(curl -fsS -X POST "${headers[@]}" "${API}/git/trees"             --data-binary @/tmp/tree.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
-
-          cat > /tmp/commit.json <<JSON
-          {
-            "message":"Publish SEAndroid v100.0.13 build files",
-            "tree":"${tree_sha}",
-            "parents":["${GITHUB_SHA}"]
-          }
-          JSON
-
-          commit_sha=$(curl -fsS -X POST "${headers[@]}" "${API}/git/commits"             --data-binary @/tmp/commit.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
-
-          ref_code=$(curl -sS -o /tmp/ref.json -w '%{http_code}' "${API}/git/ref/heads/${BRANCH}" "${headers[@]}" || true)
-          if [ "${ref_code}" = "200" ]; then
-            curl -fsS -X PATCH "${headers[@]}" "${API}/git/refs/heads/${BRANCH}"               -d "{"sha":"${commit_sha}","force":true}" >/tmp/ref-update.json
-          else
-            curl -fsS -X POST "${headers[@]}" "${API}/git/refs"               -d "{"ref":"refs/heads/${BRANCH}","sha":"${commit_sha}"}" >/tmp/ref-create.json
+          API="https://api.github.com/repos/${REPO}"
+          headers=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          status=$(curl -sS -o /tmp/artifact-ids-existing.json -w '%{http_code}'             "${API}/contents/BUILD_ARTIFACT_IDS_v100.0.13.json?ref=main" "${headers[@]}" || true)
+          if [ "${status}" = "200" ]; then
+            sha=$(python3 -c 'import json; print(json.load(open("/tmp/artifact-ids-existing.json"))["sha"])')
+            python3 - <<PY
+          import json
+          p=json.load(open("/tmp/artifact-ids-payload.json"))
+          p["sha"]="${sha}"
+          json.dump(p, open("/tmp/artifact-ids-payload-update.json","w"))
+          PY
+            mv /tmp/artifact-ids-payload-update.json /tmp/artifact-ids-payload.json
           fi
+          curl -fsS -X PUT "${API}/contents/BUILD_ARTIFACT_IDS_v100.0.13.json"             "${headers[@]}" --data-binary @/tmp/artifact-ids-payload.json             -o /tmp/artifact-ids-result.json
