@@ -59,6 +59,9 @@ jobs:
           grep -n -E 'versionCode|versionName' source/app/build.gradle
           patch --dry-run -p1 -d source < /tmp/v14.patch
           patch -p1 -d source < /tmp/v14.patch
+          base64 -d build_payload/v14_fix_settings.patch.gz.b64 | gzip -d > /tmp/v14-fix.patch
+          patch --dry-run -p1 -d source < /tmp/v14-fix.patch
+          patch -p1 -d source < /tmp/v14-fix.patch
           echo "After patch:"
           grep -n -E 'versionCode|versionName' source/app/build.gradle
           echo "After-patch settings:"
