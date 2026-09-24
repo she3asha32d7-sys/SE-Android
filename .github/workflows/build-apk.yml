@@ -312,12 +312,19 @@ jobs:
         if: steps.package_artifact.outputs.status != '0'
         run: exit 1
 
-      - name: Upload APK artifact
+      - name: Prepare APK delivery ZIP
+        run: |
+          set -euo pipefail
+          rm -f output/SEAndroid_v100.0.13-apk.zip
+          (cd output && zip -q SEAndroid_v100.0.13-apk.zip SEAndroid_v100.0.13.apk)
+          unzip -t output/SEAndroid_v100.0.13-apk.zip >/dev/null
+
+      - name: Upload APK delivery artifact
         id: upload_apk
         uses: actions/upload-artifact@v4
         with:
           name: SEAndroid_v100.0.13-apk-${{ github.run_id }}
-          path: output/SEAndroid_v100.0.13.apk
+          path: output/SEAndroid_v100.0.13-apk.zip
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
@@ -330,12 +337,14 @@ jobs:
           path: output/SEAndroid_v100.0.13.zip
           if-no-files-found: error
           retention-days: 7
-          compression-level: 6
+          compression-level: 0
 
-      - name: Record artifact metadata
+      - name: Record artifact outputs
         run: |
-          {
-            echo "Run: ${{ github.run_id }}"
-            echo "APK upload: ${{ steps.upload_apk.outcome }}"
-            echo "Source upload: ${{ steps.upload_source.outcome }}"
-          } > BUILD_ARTIFACT_METADATA_v100.0.13.txt
+          cat > BUILD_ARTIFACT_OUTPUT_IDS_v100.0.13.txt <<EOF
+          Run: ${{ github.run_id }}
+          APK artifact id: ${{ steps.upload_apk.outputs['artifact-id'] }}
+          Source artifact id: ${{ steps.upload_source.outputs['artifact-id'] }}
+          APK artifact URL: ${{ steps.upload_apk.outputs['artifact-url'] }}
+          Source artifact URL: ${{ steps.upload_source.outputs['artifact-url'] }}
+          EOF
