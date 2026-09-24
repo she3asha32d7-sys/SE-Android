@@ -3,6 +3,11 @@ name: SEAndroid v100.0.14 Build
 on:
   push:
     branches: [v100.0.14]
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-v14.yml'
+      - 'build_payload/**'
   workflow_dispatch:
 
 permissions:
