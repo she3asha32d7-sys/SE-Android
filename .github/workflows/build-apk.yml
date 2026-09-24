@@ -273,7 +273,7 @@ jobs:
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v100.0.12
+          name: SEAndroid_v100.0.13
           path: |
             output/SEAndroid_v100.0.13.apk
             output/SEAndroid_v100.0.13.zip
