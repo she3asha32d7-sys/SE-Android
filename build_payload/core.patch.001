@@ -1,0 +1,140 @@
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -1,2 +1,2 @@
+-rootProject.name = "SEAndroid_v100.0.13"
++rootProject.name = "SEAndroid_v100.0.14"
+ include ':app'
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -17,8 +17,8 @@
+         applicationId "com.se.iptv.player"
+         minSdk 23
+         targetSdk 34
+-        versionCode 1000013
+-        versionName "100.0.13"
++        versionCode 1000014
++        versionName "100.0.14"
+ 
+         ndk {
+             abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+--- a/app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
++++ b/app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+@@ -117,14 +117,14 @@
+     fun useOriginalCategories(context: Context): Boolean =
+         prefs(context).getBoolean(KEY_USE_ORIGINAL_CATEGORIES, false)
+ 
++    /** Genç Media3 is the only built-in player UI in v100.0.14.
++     * Keep the legacy enum/API so old call sites and stored preferences migrate safely.
++     */
+     fun setPlayerType(context: Context, type: PlayerType) {
+-        prefs(context).edit().putString(KEY_PLAYER_TYPE, type.name).apply()
+-    }
+-
+-    fun getPlayerType(context: Context): PlayerType {
+-        val name = prefs(context).getString(KEY_PLAYER_TYPE, PlayerType.EXOPLAYER.name)
+-        return try { PlayerType.valueOf(name!!) } catch (_: Exception) { PlayerType.EXOPLAYER }
+-    }
++        prefs(context).edit().putString(KEY_PLAYER_TYPE, PlayerType.GENC_MEDIA3.name).apply()
++    }
++
++    fun getPlayerType(context: Context): PlayerType = PlayerType.GENC_MEDIA3
+ 
+     fun clearCredentials(context: Context) {
+         prefs(context).edit().clear().apply()
+@@ -153,6 +153,99 @@
+         prefs(context).edit().putString("app_theme", themeName).apply()
+     }
+ 
++    // ── Genç player preferences ──────────────────────────────────────────────
++
++    enum class DefaultQuality { AUTO, P1080, P720, P480 }
++    enum class DecoderPerformance { AUTO, HARDWARE, SOFTWARE }
++    enum class SubtitleFontFamily { SYSTEM, SANS_SERIF, SERIF, MONOSPACE, CASUAL, CURSIVE }
++    enum class SubtitleFontStyle { NORMAL, BOLD, ITALIC, BOLD_ITALIC }
++    enum class SubtitleEdgeType { NONE, OUTLINE, DROP_SHADOW, RAISED, DEPRESSED }
++    enum class SubtitleVerticalPosition { BOTTOM, CENTER, TOP }
++    enum class ThemeMode { LIGHT, DARK }
++
++    private const val KEY_DEFAULT_QUALITY = "default_quality"
++    private const val KEY_DECODER_PERFORMANCE = "decoder_performance"
++    private const val KEY_THEME_MODE = "theme_mode"
++    private const val KEY_ACCENT_COLOR = "accent_color"
++    private const val KEY_SUB_FONT_FAMILY = "subtitle_font_family"
++    private const val KEY_SUB_FONT_STYLE = "subtitle_font_style"
++    private const val KEY_SUB_TEXT_SIZE = "subtitle_text_size"
++    private const val KEY_SUB_TEXT_COLOR = "subtitle_text_color"
++    private const val KEY_SUB_TEXT_OPACITY = "subtitle_text_opacity"
++    private const val KEY_SUB_BG_COLOR = "subtitle_bg_color"
++    private const val KEY_SUB_BG_OPACITY = "subtitle_bg_opacity"
++    private const val KEY_SUB_WINDOW_COLOR = "subtitle_window_color"
++    private const val KEY_SUB_WINDOW_OPACITY = "subtitle_window_opacity"
++    private const val KEY_SUB_EDGE_TYPE = "subtitle_edge_type"
++    private const val KEY_SUB_EDGE_COLOR = "subtitle_edge_color"
++    private const val KEY_SUB_VERTICAL = "subtitle_vertical_position"
++
++    fun getDefaultQuality(context: Context): DefaultQuality = enumPref(context, KEY_DEFAULT_QUALITY, DefaultQuality.AUTO)
++    fun setDefaultQuality(context: Context, value: DefaultQuality) = setEnumPref(context, KEY_DEFAULT_QUALITY, value)
++
++    fun getDecoderPerformance(context: Context): DecoderPerformance = enumPref(context, KEY_DECODER_PERFORMANCE, DecoderPerformance.AUTO)
++    fun setDecoderPerformance(context: Context, value: DecoderPerformance) = setEnumPref(context, KEY_DECODER_PERFORMANCE, value)
++
++    fun getThemeMode(context: Context): ThemeMode = enumPref(context, KEY_THEME_MODE, ThemeMode.DARK)
++    fun setThemeMode(context: Context, value: ThemeMode) = setEnumPref(context, KEY_THEME_MODE, value)
++
++    fun getAccentColor(context: Context): String =
++        prefs(context).getString(KEY_ACCENT_COLOR, "TEAL") ?: "TEAL"
++
++    fun setAccentColor(context: Context, value: String) =
++        prefs(context).edit().putString(KEY_ACCENT_COLOR, value).apply()
++
++    private inline fun <reified T : Enum<T>> enumPref(context: Context, key: String, default: T): T {
++        val raw = prefs(context).getString(key, default.name) ?: default.name
++        return runCatching { enumValueOf<T>(raw) }.getOrDefault(default)
++    }
++
++    private fun <T : Enum<T>> setEnumPref(context: Context, key: String, value: T) =
++        prefs(context).edit().putString(key, value.name).apply()
++
++    // Subtitle style values mirror Genç's Subtitle Appearance settings.
++    fun getSubtitleFontFamily(context: Context): SubtitleFontFamily = enumPref(context, KEY_SUB_FONT_FAMILY, SubtitleFontFamily.SANS_SERIF)
++    fun setSubtitleFontFamily(context: Context, v: SubtitleFontFamily) = setEnumPref(context, KEY_SUB_FONT_FAMILY, v)
++    fun getSubtitleFontStyle(context: Context): SubtitleFontStyle = enumPref(context, KEY_SUB_FONT_STYLE, SubtitleFontStyle.NORMAL)
++    fun setSubtitleFontStyle(context: Context, v: SubtitleFontStyle) = setEnumPref(context, KEY_SUB_FONT_STYLE, v)
++    fun getSubtitleTextSize(context: Context): Int = prefs(context).getInt(KEY_SUB_TEXT_SIZE, 100).coerceIn(50, 200)
++    fun setSubtitleTextSize(context: Context, v: Int) = prefs(context).edit().putInt(KEY_SUB_TEXT_SIZE, v.coerceIn(50, 200)).apply()
++    fun getSubtitleTextColor(context: Context): Int = prefs(context).getInt(KEY_SUB_TEXT_COLOR, 0xFFFFFFFF.toInt())
++    fun setSubtitleTextColor(context: Context, v: Int) = prefs(context).edit().putInt(KEY_SUB_TEXT_COLOR, v).apply()
++    fun getSubtitleTextOpacity(context: Context): Int = prefs(context).getInt(KEY_SUB_TEXT_OPACITY, 100).coerceIn(0, 100)
++    fun setSubtitleTextOpacity(context: Context, v: Int) = prefs(context).edit().putInt(KEY_SUB_TEXT_OPACITY, v.coerceIn(0, 100)).apply()
++    fun getSubtitleBackgroundColor(context: Context): Int = prefs(context).getInt(KEY_SUB_BG_COLOR, 0x00000000)
++    fun setSubtitleBackgroundColor(context: Context, v: Int) = prefs(context).edit().putInt(KEY_SUB_BG_COLOR, v).apply()
++    fun getSubtitleBackgroundOpacity(context: Context): Int = prefs(context).getInt(KEY_SUB_BG_OPACITY, 50).coerceIn(0, 100)
++    fun setSubtitleBackgroundOpacity(context: Context, v: Int) = prefs(context).edit().putInt(KEY_SUB_BG_OPACITY, v.coerceIn(0, 100)).apply()
++    fun getSubtitleWindowColor(context: Context): Int = prefs(context).getInt(KEY_SUB_WINDOW_COLOR, 0x00000000)
++    fun setSubtitleWindowColor(context: Context, v: Int) = prefs(context).edit().putInt(KEY_SUB_WINDOW_COLOR, v).apply()
++    fun getSubtitleWindowOpacity(context: Context): Int = prefs(context).getInt(KEY_SUB_WINDOW_OPACITY, 0).coerceIn(0, 100)
++    fun setSubtitleWindowOpacity(context: Context, v: Int) = prefs(context).edit().putInt(KEY_SUB_WINDOW_OPACITY, v).apply()
++    fun getSubtitleEdgeType(context: Context): SubtitleEdgeType = enumPref(context, KEY_SUB_EDGE_TYPE, SubtitleEdgeType.OUTLINE)
++    fun setSubtitleEdgeType(context: Context, v: SubtitleEdgeType) = setEnumPref(context, KEY_SUB_EDGE_TYPE, v)
++    fun getSubtitleEdgeColor(context: Context): Int = prefs(context).getInt(KEY_SUB_EDGE_COLOR, 0xFF000000.toInt())
++    fun setSubtitleEdgeColor(context: Context, v: Int) = prefs(context).edit().putInt(KEY_SUB_EDGE_COLOR, v).apply()
++    fun getSubtitleVerticalPosition(context: Context): SubtitleVerticalPosition = enumPref(context, KEY_SUB_VERTICAL, SubtitleVerticalPosition.BOTTOM)
++    fun setSubtitleVerticalPosition(context: Context, v: SubtitleVerticalPosition) = setEnumPref(context, KEY_SUB_VERTICAL, v)
++
++    fun resetSubtitleAppearance(context: Context) {
++        prefs(context).edit()
++            .remove(KEY_SUB_FONT_FAMILY)
++            .remove(KEY_SUB_FONT_STYLE)
++            .remove(KEY_SUB_TEXT_SIZE)
++            .remove(KEY_SUB_TEXT_COLOR)
++            .remove(KEY_SUB_TEXT_OPACITY)
++            .remove(KEY_SUB_BG_COLOR)
++            .remove(KEY_SUB_BG_OPACITY)
++            .remove(KEY_SUB_WINDOW_COLOR)
++            .remove(KEY_SUB_WINDOW_OPACITY)
++            .remove(KEY_SUB_EDGE_TYPE)
++            .remove(KEY_SUB_EDGE_COLOR)
++            .remove(KEY_SUB_VERTICAL)
++            .apply()
++    }
++
