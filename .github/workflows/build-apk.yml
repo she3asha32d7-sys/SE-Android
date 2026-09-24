@@ -248,11 +248,29 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build APK
+        id: build_apk
+        continue-on-error: true
         working-directory: source
         run: |
-          set -euo pipefail
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          ./gradlew clean assembleDebug --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build-output.log"
+          status=${PIPESTATUS[0]}
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          exit "${status}"
+
+      - name: Upload build diagnostic log
+        if: steps.build_apk.outputs.status != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.13-build-log
+          path: build-output.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail when Gradle build fails
+        if: steps.build_apk.outputs.status != '0'
+        run: exit 1
 
       - name: Package APK and source
         run: |
