@@ -336,14 +336,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           API="https://api.github.com/repos/${REPO}"
+          BRANCH="builds/SEAndroid_v100.0.13-chunks"
           headers=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
-          BRANCH="builds/SEAndroid_v100.0.13-chunks-${RUN_ID}"
-
-          curl -fsS -X POST "${headers[@]}" "${API}/git/refs"             -d "{"ref":"refs/heads/${BRANCH}","sha":"${GITHUB_SHA}"}" >/tmp/chunk-ref.json
 
           rm -rf /tmp/build_chunks
           mkdir -p /tmp/build_chunks/apk /tmp/build_chunks/source
@@ -352,67 +349,57 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
-          CHUNK = 800_000
+          CHUNK = 600_000
           for kind in ("apk","source"):
-              text = Path(f"/tmp/build_chunks/{kind}/full.b64").read_text()
-              for i in range(0, len(text), CHUNK):
-                  Path(f"/tmp/build_chunks/{kind}/{i//CHUNK:05d}.b64").write_text(text[i:i+CHUNK])
-              Path(f"/tmp/build_chunks/{kind}/full.b64").unlink()
+              p=Path(f"/tmp/build_chunks/{kind}/full.b64")
+              data=p.read_text()
+              for n in range(0,len(data),CHUNK):
+                  Path(f"/tmp/build_chunks/{kind}/{n//CHUNK:05d}.b64").write_text(data[n:n+CHUNK])
+              p.unlink()
           PY
 
           python3 - <<'PY'
-          import base64, json, pathlib, subprocess
-          root = pathlib.Path("/tmp/build_chunks")
-          api = f"https://api.github.com/repos/{__import__('os').environ['REPO']}"
-          token = __import__('os').environ["GH_TOKEN"]
-          branch = __import__('os').environ["BRANCH"]
-          import urllib.request
-          def put(path, data):
-              req = urllib.request.Request(
-                  api + "/contents/" + path,
-                  data=json.dumps(data).encode(),
-                  method="PUT",
-                  headers={
-                      "Authorization": f"Bearer {token}",
-                      "Accept": "application/vnd.github+json",
-                      "X-GitHub-Api-Version": "2022-11-28",
-                      "Content-Type": "application/json",
-                  },
-              )
-              with urllib.request.urlopen(req) as resp:
-                  return json.load(resp)
-          manifest = {"version":"100.0.13","run_id":int(__import__('os').environ["RUN_ID"]),"branch":branch,"files":{}}
-          for kind, filename in [("apk","SEAndroid_v100.0.13.apk"),("source","SEAndroid_v100.0.13.zip")]:
-              chunks = sorted((root/kind).glob("*.b64"))
+          import base64, json, os, pathlib, urllib.request
+          api=f"https://api.github.com/repos/{os.environ['REPO']}"
+          token=os.environ["GH_TOKEN"]
+          branch="builds/SEAndroid_v100.0.13-chunks"
+          headers={
+            "Authorization":f"Bearer {token}",
+            "Accept":"application/vnd.github+json",
+            "X-GitHub-Api-Version":"2022-11-28",
+            "Content-Type":"application/json",
+          }
+          def put(path, text):
+              payload=json.dumps({"message":f"Publish {path}","content":base64.b64encode(text.encode()).decode(),"branch":branch}).encode()
+              req=urllib.request.Request(api+"/contents/"+path,data=payload,method="PUT",headers=headers)
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+          root=pathlib.Path("/tmp/build_chunks")
+          manifest={"version":"100.0.13","branch":branch,"files":{}}
+          for kind,filename in [("apk","SEAndroid_v100.0.13.apk"),("source","SEAndroid_v100.0.13.zip")]:
               entries=[]
-              for p in chunks:
+              for p in sorted((root/kind).glob("*.b64")):
                   rel=f"artifacts/{kind}/{p.name}"
-                  encoded=base64.b64encode(p.read_bytes()).decode()
-                  put(rel, {
-                      "message": f"Publish {rel}",
-                      "content": encoded,
-                      "branch": branch,
-                  })
+                  put(rel,p.read_text())
                   entries.append({"path":rel,"chars":p.stat().st_size})
               manifest["files"][filename]={"kind":kind,"chunks":entries}
-          pathlib.Path("/tmp/manifest.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
+          pathlib.Path("/tmp/chunk-manifest.json").write_text(json.dumps(manifest,indent=2))
           PY
 
           python3 - <<'PY'
           import base64,json,pathlib
-          p=pathlib.Path("/tmp/manifest.json")
+          p=pathlib.Path("/tmp/chunk-manifest.json")
           payload={"message":"Publish v100.0.13 chunk manifest","content":base64.b64encode(p.read_bytes()).decode(),"branch":"main"}
-          pathlib.Path("/tmp/manifest-payload.json").write_text(json.dumps(payload),encoding="utf-8")
+          pathlib.Path("/tmp/chunk-manifest-payload.json").write_text(json.dumps(payload))
           PY
-
-          status=$(curl -sS -o /tmp/manifest-existing.json -w '%{http_code}'             "${API}/contents/BUILD_CHUNKS_v100.0.13.json?ref=main" "${headers[@]}" || true)
+          status=$(curl -sS -o /tmp/chunk-manifest-existing.json -w '%{http_code}'             "${API}/contents/BUILD_CHUNKS_v100.0.13.json?ref=main" "${headers[@]}" || true)
           if [ "${status}" = "200" ]; then
-            sha=$(python3 -c 'import json; print(json.load(open("/tmp/manifest-existing.json"))["sha"])')
+            sha=$(python3 -c 'import json; print(json.load(open("/tmp/chunk-manifest-existing.json"))["sha"])')
             python3 - <<PY
           import json
-          p=json.load(open("/tmp/manifest-payload.json")); p["sha"]="${sha}"
-          json.dump(p,open("/tmp/manifest-update.json","w"))
+          p=json.load(open("/tmp/chunk-manifest-payload.json")); p["sha"]="${sha}"
+          json.dump(p,open("/tmp/chunk-manifest-update.json","w"))
           PY
-            mv /tmp/manifest-update.json /tmp/manifest-payload.json
+            mv /tmp/chunk-manifest-update.json /tmp/chunk-manifest-payload.json
           fi
-          curl -fsS -X PUT "${API}/contents/BUILD_CHUNKS_v100.0.13.json" "${headers[@]}"             --data-binary @/tmp/manifest-payload.json -o /tmp/manifest-result.json
+          curl -fsS -X PUT "${API}/contents/BUILD_CHUNKS_v100.0.13.json" "${headers[@]}"             --data-binary @/tmp/chunk-manifest-payload.json -o /tmp/chunk-manifest-result.json
