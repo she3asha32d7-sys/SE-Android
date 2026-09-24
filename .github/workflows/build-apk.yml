@@ -310,6 +310,14 @@ jobs:
         if: steps.package_artifact.outputs.status != '0'
         run: exit 1
 
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete v100.0.13 --yes 2>/dev/null || true
+          gh release create v100.0.13             output/SEAndroid_v100.0.13.apk             output/SEAndroid_v100.0.13.zip             --title "SEAndroid v100.0.13"             --notes "SEAndroid v100.0.13 — Genç-style media player options, Live TV channel re-selection fix, channel spacing, and PiP/mini-player controls."
+
       - name: Upload APK
         continue-on-error: true
         uses: actions/upload-artifact@v4
