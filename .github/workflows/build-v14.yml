@@ -58,8 +58,18 @@ jobs:
         run: |
           set -euo pipefail
           base64 -d build_payload/v14_text_git.patch.gz.b64 | gzip -d > /tmp/v14.patch
-          git -C source apply --check /tmp/v14.patch
-          git -C source apply /tmp/v14.patch
+          echo "Patch size:"
+          wc -c /tmp/v14.patch
+          echo "Patch header:"
+          sed -n '1,75p' /tmp/v14.patch
+          echo "Before patch:"
+          grep -n -E 'versionCode|versionName' source/app/build.gradle
+          echo "Applying patch..."
+          git -C source apply --verbose /tmp/v14.patch
+          echo "After patch:"
+          grep -n -E 'versionCode|versionName' source/app/build.gradle
+          echo "After-patch settings:"
+          cat source/settings.gradle
 
       - name: Verify v100.0.14 requested changes
         working-directory: source
