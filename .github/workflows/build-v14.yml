@@ -3,11 +3,6 @@ name: SEAndroid v100.0.14 Build
 on:
   push:
     branches: [v100.0.14]
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/build-v14.yml'
-      - 'build_payload/**'
   workflow_dispatch:
 
 permissions:
@@ -60,12 +55,10 @@ jobs:
           base64 -d build_payload/v14_text_git.patch.gz.b64 | gzip -d > /tmp/v14.patch
           echo "Patch size:"
           wc -c /tmp/v14.patch
-          echo "Patch header:"
-          sed -n '1,75p' /tmp/v14.patch
           echo "Before patch:"
           grep -n -E 'versionCode|versionName' source/app/build.gradle
-          echo "Applying patch..."
-          git -C source apply --verbose /tmp/v14.patch
+          patch --dry-run -p1 -d source < /tmp/v14.patch
+          patch -p1 -d source < /tmp/v14.patch
           echo "After patch:"
           grep -n -E 'versionCode|versionName' source/app/build.gradle
           echo "After-patch settings:"
@@ -75,18 +68,19 @@ jobs:
         working-directory: source
         run: |
           set -euo pipefail
-          echo "=== v100.0.14 verification snapshot ==="
-          echo "--- app/build.gradle ---"
-          grep -n -E 'applicationId|versionCode|versionName' app/build.gradle
-          echo "--- settings.gradle ---"
-          cat settings.gradle
-          echo "--- PrefsManager player/settings keys ---"
-          grep -n -E 'GENC_MEDIA3|pip_enabled|default_quality|decoder_performance|resetSubtitleAppearance|ThemeMode' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt || true
-          echo "--- Global date/time label ---"
-          grep -n -F 'SE IPTV PLAYER' app/src/main/res/layout/layout_global_datetime.xml || true
-          echo "--- SubtitlePrefs ---"
+          echo "=== v100.0.14 verification ==="
+          grep -Fq 'versionCode 1000014' app/build.gradle
+          grep -Fq 'versionName "100.0.14"' app/build.gradle
+          grep -Fq 'SEAndroid_v100.0.14' settings.gradle
+          grep -Fq 'fun getPlayerType(context: Context): PlayerType = PlayerType.GENC_MEDIA3' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -Fq 'getBoolean("pip_enabled", true)' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -Fq 'default_quality' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -Fq 'decoder_performance' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -Fq 'resetSubtitleAppearance' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -Fq 'ThemeMode' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -Fq 'SE IPTV PLAYER' app/src/main/res/layout/layout_global_datetime.xml
           test -f app/src/main/java/com/orbital/iptv/utils/SubtitlePrefs.kt
-          echo "Verification snapshot completed; continuing to Gradle build."
+          echo "v100.0.14 source verification passed."
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
