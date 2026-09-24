@@ -17,6 +17,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Restore v100.0.17 source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10834906043/zip" -o /tmp/v17-artifact.zip
+          rm -rf /tmp/v17-artifact
+          mkdir -p /tmp/v17-artifact
+          unzip -q /tmp/v17-artifact.zip -d /tmp/v17-artifact
+          SRCZIP="$(find /tmp/v17-artifact -type f -name 'SEAndroid_v100.0.17-source.zip' -print -quit)"
+          test -n "${SRCZIP}"
+          unzip -q "${SRCZIP}" -d .
+          test -f app/build.gradle
+          test -f gradlew
+
       - name: Apply v100.0.18
         run: python3 scripts/apply_v18.py
 
