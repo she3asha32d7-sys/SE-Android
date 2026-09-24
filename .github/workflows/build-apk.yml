@@ -273,17 +273,42 @@ jobs:
         run: exit 1
 
       - name: Package APK and source
+        id: package_artifact
+        continue-on-error: true
         run: |
-          set -euo pipefail
-          rm -rf output source-for-zip
-          mkdir -p output source-for-zip
-          test -s source/app/build/outputs/apk/debug/app-debug.apk
-          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.13.apk
-          cp -a source/. source-for-zip/
-          rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
-          (cd source-for-zip && zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.13.zip" .)
-          test -s output/SEAndroid_v100.0.13.apk
-          test -s output/SEAndroid_v100.0.13.zip
+          set -o pipefail
+          {
+            set -x
+            rm -rf output source-for-zip
+            mkdir -p output source-for-zip
+            ls -lah source/app/build/outputs/apk/debug/
+            test -s source/app/build/outputs/apk/debug/app-debug.apk
+            cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.13.apk
+            cp -a source/. source-for-zip/
+            rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
+            find source-for-zip -maxdepth 2 -type f | head -80
+            (cd source-for-zip && zip -r "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.13.zip" .)
+            ls -lah output
+            file output/SEAndroid_v100.0.13.apk output/SEAndroid_v100.0.13.zip
+            test -s output/SEAndroid_v100.0.13.apk
+            test -s output/SEAndroid_v100.0.13.zip
+          } 2>&1 | tee "$GITHUB_WORKSPACE/package-output.log"
+          status=${PIPESTATUS[0]}
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          exit "${status}"
+
+      - name: Upload packaging diagnostic log
+        if: steps.package_artifact.outputs.status != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.13-package-log
+          path: package-output.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail when packaging fails
+        if: steps.package_artifact.outputs.status != '0'
+        run: exit 1
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
