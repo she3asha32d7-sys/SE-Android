@@ -1,0 +1,139 @@
+name: SEAndroid v100.0.14 Build
+
+on:
+  push:
+    branches: [v100.0.14]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout v100.0.14
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download successful v100.0.13 source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fL             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${REPO}/actions/artifacts/10817455278/zip"             -o base-artifact.zip
+          rm -rf base-artifact source
+          mkdir -p base-artifact source
+          unzip -q base-artifact.zip -d base-artifact
+          SRCZIP="$(find base-artifact -type f -name 'SEAndroid_v100.0.13.zip' -print -quit)"
+          test -n "${SRCZIP}"
+          unzip -q "${SRCZIP}" -d source
+          ROOT="$(find source -maxdepth 4 -type f -name gradlew -print -quit | xargs -r dirname)"
+          test -n "${ROOT}"
+          if [ "${ROOT}" != "${GITHUB_WORKSPACE}/source" ]; then
+            shopt -s dotglob
+            mkdir -p "${GITHUB_WORKSPACE}/source-fixed"
+            cp -a "${ROOT}/." "${GITHUB_WORKSPACE}/source-fixed/"
+            rm -rf "${GITHUB_WORKSPACE}/source"
+            mv "${GITHUB_WORKSPACE}/source-fixed" "${GITHUB_WORKSPACE}/source"
+          fi
+
+      - name: Apply v100.0.14 source patch
+        run: |
+          set -euo pipefail
+          base64 -d build_payload/v14.patch.b64 > /tmp/v14.patch
+          git -C source apply --check /tmp/v14.patch
+          git -C source apply /tmp/v14.patch
+
+      - name: Add exact logo assets
+        run: |
+          set -euo pipefail
+          rm -f source/app/src/main/res/drawable/se_launcher.png
+          rm -f source/app/src/main/res/drawable/se_logo_full.png
+          base64 -d build_payload/se_launcher.webp.b64 > source/app/src/main/res/drawable/se_launcher.webp
+          base64 -d build_payload/se_logo_full.webp.b64 > source/app/src/main/res/drawable/se_logo_full.webp
+          test -s source/app/src/main/res/drawable/se_launcher.webp
+          test -s source/app/src/main/res/drawable/se_logo_full.webp
+          cp app/src/main/java/com/orbital/iptv/utils/SubtitlePrefs.kt source/app/src/main/java/com/orbital/iptv/utils/SubtitlePrefs.kt
+
+      - name: Verify v100.0.14 requested changes
+        working-directory: source
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000014' app/build.gradle
+          grep -q 'versionName "100.0.14"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.14' settings.gradle
+          grep -q 'fun getPlayerType(context: Context): PlayerType = PlayerType.GENC_MEDIA3' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          ! grep -R -n 'rb_player_genc' app/src/main || true
+          grep -q 'pip_enabled' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -q 'getBoolean("pip_enabled", true)' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -q 'default_quality' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -q 'decoder_performance' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -q 'resetSubtitleAppearance' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -q 'ThemeMode' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -q 'SE IPTV PLAYER' app/src/main/res/layout/layout_global_datetime.xml
+          test -f app/src/main/java/com/orbital/iptv/utils/SubtitlePrefs.kt
+          test -f app/src/main/res/drawable/se_launcher.webp
+          test -f app/src/main/res/drawable/se_logo_full.webp
+          ! find app/src/main/res -type f -name '*genc*logo*' | grep -q .
+          ! grep -R -n -E 'XtreamlyTV|Xtreamly|Orbital IPTV' app/src/main/res/layout app/src/main/res/values app/src/main/java || true
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/build-v100.0.14.log
+
+      - name: Package APK and source
+        run: |
+          set -euo pipefail
+          rm -rf output source-for-zip
+          mkdir -p output source-for-zip
+          test -s source/app/build/outputs/apk/debug/app-debug.apk
+          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.14.apk
+          cp -a source/. source-for-zip/
+          rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
+          (cd source-for-zip && zip -qr "${GITHUB_WORKSPACE}/output/SEAndroid_v100.0.14.zip" .)
+          test -s output/SEAndroid_v100.0.14.apk
+          test -s output/SEAndroid_v100.0.14.zip
+          ls -lh output
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.14-apk
+          path: output/SEAndroid_v100.0.14.apk
+          retention-days: 30
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.14-source
+          path: output/SEAndroid_v100.0.14.zip
+          retention-days: 30
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="SEAndroid_v100.0.14"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release delete "${TAG}" --yes --cleanup-tag
+          fi
+          gh release create "${TAG}"             output/SEAndroid_v100.0.14.apk             output/SEAndroid_v100.0.14.zip             --title "SEAndroid v100.0.14"             --notes "SE IPTV PLAYER — Genç-style player UI as the only player UI; Genç player settings, subtitle appearance, theme/accent controls, PiP default ON, branding/logo update, and SE IPTV PLAYER clock label."             --target "${GITHUB_SHA}"
