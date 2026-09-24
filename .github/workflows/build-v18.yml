@@ -29,7 +29,7 @@ jobs:
           unzip -q /tmp/v17-artifact.zip -d /tmp/v17-artifact
           SRCZIP="$(find /tmp/v17-artifact -type f -name 'SEAndroid_v100.0.17-source.zip' -print -quit)"
           test -n "${SRCZIP}"
-          unzip -q "${SRCZIP}" -d .
+          unzip -qo "${SRCZIP}" -d .
           test -f app/build.gradle
           test -f gradlew
 
