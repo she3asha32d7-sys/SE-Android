@@ -3,6 +3,8 @@ name: SEAndroid v100.0.13 Build — Genç Player + PiP Fix
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "BUILD_ARTIFACT_OUTPUT_IDS_v100.0.13_*.json"
   workflow_dispatch:
 
 permissions:
@@ -312,17 +314,64 @@ jobs:
         if: steps.package_artifact.outputs.status != '0'
         run: exit 1
 
-      - name: Publish v100.0.13 Release
-        uses: ncipollo/release-action@v1
+      - name: Upload APK
+        id: upload_apk
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: SEAndroid_v100.0.13
-          name: SEAndroid v100.0.13
-          body: |
-            SEAndroid v100.0.13
-            Genç-style media player controls/options, Live TV channel re-selection fix and channel spacing, plus PiP/mini-player controls.
-          artifacts: "output/SEAndroid_v100.0.13.apk,output/SEAndroid_v100.0.13.zip"
-          allowUpdates: true
-          replacesArtifacts: true
-          removeArtifacts: true
-          artifactErrorsFailBuild: true
+          name: SEAndroid_v100.0.13-apk
+          path: output/SEAndroid_v100.0.13.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload source
+        id: upload_source
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.13-source
+          path: output/SEAndroid_v100.0.13.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Capture artifact IDs from GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, pathlib
+          repo=os.environ["REPO"]; run_id=os.environ["RUN_ID"]
+          raw=subprocess.check_output([
+              "gh","api",
+              f"repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100"
+          ], text=True)
+          data=json.loads(raw)
+          wanted={"SEAndroid_v100.0.13-apk":None,"SEAndroid_v100.0.13-source":None}
+          for a in data.get("artifacts",[]):
+              if a.get("name") in wanted:
+                  wanted[a["name"]]=a.get("id")
+          if not wanted["SEAndroid_v100.0.13-apk"] or not wanted["SEAndroid_v100.0.13-source"]:
+              raise SystemExit("Could not find both uploaded artifact IDs")
+          out={
+              "run_id":int(run_id),
+              "apk_artifact_id":int(wanted["SEAndroid_v100.0.13-apk"]),
+              "source_artifact_id":int(wanted["SEAndroid_v100.0.13-source"])
+          }
+          p=pathlib.Path(f"BUILD_ARTIFACT_OUTPUT_IDS_v100.0.13_{run_id}.json")
+          p.write_text(json.dumps(out)+"\n",encoding="utf-8")
+          print(json.dumps(out))
+          PY
+
+      - name: Publish artifact IDs to repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          FILE="BUILD_ARTIFACT_OUTPUT_IDS_v100.0.13_${RUN_ID}.json"
+          CONTENT=$(base64 -w0 "$FILE")
+          gh api --method PUT "repos/${REPO}/contents/${FILE}"             -f message="Record v100.0.13 artifact IDs for run ${RUN_ID}"             -f content="${CONTENT}"             -f branch=main
