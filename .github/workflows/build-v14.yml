@@ -52,20 +52,9 @@ jobs:
       - name: Apply v100.0.14 source patch
         run: |
           set -euo pipefail
-          base64 -d build_payload/v14.patch.b64 > /tmp/v14.patch
+          base64 -d build_payload/v14_text_git.patch.gz.b64 | gzip -d > /tmp/v14.patch
           git -C source apply --check /tmp/v14.patch
           git -C source apply /tmp/v14.patch
-
-      - name: Add exact logo assets
-        run: |
-          set -euo pipefail
-          rm -f source/app/src/main/res/drawable/se_launcher.png
-          rm -f source/app/src/main/res/drawable/se_logo_full.png
-          base64 -d build_payload/se_launcher.webp.b64 > source/app/src/main/res/drawable/se_launcher.webp
-          base64 -d build_payload/se_logo_full.webp.b64 > source/app/src/main/res/drawable/se_logo_full.webp
-          test -s source/app/src/main/res/drawable/se_launcher.webp
-          test -s source/app/src/main/res/drawable/se_logo_full.webp
-          cp app/src/main/java/com/orbital/iptv/utils/SubtitlePrefs.kt source/app/src/main/java/com/orbital/iptv/utils/SubtitlePrefs.kt
 
       - name: Verify v100.0.14 requested changes
         working-directory: source
@@ -84,8 +73,6 @@ jobs:
           grep -q 'ThemeMode' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
           grep -q 'SE IPTV PLAYER' app/src/main/res/layout/layout_global_datetime.xml
           test -f app/src/main/java/com/orbital/iptv/utils/SubtitlePrefs.kt
-          test -f app/src/main/res/drawable/se_launcher.webp
-          test -f app/src/main/res/drawable/se_logo_full.webp
           ! find app/src/main/res -type f -name '*genc*logo*' | grep -q .
           ! grep -R -n -E 'XtreamlyTV|Xtreamly|Orbital IPTV' app/src/main/res/layout app/src/main/res/values app/src/main/java || true
 
