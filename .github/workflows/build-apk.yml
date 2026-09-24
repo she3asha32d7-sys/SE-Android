@@ -312,39 +312,17 @@ jobs:
         if: steps.package_artifact.outputs.status != '0'
         run: exit 1
 
-      - name: Prepare APK delivery ZIP
-        run: |
-          set -euo pipefail
-          rm -f output/SEAndroid_v100.0.13-apk.zip
-          (cd output && zip -q SEAndroid_v100.0.13-apk.zip SEAndroid_v100.0.13.apk)
-          unzip -t output/SEAndroid_v100.0.13-apk.zip >/dev/null
-
-      - name: Upload APK delivery artifact
-        id: upload_apk
-        uses: actions/upload-artifact@v4
+      - name: Publish v100.0.13 Release
+        uses: ncipollo/release-action@v1
         with:
-          name: SEAndroid_v100.0.13-apk-${{ github.run_id }}
-          path: output/SEAndroid_v100.0.13-apk.zip
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-      - name: Upload source artifact
-        id: upload_source
-        uses: actions/upload-artifact@v4
-        with:
-          name: SEAndroid_v100.0.13-source-${{ github.run_id }}
-          path: output/SEAndroid_v100.0.13.zip
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-      - name: Record artifact outputs
-        run: |
-          cat > BUILD_ARTIFACT_OUTPUT_IDS_v100.0.13.txt <<EOF
-          Run: ${{ github.run_id }}
-          APK artifact id: ${{ steps.upload_apk.outputs['artifact-id'] }}
-          Source artifact id: ${{ steps.upload_source.outputs['artifact-id'] }}
-          APK artifact URL: ${{ steps.upload_apk.outputs['artifact-url'] }}
-          Source artifact URL: ${{ steps.upload_source.outputs['artifact-url'] }}
-          EOF
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: SEAndroid_v100.0.13
+          name: SEAndroid v100.0.13
+          body: |
+            SEAndroid v100.0.13
+            Genç-style media player controls/options, Live TV channel re-selection fix and channel spacing, plus PiP/mini-player controls.
+          artifacts: "output/SEAndroid_v100.0.13.apk,output/SEAndroid_v100.0.13.zip"
+          allowUpdates: true
+          replacesArtifacts: true
+          removeArtifacts: true
+          artifactErrorsFailBuild: true
