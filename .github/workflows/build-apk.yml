@@ -8,6 +8,8 @@ on:
 permissions:
   contents: write
   actions: read
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -328,46 +330,31 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish artifact IDs
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare Pages payload
         run: |
           set -euo pipefail
-          gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" > /tmp/artifacts.json
-          python3 - <<'PY'
-          import base64, json, pathlib
-          src=json.load(open("/tmp/artifacts.json"))
-          out={"run_id":src.get("total_count",0),"artifacts":[
-              {"id":a.get("id"),"name":a.get("name"),"size_in_bytes":a.get("size_in_bytes"),"expired":a.get("expired")}
-              for a in src.get("artifacts",[])
-          ]}
-          pathlib.Path("artifact-ids-v100.0.13.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
-          PY
+          rm -rf pages-site
+          mkdir -p pages-site/artifacts
+          cp output/SEAndroid_v100.0.13.apk pages-site/artifacts/
+          cp output/SEAndroid_v100.0.13.zip pages-site/artifacts/
+          cat > pages-site/index.html <<'HTML'
+          <!doctype html>
+          <html><head><meta charset="utf-8"><title>SEAndroid v100.0.13</title></head>
+          <body>
+          <h1>SEAndroid v100.0.13</h1>
+          <p><a href="artifacts/SEAndroid_v100.0.13.apk">APK</a></p>
+          <p><a href="artifacts/SEAndroid_v100.0.13.zip">Source Code</a></p>
+          </body></html>
+          HTML
 
-          python3 - <<'PY'
-          import base64, json, pathlib
-          p=pathlib.Path("artifact-ids-v100.0.13.json")
-          payload={
-              "message":"Publish v100.0.13 artifact IDs",
-              "content":base64.b64encode(p.read_bytes()).decode("ascii"),
-              "branch":"main",
-          }
-          pathlib.Path("/tmp/artifact-ids-payload.json").write_text(json.dumps(payload), encoding="utf-8")
-          PY
+      - name: Upload Pages payload
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages-site
 
-          API="https://api.github.com/repos/${REPO}"
-          headers=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
-          status=$(curl -sS -o /tmp/artifact-ids-existing.json -w '%{http_code}'             "${API}/contents/BUILD_ARTIFACT_IDS_v100.0.13.json?ref=main" "${headers[@]}" || true)
-          if [ "${status}" = "200" ]; then
-            sha=$(python3 -c 'import json; print(json.load(open("/tmp/artifact-ids-existing.json"))["sha"])')
-            python3 - <<PY
-          import json
-          p=json.load(open("/tmp/artifact-ids-payload.json"))
-          p["sha"]="${sha}"
-          json.dump(p, open("/tmp/artifact-ids-payload-update.json","w"))
-          PY
-            mv /tmp/artifact-ids-payload-update.json /tmp/artifact-ids-payload.json
-          fi
-          curl -fsS -X PUT "${API}/contents/BUILD_ARTIFACT_IDS_v100.0.13.json"             "${headers[@]}" --data-binary @/tmp/artifact-ids-payload.json             -o /tmp/artifact-ids-result.json
+      - name: Deploy GitHub Pages
+        id: pages-deploy
+        uses: actions/deploy-pages@v4
