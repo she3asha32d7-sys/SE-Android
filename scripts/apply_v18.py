@@ -58,7 +58,7 @@ p.write_text(s[:start]+table+s[end+2:])
 
 rep("app/src/main/res/layout/activity_login.xml",'android:layout_width="192dp"\n            android:layout_height="192dp"','android:layout_width="384dp"\n            android:layout_height="384dp"')
 
-Path("app/src/main/res/drawable/se_launcher_scaled.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+# Remove obsolete About TextView binding; About is now a TableLayout.\nrep("app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt", "listOf(b.tvBuiltinPlayerValue, b.aboutText).forEach", "listOf(b.tvBuiltinPlayerValue).forEach")\n\nPath("app/src/main/res/drawable/se_launcher_scaled.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
 <scale xmlns:android="http://schemas.android.com/apk/res/android"
     android:drawable="@drawable/se_launcher"
     android:scaleWidth="200%"
