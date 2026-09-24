@@ -188,6 +188,21 @@ jobs:
           xz -t "$GITHUB_WORKSPACE/se_v100.12_to_v100.13.patch.xz"
           xz -dc "$GITHUB_WORKSPACE/se_v100.12_to_v100.13.patch.xz" > "$GITHUB_WORKSPACE/se_v100.12_to_v100.13.patch"
           patch -p1 --forward < "$GITHUB_WORKSPACE/se_v100.12_to_v100.13.patch"
+      - name: Fix v100.0.13 Kotlin type mismatch
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt")
+          s=p.read_text(encoding="utf-8")
+          old='showGencOptionSheet("PLAYER OPTIONS", choices, "") { choice ->'
+          new='showGencOptionSheet("PLAYER OPTIONS", choices.toList(), "") { choice ->'
+          if old not in s:
+              raise SystemExit("Expected PLAYER OPTIONS call not found")
+          p.write_text(s.replace(old,new,1),encoding="utf-8")
+          PY
+
       - name: Verify requested changes
         working-directory: source
         run: |
