@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Download successful v100.0.14 source artifact
+      - name: Download successful v100.0.14 source
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -43,7 +43,7 @@ jobs:
             mv "${GITHUB_WORKSPACE}/source-fixed" "${GITHUB_WORKSPACE}/source"
           fi
 
-      - name: Apply v100.0.15 player fix
+      - name: Apply verified v100.0.15 patch
         run: |
           set -euo pipefail
           base64 -d build_payload/v15_text_git.patch.gz.b64 | gzip -d > /tmp/v15.patch
@@ -58,10 +58,16 @@ jobs:
           grep -Fq 'versionCode 1000015' app/build.gradle
           grep -Fq 'versionName "100.0.15"' app/build.gradle
           grep -Fq 'SEAndroid_v100.0.15' settings.gradle
-          grep -Fq 'android:visibility="gone"' app/src/main/res/layout/activity_player.xml
-          grep -Fq 'android:text="SE"' app/src/main/res/layout/activity_settings.xml
+          test "$(grep -c 'android:id="@+id/hud_overlay"' app/src/main/res/layout/activity_player.xml)" -eq 1
+          test "$(grep -c 'android:id="@+id/bottom_bar"' app/src/main/res/layout/activity_player.xml)" -eq 1
+          grep -A2 -F 'android:id="@+id/hud_overlay"' app/src/main/res/layout/activity_player.xml | grep -Fq 'android:visibility="gone"'
+          grep -A2 -F 'android:id="@+id/bottom_bar"' app/src/main/res/layout/activity_player.xml | grep -Fq 'android:visibility="gone"'
           grep -Fq 'b.tvBuiltinPlayerValue.text = "SE"' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
-          if grep -RIn 'Genç IPTV Player' app/src/main/java app/src/main/res/layout >/tmp/old-genc-labels.txt; then cat /tmp/old-genc-labels.txt; exit 1; fi
+          grep -Fq 'android:text="SE"' app/src/main/res/layout/activity_settings.xml
+          if grep -RIn 'Genç IPTV Player' app/src/main/java/com/orbital/iptv/ui/settings app/src/main/res/layout/activity_settings.xml; then
+            echo "Old Media Player label remains in settings"
+            exit 1
+          fi
           echo "v100.0.15 source verification passed."
 
       - name: Set up JDK 17
@@ -90,6 +96,8 @@ jobs:
           cp -a source/. source-for-zip/
           rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
           (cd source-for-zip && zip -qr "${GITHUB_WORKSPACE}/output/SEAndroid_v100.0.15.zip" .)
+          test -s output/SEAndroid_v100.0.15.apk
+          test -s output/SEAndroid_v100.0.15.zip
           ls -lh output
 
       - name: Upload APK artifact
@@ -112,9 +120,10 @@ jobs:
         run: |
           set -euo pipefail
           TAG="SEAndroid_v100.0.15"
-          if gh release view "${TAG}" >/dev/null 2>&1; then gh release delete "${TAG}" --yes --cleanup-tag; fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release delete "${TAG}" --yes --cleanup-tag
+          fi
           gh release create "${TAG}" output/SEAndroid_v100.0.15.apk output/SEAndroid_v100.0.15.zip \
             --title "SEAndroid v100.0.15" \
-            --notes "SE IPTV PLAYER — legacy player HUD no longer appears over the SE player; Media Player setting label is SE." \
+            --notes "SE IPTV PLAYER — legacy player interface is kept permanently hidden and the SE player overlay is the only playback UI; Media Player label is SE." \
             --target "${GITHUB_SHA}"
-# trigger rebuild
