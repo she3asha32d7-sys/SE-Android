@@ -1,4 +1,4 @@
-name: SEAndroid v100.0.11 Build
+name: SEAndroid v100.0.12 Build
 
 on:
   push:
@@ -153,14 +153,36 @@ jobs:
           xz -dc "$GITHUB_WORKSPACE/se_v100.10_to_v100.11.patch.xz" > "$GITHUB_WORKSPACE/se_v100.10_to_v100.11.patch"
           patch -p1 --forward < "$GITHUB_WORKSPACE/se_v100.10_to_v100.11.patch"
 
+      - name: Apply v100.0.12 changes
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          curl -fL             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github.raw"             "https://raw.githubusercontent.com/${REPO}/${COMMIT}/se_v100.11_to_v100.12.patch.xz.b64"             -o "$GITHUB_WORKSPACE/se_v100.11_to_v100.12.patch.xz.b64"
+          base64 -d "$GITHUB_WORKSPACE/se_v100.11_to_v100.12.patch.xz.b64" > "$GITHUB_WORKSPACE/se_v100.11_to_v100.12.patch.xz"
+          xz -t "$GITHUB_WORKSPACE/se_v100.11_to_v100.12.patch.xz"
+          xz -dc "$GITHUB_WORKSPACE/se_v100.11_to_v100.12.patch.xz" > "$GITHUB_WORKSPACE/se_v100.11_to_v100.12.patch"
+          patch -p1 --forward < "$GITHUB_WORKSPACE/se_v100.11_to_v100.12.patch"
+
       - name: Verify requested changes
         working-directory: source
         run: |
           set -euo pipefail
-          grep -q 'versionCode 1000011' app/build.gradle
-          grep -q 'versionName "100.0.11"' app/build.gradle
-          grep -q 'SEAndroid_v100.0.11' settings.gradle
-          grep -q 'SCREEN_ORIENTATION_REVERSE_LANDSCAPE' app/src/main/java/com/orbital/iptv/OrbitalApp.kt
+          grep -q 'versionCode 1000012' app/build.gradle
+          grep -q 'versionName "100.0.12"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.12' settings.gradle
+          grep -q 'SCREEN_ORIENTATION_SENSOR_LANDSCAPE' app/src/main/java/com/orbital/iptv/OrbitalApp.kt
+          grep -q 'GENC_MEDIA3' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -q 'rb_player_genc' app/src/main/res/layout/activity_settings.xml
+          grep -q 'GencMediaPlayer' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+
+          if grep -R -n -E 'SCREEN_ORIENTATION_REVERSE_LANDSCAPE|SCREEN_ORIENTATION_LANDSCAPE|manual_rotate_landscape|isManualRotateEnabled|setManualRotateEnabled|switch_rotate|switchRotate' app/src/main/java app/src/main/res; then
+            echo "Old manual/fixed rotation code remains"
+            exit 1
+          fi
 
           if grep -R -n 'android:screenOrientation="landscape"' app/src/main/AndroidManifest.xml; then
             echo "Landscape is still hard-coded in the Manifest"
@@ -211,11 +233,11 @@ jobs:
           set -euo pipefail
           rm -rf output source-for-zip
           mkdir -p output source-for-zip
-          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.11.apk
+          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.12.apk
           cp -a source/. source-for-zip/
           rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
           cd source-for-zip
-          zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.11.zip" .
+          zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.12.zip" .
           cd "$GITHUB_WORKSPACE"
           unzip -t output/SEAndroid_v100.0.11.apk >/dev/null
           unzip -t output/SEAndroid_v100.0.11.zip >/dev/null
@@ -225,7 +247,7 @@ jobs:
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v100.0.11
+          name: SEAndroid_v100.0.12
           path: |
             output/SEAndroid_v100.0.11.apk
             output/SEAndroid_v100.0.11.zip
