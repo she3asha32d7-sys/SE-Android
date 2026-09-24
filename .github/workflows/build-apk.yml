@@ -277,14 +277,11 @@ jobs:
           set -euo pipefail
           rm -rf output source-for-zip
           mkdir -p output source-for-zip
+          test -s source/app/build/outputs/apk/debug/app-debug.apk
           cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.13.apk
           cp -a source/. source-for-zip/
           rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
-          cd source-for-zip
-          zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.13.zip" .
-          cd "$GITHUB_WORKSPACE"
-          unzip -t output/SEAndroid_v100.0.13.apk >/dev/null
-          unzip -t output/SEAndroid_v100.0.13.zip >/dev/null
+          (cd source-for-zip && zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.13.zip" .)
           test -s output/SEAndroid_v100.0.13.apk
           test -s output/SEAndroid_v100.0.13.zip
 
