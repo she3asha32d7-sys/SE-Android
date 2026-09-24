@@ -172,13 +172,13 @@ jobs:
             exit 1
           fi
 
-          grep -q 'Last Added' app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
+          grep -qi 'LAST ADDED' app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
           grep -q 'showingSearch' app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt
           grep -q 'showingSearch' app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
           grep -q 'SEARCH' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
           grep -q 'selectAllChannels' app/src/main/java/com/orbital/iptv/ui/home/HomeViewModel.kt
           grep -q 'selectContinueChannels' app/src/main/java/com/orbital/iptv/ui/home/HomeViewModel.kt
-          grep -q 'spanCount = 2' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
+          grep -q 'GridLayoutManager(this@HomeActivity, 2)' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
           grep -q 'android:layout_gravity="top|end"' app/src/main/res/layout/layout_main_sidebar.xml
 
           if grep -R -n -E 'MAIN MENU|AUTO ROTATE' app/src/main/res/layout; then
