@@ -310,12 +310,18 @@ jobs:
         if: steps.package_artifact.outputs.status != '0'
         run: exit 1
 
-      - name: Upload APK and source
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v100.0.13
-          path: |
-            output/SEAndroid_v100.0.13.apk
-            output/SEAndroid_v100.0.13.zip
+          name: SEAndroid_v100.0.13-apk
+          path: output/SEAndroid_v100.0.13.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.13-source
+          path: output/SEAndroid_v100.0.13.zip
           if-no-files-found: error
           retention-days: 30
