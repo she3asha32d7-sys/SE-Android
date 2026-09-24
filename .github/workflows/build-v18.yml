@@ -66,8 +66,7 @@ jobs:
           set -e
           mkdir -p out source-for-zip
           cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.18.apk
-          cp -a . source-for-zip/
-          rm -rf source-for-zip/.git source-for-zip/.gradle source-for-zip/.idea source-for-zip/app/build source-for-zip/out source-for-zip/source-for-zip
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-for-zip' ./ source-for-zip/
           (cd source-for-zip && zip -qr "$GITHUB_WORKSPACE/out/SEAndroid_v100.0.18-source.zip" .)
           ls -lh out
 
