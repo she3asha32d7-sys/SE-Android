@@ -342,4 +342,5 @@ jobs:
           cp output/SEAndroid_v100.0.13.zip artifacts/
           git add -f artifacts/SEAndroid_v100.0.13.apk artifacts/SEAndroid_v100.0.13.zip
           git commit -m "Publish SEAndroid v100.0.13 build files"
-          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/builds/SEAndroid_v100.0.13
+          gh auth setup-git
+          git push --force origin HEAD:refs/heads/builds/SEAndroid_v100.0.13
