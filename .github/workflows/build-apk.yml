@@ -342,23 +342,35 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, os, subprocess, pathlib
+          import json, os, subprocess, pathlib, time
           repo=os.environ["REPO"]; run_id=os.environ["RUN_ID"]
-          raw=subprocess.check_output([
-              "gh","api",
-              f"repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100"
-          ], text=True)
-          data=json.loads(raw)
-          wanted={"SEAndroid_v100.0.13-apk":None,"SEAndroid_v100.0.13-source":None}
-          for a in data.get("artifacts",[]):
-              if a.get("name") in wanted:
-                  wanted[a["name"]]=a.get("id")
-          if not wanted["SEAndroid_v100.0.13-apk"] or not wanted["SEAndroid_v100.0.13-source"]:
-              raise SystemExit("Could not find both uploaded artifact IDs")
+          wanted_names={"SEAndroid_v100.0.13-apk","SEAndroid_v100.0.13-source"}
+          found={}
+          last=""
+          for attempt in range(1,13):
+              try:
+                  raw=subprocess.check_output([
+                      "gh","api",
+                      f"repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100"
+                  ], text=True, stderr=subprocess.STDOUT)
+                  data=json.loads(raw)
+                  last=json.dumps(data)
+                  for a in data.get("artifacts",[]):
+                      if a.get("name") in wanted_names and a.get("id"):
+                          found[a["name"]]=a["id"]
+                  print(f"Attempt {attempt}: found={found}", flush=True)
+                  if all(name in found for name in wanted_names):
+                      break
+              except subprocess.CalledProcessError as e:
+                  print(f"Attempt {attempt}: gh api failed: {e.output}", flush=True)
+              if attempt < 12:
+                  time.sleep(5)
+          if not all(name in found for name in wanted_names):
+              raise SystemExit("Could not find both uploaded artifact IDs after retries")
           out={
               "run_id":int(run_id),
-              "apk_artifact_id":int(wanted["SEAndroid_v100.0.13-apk"]),
-              "source_artifact_id":int(wanted["SEAndroid_v100.0.13-source"])
+              "apk_artifact_id":int(found["SEAndroid_v100.0.13-apk"]),
+              "source_artifact_id":int(found["SEAndroid_v100.0.13-source"])
           }
           p=pathlib.Path(f"BUILD_ARTIFACT_OUTPUT_IDS_v100.0.13_{run_id}.json")
           p.write_text(json.dumps(out)+"\n",encoding="utf-8")
