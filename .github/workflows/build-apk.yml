@@ -312,20 +312,35 @@ jobs:
         if: steps.package_artifact.outputs.status != '0'
         run: exit 1
 
-      - name: Publish v100.0.13 Release
+      - name: Upload APK artifact
+        id: upload_apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.13-apk
+          path: output/SEAndroid_v100.0.13.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload source artifact
+        id: upload_source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.13-source
+          path: output/SEAndroid_v100.0.13.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record artifact metadata
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh release delete "SEAndroid_v100.0.13" --yes --cleanup-tag --repo "${REPO}" >/dev/null 2>&1 || true
-
-          release_json=$(gh api --method POST "repos/${REPO}/releases"             -f tag_name="SEAndroid_v100.0.13"             -f target_commitish="${GITHUB_SHA}"             -f name="SEAndroid v100.0.13"             -f body="Genç-style media player options, Live TV re-selection fix and channel spacing, plus PiP/mini-player controls."             -f draft=false             -f prerelease=false)
-          upload_url=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["upload_url"])' <<<"${release_json}")
-          upload_url="${upload_url%{*}"
-
-          curl --fail-with-body -sS -L             -X POST             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -H "Content-Type: application/vnd.android.package-archive"             --data-binary @output/SEAndroid_v100.0.13.apk             "${upload_url}?name=SEAndroid_v100.0.13.apk"
-
-          curl --fail-with-body -sS -L             -X POST             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -H "Content-Type: application/zip"             --data-binary @output/SEAndroid_v100.0.13.zip             "${upload_url}?name=SEAndroid_v100.0.13-source.zip"
-
-          gh api "repos/${REPO}/releases/tags/SEAndroid_v100.0.13"             --jq '.assets[] | [.name,.size,.browser_download_url] | @tsv'
+          cat > /tmp/build-artifacts.txt <<EOF
+          SEAndroid_v100.0.13
+          Run: ${{ github.run_id }}
+          APK artifact upload completed: ${{ steps.upload_apk.outcome }}
+          Source artifact upload completed: ${{ steps.upload_source.outcome }}
+          EOF
+          gh api "repos/${REPO}/actions/runs/${{ github.run_id }}/artifacts"             --jq '.artifacts[] | [.id,.name,.size_in_bytes,.expired] | @tsv' >> /tmp/build-artifacts.txt || true
+          cp /tmp/build-artifacts.txt BUILD_ARTIFACT_METADATA_v100.0.13.txt
