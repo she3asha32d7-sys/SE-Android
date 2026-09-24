@@ -1,0 +1,304 @@
+name: SEAndroid v100.0.16 Build
+
+on:
+  push:
+    branches: [v100.0.16]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout v100.0.16
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download v100.0.15 source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/actions/artifacts/10832659728/zip" -o base-artifact.zip
+          rm -rf base-artifact source
+          mkdir -p base-artifact source
+          unzip -q base-artifact.zip -d base-artifact
+          SRCZIP="$(find base-artifact -type f -name 'SEAndroid_v100.0.15.zip' -print -quit)"
+          test -n "${SRCZIP}"
+          unzip -q "${SRCZIP}" -d source
+          ROOT="$(find source -maxdepth 4 -type f -name gradlew -print -quit | xargs -r dirname)"
+          test -n "${ROOT}"
+          if [ "${ROOT}" != "${GITHUB_WORKSPACE}/source" ]; then
+            shopt -s dotglob
+            mkdir -p "${GITHUB_WORKSPACE}/source-fixed"
+            cp -a "${ROOT}/." "${GITHUB_WORKSPACE}/source-fixed/"
+            rm -rf "${GITHUB_WORKSPACE}/source"
+            mv "${GITHUB_WORKSPACE}/source-fixed" "${GITHUB_WORKSPACE}/source"
+          fi
+
+      - name: Apply v100.0.16 changes
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f"Missing expected text in {path}: {old!r}")
+              p.write_text(s.replace(old, new, 1))
+
+          replace("app/build.gradle", 'versionCode 1000015', 'versionCode 1000016')
+          replace("app/build.gradle", 'versionName "100.0.15"', 'versionName "100.0.16"')
+          replace("settings.gradle", 'SEAndroid_v100.0.15', 'SEAndroid_v100.0.16')
+
+          replace(
+              "app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt",
+              'b.tvBuiltinPlayerValue.text = "SE"',
+              'b.tvBuiltinPlayerValue.text = "SE PLAYER"'
+          )
+          replace(
+              "app/src/main/res/layout/activity_settings.xml",
+              'android:text="SE" android:textColor="@color/sky_white"',
+              'android:text="SE PLAYER" android:textColor="@color/sky_white"'
+          )
+          replace(
+              "app/src/main/res/layout/activity_settings.xml",
+              'android:text="Name\nSE IPTV PLAYER\n\nVersion\nV100.0.14\n\nApplication id\ncom.se.iptv.player\n\nPlatform\nAndroid\n\nLicense\nOpen Source"',
+              'android:text="Name: SE IPTV PLAYER\nVersion: V100.0.16\nApplication id: com.se.iptv.player\nPlatform: Android\nLicense: Open Source"'
+          )
+
+          login = Path("app/src/main/res/layout/activity_login.xml")
+          s = login.read_text()
+          old = 'android:layout_width="128dp"\n            android:layout_height="128dp"'
+          if old not in s:
+              raise SystemExit("Xtream logo 128dp size not found")
+          login.write_text(s.replace(old, 'android:layout_width="192dp"\n            android:layout_height="192dp"', 1))
+
+          Path("app/src/main/res/drawable/se_launcher_scaled.xml").write_text(
+              '''<?xml version="1.0" encoding="utf-8"?>
+          <inset xmlns:android="http://schemas.android.com/apk/res/android" android:inset="0dp">
+              <bitmap android:src="@drawable/se_launcher" android:gravity="fill"/>
+          </inset>
+          '''
+          )
+          PY
+
+          cat > app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt <<'KOT'
+          package com.orbital.iptv.ui.users
+
+          import android.content.Intent
+          import android.graphics.Color
+          import android.os.Bundle
+          import android.view.Gravity
+          import android.view.View
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import android.widget.Toast
+          import androidx.appcompat.app.AppCompatActivity
+          import com.orbital.iptv.data.model.ServerProfile
+          import com.orbital.iptv.databinding.ActivityListUsersBinding
+          import com.orbital.iptv.ui.login.LoginActivity
+          import com.orbital.iptv.utils.MainSidebarController
+          import com.orbital.iptv.utils.PrefsManager
+          import com.orbital.iptv.utils.ThemeManager
+
+          class ListUsersActivity : AppCompatActivity() {
+              private lateinit var binding: ActivityListUsersBinding
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  ThemeManager.load(this)
+                  binding = ActivityListUsersBinding.inflate(layoutInflater)
+                  setContentView(binding.root)
+                  MainSidebarController.setup(this, binding.root, MainSidebarController.Section.LIST_USERS)
+                  binding.btnAddUser.setOnClickListener {
+                      startActivity(Intent(this, LoginActivity::class.java).putExtra("skip_auto", true).putExtra("add_user", true))
+                  }
+                  binding.btnRefresh.setOnClickListener { loadUsers() }
+                  loadUsers()
+              }
+
+              override fun onResume() {
+                  super.onResume()
+                  if (::binding.isInitialized) loadUsers()
+              }
+
+              private fun loadUsers() {
+                  val profiles = PrefsManager.getProfiles(this)
+                  val activeId = PrefsManager.getActiveProfileId(this)
+                  binding.progressBar.visibility = View.GONE
+                  binding.container.removeAllViews()
+                  binding.tvEmpty.visibility = if (profiles.isEmpty()) View.VISIBLE else View.GONE
+                  binding.tvEmpty.text = if (profiles.isEmpty()) "NO SAVED USERS" else ""
+                  profiles.forEach { addUserCard(it, it.id == activeId) }
+              }
+
+              private fun addUserCard(profile: ServerProfile, active: Boolean) {
+                  val p = ThemeManager.palette()
+                  val density = resources.displayMetrics.density
+                  val card = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding((16*density).toInt(), (14*density).toInt(), (16*density).toInt(), (14*density).toInt())
+                      background = ThemeManager.roundedBg(if (active) p.highlight else p.bgMid, density)
+                      isFocusable = true
+                      isClickable = true
+                      layoutParams = LinearLayout.LayoutParams(
+                          LinearLayout.LayoutParams.MATCH_PARENT,
+                          LinearLayout.LayoutParams.WRAP_CONTENT
+                      ).also { it.setMargins((6*density).toInt(), (6*density).toInt(), (6*density).toInt(), (6*density).toInt()) }
+                      setOnFocusChangeListener { v, hasFocus ->
+                          v.background = if (hasFocus) ThemeManager.focusRowDrawable(density, p.bgMid, true, focusFillColor = p.focus)
+                          else ThemeManager.roundedBg(if (active) p.highlight else p.bgMid, density)
+                      }
+                      setOnClickListener {
+                          PrefsManager.setActiveProfile(this@ListUsersActivity, profile.id)
+                          Toast.makeText(this@ListUsersActivity, "ACTIVE USER: ${profile.name}", Toast.LENGTH_SHORT).show()
+                          loadUsers()
+                      }
+                  }
+
+                  card.addView(valueText("Name", profile.name, active, 15f, true))
+                  card.addView(valueText("Host", profile.serverUrl, active), fieldParams(density))
+                  card.addView(valueText("User name", profile.username, active), fieldParams(density))
+                  card.addView(valueText("Password", "×××××", active), fieldParams(density))
+
+                  val actions = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
+                      gravity = Gravity.CENTER_VERTICAL
+                  }
+                  val edit = actionButton("EDIT", active, p.accent, density) {
+                      startActivity(Intent(this@ListUsersActivity, LoginActivity::class.java)
+                          .putExtra("skip_auto", true)
+                          .putExtra("edit_profile_id", profile.id))
+                  }
+                  val delete = actionButton("DELETE", active, Color.WHITE, density) {
+                      PrefsManager.deleteProfile(this@ListUsersActivity, profile.id)
+                      if (profile.id == PrefsManager.getActiveProfileId(this@ListUsersActivity)) {
+                          PrefsManager.getProfiles(this@ListUsersActivity).firstOrNull()?.let {
+                              PrefsManager.setActiveProfile(this@ListUsersActivity, it.id)
+                          }
+                      }
+                      loadUsers()
+                  }
+                  actions.addView(edit, LinearLayout.LayoutParams(0, (40*density).toInt(), 1f).also {
+                      it.setMargins(0, (8*density).toInt(), (4*density).toInt(), 0)
+                  })
+                  actions.addView(delete, LinearLayout.LayoutParams(0, (40*density).toInt(), 1f).also {
+                      it.setMargins((4*density).toInt(), (8*density).toInt(), 0, 0)
+                  })
+                  card.addView(actions)
+                  binding.container.addView(card)
+              }
+
+              private fun valueText(label: String, value: String, active: Boolean, size: Float = 11f, bold: Boolean = false) =
+                  TextView(this).apply {
+                      text = "$label: $value"
+                      textSize = size
+                      setTextColor(if (active) Color.BLACK else Color.WHITE)
+                      if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+                      maxLines = 2
+                      ellipsize = android.text.TextUtils.TruncateAt.END
+                  }
+
+              private fun fieldParams(density: Float) = LinearLayout.LayoutParams(
+                  LinearLayout.LayoutParams.MATCH_PARENT,
+                  LinearLayout.LayoutParams.WRAP_CONTENT
+              ).also { it.topMargin = (5*density).toInt() }
+
+              private fun actionButton(text: String, active: Boolean, color: Int, density: Float, action: () -> Unit) =
+                  TextView(this).apply {
+                      this.text = text
+                      textSize = 11f
+                      gravity = Gravity.CENTER
+                      setTextColor(if (active) Color.BLACK else color)
+                      background = ThemeManager.roundedBg(ThemeManager.palette().bgPrimary, density)
+                      isFocusable = true
+                      isClickable = true
+                      setOnClickListener { action() }
+                  }
+          }
+          KOT
+
+      - name: Verify v100.0.16
+        working-directory: source
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode 1000016' app/build.gradle
+          grep -Fq 'versionName "100.0.16"' app/build.gradle
+          grep -Fq 'SEAndroid_v100.0.16' settings.gradle
+          grep -Fq 'b.tvBuiltinPlayerValue.text = "SE PLAYER"' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
+          grep -Fq 'android:text="SE PLAYER"' app/src/main/res/layout/activity_settings.xml
+          grep -Fq 'Name: SE IPTV PLAYER' app/src/main/res/layout/activity_settings.xml
+          grep -Fq 'Version: V100.0.16' app/src/main/res/layout/activity_settings.xml
+          grep -Fq 'android:layout_width="192dp"' app/src/main/res/layout/activity_login.xml
+          grep -Fq 'android:inset="0dp"' app/src/main/res/drawable/se_launcher_scaled.xml
+          grep -Fq 'text = "$label: $value"' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -Fq '×××××' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -Fq 'actionButton("EDIT"' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -Fq 'actionButton("DELETE"' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -Fq 'binding.btnAddUser.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/build-v100.0.16.log
+
+      - name: Package APK and source
+        run: |
+          set -euo pipefail
+          rm -rf output source-for-zip
+          mkdir -p output source-for-zip
+          test -s source/app/build/outputs/apk/debug/app-debug.apk
+          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.16.apk
+          cp -a source/. source-for-zip/
+          rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
+          (cd source-for-zip && zip -qr "${GITHUB_WORKSPACE}/output/SEAndroid_v100.0.16.zip" .)
+          test -s output/SEAndroid_v100.0.16.apk
+          test -s output/SEAndroid_v100.0.16.zip
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.16-apk
+          path: output/SEAndroid_v100.0.16.apk
+          retention-days: 30
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.16-source
+          path: output/SEAndroid_v100.0.16.zip
+          retention-days: 30
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="SEAndroid_v100.0.16"
+          if gh release view "${TAG}" >/dev/null 2>&1; then gh release delete "${TAG}" --yes --cleanup-tag; fi
+          gh release create "${TAG}" output/SEAndroid_v100.0.16.apk output/SEAndroid_v100.0.16.zip \
+            --title "SEAndroid v100.0.16" \
+            --notes "SE IPTV PLAYER — SE PLAYER label, vertical About, larger logos, and functional List Users." \
+            --target "${GITHUB_SHA}"
