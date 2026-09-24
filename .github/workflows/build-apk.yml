@@ -1,4 +1,4 @@
-name: SEAndroid v100.0.10 Build
+name: SEAndroid v100.0.11 Build
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
 
       - name: Reconstruct v100.0.9 source
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           OLD_COMMIT: d6e908f297a8fe08ca6418e89c3d7c2e9ce146f3
         run: |
@@ -56,12 +56,19 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           mv base7work source
 
-      - name: Apply v100.0.10 source patch
+      - name: Apply v100.0.10 source patches
         working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
+
           curl -fL \
-            "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/se_v9_to_v10_source.patch.xz.b64" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github.raw" \
+            "https://raw.githubusercontent.com/${REPO}/${COMMIT}/se_v9_to_v10_source.patch.xz.b64" \
             -o "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz.b64"
           base64 -d "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz.b64" > "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz"
           xz -t "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch.xz"
@@ -69,7 +76,9 @@ jobs:
           patch -p1 --forward < "$GITHUB_WORKSPACE/se_v9_to_v10_source.patch"
 
           curl -fL \
-            "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/fix_plex_v100.0.10.patch" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github.raw" \
+            "https://raw.githubusercontent.com/${REPO}/${COMMIT}/fix_plex_v100.0.10.patch" \
             -o "$GITHUB_WORKSPACE/fix_plex_v100.0.10.patch"
           patch -p1 --forward < "$GITHUB_WORKSPACE/fix_plex_v100.0.10.patch"
 
@@ -81,7 +90,6 @@ jobs:
           from pathlib import Path
           import re
 
-          # Remove the title bar immediately under the main sidebar on Movies, Series and Live.
           header_specs = [
               ("app/src/main/res/layout/activity_vod.xml", "MOVIES"),
               ("app/src/main/res/layout/activity_series.xml", "SERIES"),
@@ -103,7 +111,6 @@ jobs:
                   raise SystemExit(f"{label} title bar still present in {filename}")
               p.write_text(s, encoding="utf-8")
 
-          # Remove Kotlin references to deleted Live header.
           home = Path("app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt")
           hs = home.read_text(encoding="utf-8")
           hs = re.sub(
@@ -117,21 +124,18 @@ jobs:
               raise SystemExit("headerTvListings reference remains")
           home.write_text(hs, encoding="utf-8")
 
-          # Remove Kotlin references to deleted title-bar counters.
           for filename, field in [
               ("app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt", "tvMovieCount"),
               ("app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt", "tvShowCount"),
           ]:
               p = Path(filename)
               s = p.read_text(encoding="utf-8")
-              # Remove assignments even when they share a line with another statement.
               s = re.sub(r'\s*binding\.' + re.escape(field) + r'\.text\s*=\s*[^;\n]*(?:;|(?=\n)|$)', '', s)
               s = re.sub(r'\s*binding\.' + re.escape(field) + r'\.text\s*=\s*\$\{[^}]*\}\s*(?:TITLES|SHOWS)\s*', '', s)
               if f"binding.{field}" in s:
                   raise SystemExit(f"{field} binding reference remains")
               p.write_text(s, encoding="utf-8")
 
-          # The user-facing Search feature is removed entirely from the app.
           for path in [
               "app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt",
               "app/src/main/res/layout/activity_global_search.xml",
@@ -140,34 +144,51 @@ jobs:
               Path(path).unlink(missing_ok=True)
           PY
 
+      - name: Apply v100.0.11 changes
+        working-directory: source
+        run: |
+          set -euo pipefail
+          base64 -d "$GITHUB_WORKSPACE/se_v100.10_to_v100.11.patch.xz.b64" > "$GITHUB_WORKSPACE/se_v100.10_to_v100.11.patch.xz"
+          xz -t "$GITHUB_WORKSPACE/se_v100.10_to_v100.11.patch.xz"
+          xz -dc "$GITHUB_WORKSPACE/se_v100.10_to_v100.11.patch.xz" > "$GITHUB_WORKSPACE/se_v100.10_to_v100.11.patch"
+          patch -p1 --forward < "$GITHUB_WORKSPACE/se_v100.10_to_v100.11.patch"
+
       - name: Verify requested changes
         working-directory: source
         run: |
           set -euo pipefail
-          grep -q 'versionCode 1000010' app/build.gradle
-          grep -q 'versionName "100.0.10"' app/build.gradle
+          grep -q 'versionCode 1000011' app/build.gradle
+          grep -q 'versionName "100.0.11"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.11' settings.gradle
+          grep -q 'SCREEN_ORIENTATION_REVERSE_LANDSCAPE' app/src/main/java/com/orbital/iptv/OrbitalApp.kt
 
-          test ! -e app/src/main/java/com/orbital/iptv/ui/search/GlobalSearchActivity.kt
-          test ! -e app/src/main/res/layout/activity_global_search.xml
-          test ! -e app/src/main/res/layout/item_global_search.xml
-          if grep -R -n -E 'etSearch|et_search|et_live_search|nav_search|btnGlobalSearch|headerTvListings|tvMovieCount|tvShowCount' app/src/main; then
-            echo "Deleted UI/search bindings still referenced"
+          if grep -R -n 'android:screenOrientation="landscape"' app/src/main/AndroidManifest.xml; then
+            echo "Landscape is still hard-coded in the Manifest"
             exit 1
           fi
+
+          if grep -R -n 'RECENTLY ADDED' app/src/main/res/layout app/src/main/java/com/orbital/iptv/ui/vod app/src/main/java/com/orbital/iptv/ui/series; then
+            echo "RECENTLY ADDED remains in Movies/Series"
+            exit 1
+          fi
+
+          grep -q 'Last Added' app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
+          grep -q 'showingSearch' app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt
+          grep -q 'showingSearch' app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
+          grep -q 'SEARCH' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
+          grep -q 'selectAllChannels' app/src/main/java/com/orbital/iptv/ui/home/HomeViewModel.kt
+          grep -q 'selectContinueChannels' app/src/main/java/com/orbital/iptv/ui/home/HomeViewModel.kt
+          grep -q 'spanCount = 2' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
+          grep -q 'android:layout_gravity="top|end"' app/src/main/res/layout/layout_main_sidebar.xml
+
           if grep -R -n -E 'MAIN MENU|AUTO ROTATE' app/src/main/res/layout; then
             echo "Old menu labels remain"
             exit 1
           fi
-          grep -q 'SCREEN_ORIENTATION_REVERSE_LANDSCAPE' app/src/main/java/com/orbital/iptv/OrbitalApp.kt
-
-          if grep -n 'android:text="MOVIES"' app/src/main/res/layout/activity_vod.xml; then exit 1; fi
-          if grep -n 'android:text="SERIES"' app/src/main/res/layout/activity_series.xml; then exit 1; fi
-          if grep -n 'android:text="LIVE TV"' app/src/main/res/layout/activity_home.xml; then exit 1; fi
-          if grep -R -n -E 'bg_btn_back|@id/btn_back|@\+id/btn_back|nav_back' app/src/main/res/layout/activity_vod.xml app/src/main/res/layout/activity_series.xml app/src/main/res/layout/activity_home.xml; then
-            echo "Small back arrow reference remains on Movies/Series/Live"
+          if grep -R -n -E 'etSearch|et_search|et_live_search|nav_search|btnGlobalSearch|headerTvListings|tvMovieCount|tvShowCount' app/src/main; then
+            echo "Deleted UI/search bindings still referenced"
             exit 1
           fi
-          grep -q 'tv_global_datetime' app/src/main/res/layout/layout_main_sidebar.xml
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -190,23 +211,23 @@ jobs:
           set -euo pipefail
           rm -rf output source-for-zip
           mkdir -p output source-for-zip
-          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.10.apk
+          cp source/app/build/outputs/apk/debug/app-debug.apk output/SEAndroid_v100.0.11.apk
           cp -a source/. source-for-zip/
           rm -rf source-for-zip/.gradle source-for-zip/.git source-for-zip/.idea source-for-zip/app/build source-for-zip/.kotlin source-for-zip/.github
           cd source-for-zip
-          zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.10.zip" .
+          zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.11.zip" .
           cd "$GITHUB_WORKSPACE"
-          unzip -t output/SEAndroid_v100.0.10.zip >/dev/null
-          unzip -t output/SEAndroid_v100.0.10.apk >/dev/null
-          test -s output/SEAndroid_v100.0.10.apk
-          test -s output/SEAndroid_v100.0.10.zip
+          unzip -t output/SEAndroid_v100.0.11.apk >/dev/null
+          unzip -t output/SEAndroid_v100.0.11.zip >/dev/null
+          test -s output/SEAndroid_v100.0.11.apk
+          test -s output/SEAndroid_v100.0.11.zip
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v100.0.10
+          name: SEAndroid_v100.0.11
           path: |
-            output/SEAndroid_v100.0.10.apk
-            output/SEAndroid_v100.0.10.zip
+            output/SEAndroid_v100.0.11.apk
+            output/SEAndroid_v100.0.11.zip
           if-no-files-found: error
           retention-days: 30
