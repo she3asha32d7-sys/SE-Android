@@ -328,19 +328,34 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish build files to Git branch
+      - name: Export build files through GitHub Contents API
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: builds/SEAndroid_v100.0.13
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch --orphan builds/SEAndroid_v100.0.13
-          git rm -rf . >/dev/null 2>&1 || true
-          mkdir -p artifacts
-          cp output/SEAndroid_v100.0.13.apk artifacts/
-          cp output/SEAndroid_v100.0.13.zip artifacts/
-          git add -f artifacts/SEAndroid_v100.0.13.apk artifacts/SEAndroid_v100.0.13.zip
-          git commit -m "Publish SEAndroid v100.0.13 build files"
-          gh auth setup-git
-          git push --force origin HEAD:refs/heads/builds/SEAndroid_v100.0.13
+          API="https://api.github.com/repos/${REPO}"
+          headers=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+
+          curl -fsS -X POST "${headers[@]}" "${API}/git/refs"             -d "{"ref":"refs/heads/${BRANCH}","sha":"${GITHUB_SHA}"}"             >/tmp/create-ref.json 2>/tmp/create-ref.err || true
+
+          python3 - <<'PY'
+          import base64, json, pathlib
+          for src, dst in [
+              ("output/SEAndroid_v100.0.13.apk", "artifacts/SEAndroid_v100.0.13.apk.b64"),
+              ("output/SEAndroid_v100.0.13.zip", "artifacts/SEAndroid_v100.0.13.zip.b64"),
+          ]:
+              data = base64.b64encode(pathlib.Path(src).read_bytes()).decode("ascii")
+              payload = {
+                  "message": f"Publish {dst}",
+                  "content": data,
+                  "branch": "builds/SEAndroid_v100.0.13",
+              }
+              pathlib.Path("/tmp/" + pathlib.Path(dst).name + ".json").write_text(json.dumps(payload), encoding="utf-8")
+          PY
+
+          for file in SEAndroid_v100.0.13.apk.b64 SEAndroid_v100.0.13.zip.b64; do
+            dst="artifacts/${file}"
+            curl -fsS -X PUT "${headers[@]}" "${API}/contents/${dst}"               --data-binary @"/tmp/${file}.json"               -o "/tmp/${file}.response.json"
+          done
