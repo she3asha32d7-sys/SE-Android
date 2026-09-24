@@ -316,31 +316,26 @@ jobs:
         id: upload_apk
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v100.0.13-apk
+          name: SEAndroid_v100.0.13-apk-${{ github.run_id }}
           path: output/SEAndroid_v100.0.13.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
+          compression-level: 0
 
       - name: Upload source artifact
         id: upload_source
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v100.0.13-source
+          name: SEAndroid_v100.0.13-source-${{ github.run_id }}
           path: output/SEAndroid_v100.0.13.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
+          compression-level: 6
 
       - name: Record artifact metadata
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
         run: |
-          set -euo pipefail
-          cat > /tmp/build-artifacts.txt <<EOF
-          SEAndroid_v100.0.13
-          Run: ${{ github.run_id }}
-          APK artifact upload completed: ${{ steps.upload_apk.outcome }}
-          Source artifact upload completed: ${{ steps.upload_source.outcome }}
-          EOF
-          gh api "repos/${REPO}/actions/runs/${{ github.run_id }}/artifacts"             --jq '.artifacts[] | [.id,.name,.size_in_bytes,.expired] | @tsv' >> /tmp/build-artifacts.txt || true
-          cp /tmp/build-artifacts.txt BUILD_ARTIFACT_METADATA_v100.0.13.txt
+          {
+            echo "Run: ${{ github.run_id }}"
+            echo "APK upload: ${{ steps.upload_apk.outcome }}"
+            echo "Source upload: ${{ steps.upload_source.outcome }}"
+          } > BUILD_ARTIFACT_METADATA_v100.0.13.txt
