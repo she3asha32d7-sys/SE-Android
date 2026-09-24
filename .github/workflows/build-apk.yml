@@ -1,4 +1,4 @@
-name: SEAndroid v100.0.12 Build
+name: SEAndroid v100.0.12 Build — Rotate Fix
 
 on:
   push:
@@ -239,17 +239,17 @@ jobs:
           cd source-for-zip
           zip -qr "$GITHUB_WORKSPACE/output/SEAndroid_v100.0.12.zip" .
           cd "$GITHUB_WORKSPACE"
-          unzip -t output/SEAndroid_v100.0.11.apk >/dev/null
-          unzip -t output/SEAndroid_v100.0.11.zip >/dev/null
-          test -s output/SEAndroid_v100.0.11.apk
-          test -s output/SEAndroid_v100.0.11.zip
+          unzip -t output/SEAndroid_v100.0.12.apk >/dev/null
+          unzip -t output/SEAndroid_v100.0.12.zip >/dev/null
+          test -s output/SEAndroid_v100.0.12.apk
+          test -s output/SEAndroid_v100.0.12.zip
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
           name: SEAndroid_v100.0.12
           path: |
-            output/SEAndroid_v100.0.11.apk
-            output/SEAndroid_v100.0.11.zip
+            output/SEAndroid_v100.0.12.apk
+            output/SEAndroid_v100.0.12.zip
           if-no-files-found: error
           retention-days: 30
