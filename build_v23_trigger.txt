@@ -1,1 +1,1 @@
-Final v23 build after restoring complete v22 HomeActivity and TvModeActivity.
+Final v23 build from complete v22 source.
