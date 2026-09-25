@@ -1,0 +1,4 @@
+SE IPTV PLAYER — SEAndroid v100.0.22
+Base source: SEAndroid_v100.0.21-source.zip
+Sidebar update: category rows in Movies, Series, and Live TV now use a left-aligned category name and an independent right-side heart control. Only the heart control toggles category favourites; tapping the name selects/opens the category. Arabic and Latin category labels share the same left/right visual positions.
+No APK build was performed for this revision.
