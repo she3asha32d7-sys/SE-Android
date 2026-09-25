@@ -121,3 +121,5 @@ jobs:
           name: SEAndroid_v100.0.23-source
           path: out/SEAndroid_v100.0.23-source.zip
           retention-days: 30
+
+# Trigger build after registering workflow on the default branch.
