@@ -497,7 +497,8 @@ class HomeActivity : AppCompatActivity() {
                 seriesId = fav.seriesId,
                 season = fav.season,
                 episodeNum = fav.episodeNum,
-                episodeId = fav.episodeId,                nextEpUrl = fav.nextEpisodeUrl,
+                episodeId = fav.episodeId,
+                nextEpUrl = fav.nextEpisodeUrl,
                 nextEpTitle = fav.nextEpisodeTitle,
                 nextEpNum = fav.nextEpisodeNum,
                 nextEpSeason = fav.nextEpisodeSeason,
@@ -996,7 +997,8 @@ class HomeActivity : AppCompatActivity() {
         addRow("ALL", !liveSearchActive && selected == null) {
             liveSearchActive = false
             viewModel.selectAllChannels()
-        }        addRow("★  FAVOURITE", !liveSearchActive && selected?.categoryId == HomeViewModel.FAV_CATEGORY_ID) {
+        }
+        addRow("★  FAVOURITE", !liveSearchActive && selected?.categoryId == HomeViewModel.FAV_CATEGORY_ID) {
             liveSearchActive = false
             val ids = FavouritesManager.getLiveChannels(this@HomeActivity).map { it.streamId }.toSet()
             viewModel.selectFavouriteChannels(ids)
@@ -1495,7 +1497,8 @@ class HomeActivity : AppCompatActivity() {
     // ── PIN helpers ───────────────────────────────────────────────────────────
 
     private fun pinEditText(hint: String) = com.orbital.iptv.utils.SEKeyboardController.prepare(android.widget.EditText(this).apply {
-        inputType = android.text.InputType.TYPE_CLASS_NUMBER or                    android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                    android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
         filters = arrayOf(android.text.InputFilter.LengthFilter(4))
         this.hint = hint
         gravity = android.view.Gravity.CENTER
