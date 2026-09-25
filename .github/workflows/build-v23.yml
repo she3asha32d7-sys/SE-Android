@@ -17,30 +17,23 @@ jobs:
       - name: Checkout v100.0.23
         uses: actions/checkout@v4
 
-      - name: Restore v100.0.17 source artifact
+      - name: Restore v100.0.17 base without overwriting v22 files
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           curl -fL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10834906043/zip" -o /tmp/v17-artifact.zip
-          rm -rf /tmp/v17-artifact
-          mkdir -p /tmp/v17-artifact
+          rm -rf /tmp/v17-artifact /tmp/se-base
+          mkdir -p /tmp/v17-artifact /tmp/se-base
           unzip -q /tmp/v17-artifact.zip -d /tmp/v17-artifact
           SRCZIP="$(find /tmp/v17-artifact -type f -name 'SEAndroid_v100.0.17-source.zip' -print -quit)"
           test -n "${SRCZIP}"
-          unzip -qo "${SRCZIP}" -d .
+          unzip -qo "${SRCZIP}" -d /tmp/se-base
+          # Keep every source file already stored in this v100.0.23 branch (the exact v22 files).
+          rsync -a --ignore-existing /tmp/se-base/ ./ 
           test -f app/build.gradle
           test -f gradlew
-
-      - name: Apply v100.0.18 base changes
-        run: python3 scripts/apply_v18.py
-
-      - name: Restore exact v100.0.22 text patch
-        run: |
-          set -euo pipefail
-          test -s build_payload/v22-text-clean.patch
-          patch -p1 --forward --batch < build_payload/v22-text-clean.patch
 
       - name: Install v100.0.23 logos
         run: |
@@ -58,10 +51,10 @@ jobs:
       - name: Set v100.0.23 version
         run: |
           set -euo pipefail
-          sed -i \
-            -e 's/1000022/1000023/g' \
-            -e 's/100.0.22/100.0.23/g' \
-            -e 's/V100.0.22/V100.0.23/g' \
+          sed -E -i \
+            -e 's/100002[0-9]+/1000023/g' \
+            -e 's/100\\.0\\.[0-9]+/100.0.23/g' \
+            -e 's/V100\\.0\\.[0-9]+/V100.0.23/g' \
             app/build.gradle settings.gradle app/src/main/res/layout/activity_settings.xml SE_BUILD_MANIFEST.txt 2>/dev/null || true
           grep -q 'versionCode 1000023' app/build.gradle
           grep -q 'versionName "100.0.23"' app/build.gradle
