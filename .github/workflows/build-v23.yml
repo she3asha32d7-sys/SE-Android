@@ -36,10 +36,10 @@ jobs:
       - name: Apply v100.0.18 base changes
         run: python3 scripts/apply_v18.py
 
-      - name: Apply v100.0.22 source patch
+      - name: Restore exact v100.0.22 patch
         run: |
           set -euo pipefail
-          cat build_payload/v22-exact-patch/part-* > /tmp/v18-v22.patch.xz
+          cat build_payload/v22-exact4/part-* > /tmp/v18-v22.patch.xz
           echo "b1534dbd5b52b7c6705e12330098841f7b81dc0029c9908e0af1df781367d0c8  /tmp/v18-v22.patch.xz" | sha256sum -c -
           xz -t /tmp/v18-v22.patch.xz
           xz -dc /tmp/v18-v22.patch.xz > /tmp/v18-v22.patch
@@ -64,11 +64,7 @@ jobs:
       - name: Set v100.0.23 version
         run: |
           set -euo pipefail
-          sed -i \
-            -e 's/1000022/1000023/g' \
-            -e 's/100.0.22/100.0.23/g' \
-            -e 's/V100.0.22/V100.0.23/g' \
-            app/build.gradle settings.gradle app/src/main/res/layout/activity_settings.xml SE_BUILD_MANIFEST.txt 2>/dev/null || true
+          sed -i             -e 's/1000022/1000023/g'             -e 's/100.0.22/100.0.23/g'             -e 's/V100.0.22/V100.0.23/g'             app/build.gradle settings.gradle app/src/main/res/layout/activity_settings.xml SE_BUILD_MANIFEST.txt 2>/dev/null || true
           grep -q 'versionCode 1000023' app/build.gradle
           grep -q 'versionName "100.0.23"' app/build.gradle
           grep -q 'SEAndroid_v100.0.23' settings.gradle
@@ -106,7 +102,7 @@ jobs:
           rm -rf out source-for-zip
           mkdir -p out source-for-zip
           cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.23.apk
-          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-for-zip' --exclude='build_payload/v22-text-patch' ./ source-for-zip/
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-for-zip' --exclude='build_payload' ./ source-for-zip/
           (cd source-for-zip && zip -qr "$GITHUB_WORKSPACE/out/SEAndroid_v100.0.23-source.zip" .)
           ls -lh out
 
@@ -123,5 +119,3 @@ jobs:
           name: SEAndroid_v100.0.23-source
           path: out/SEAndroid_v100.0.23-source.zip
           retention-days: 30
-
-# Verified exact v18-to-v22 patch payload.
