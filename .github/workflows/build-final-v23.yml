@@ -1,0 +1,64 @@
+name: Final SEAndroid v100.0.23 Build
+
+on:
+  push:
+    branches:
+      - v100.0.23
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p /tmp/v17 /tmp/base
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10834906043/zip" -o /tmp/v17.zip
+          unzip -q /tmp/v17.zip -d /tmp/v17
+          SRC=$(find /tmp/v17 -type f -name 'SEAndroid_v100.0.17-source.zip' | head -1)
+          test -n "$SRC"
+          unzip -q "$SRC" -d /tmp/base
+          rsync -a --ignore-existing /tmp/base/ ./
+          chmod +x gradlew
+      - name: Prepare 23
+        run: |
+          set -e
+          perl -0pi -e 's/versionCode\s+\d+/versionCode 1000023/' app/build.gradle
+          perl -0pi -e 's/versionName\s+"[^"]+"/versionName "100.0.23"/' app/build.gradle
+          printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.23"' "include ':app'" > settings.gradle
+          sed -E -i 's/V100\.0\.[0-9]+/V100.0.23/g' app/src/main/res/layout/activity_settings.xml 2>/dev/null || true
+          rm -f app/src/main/res/drawable/se_logo_full.png app/src/main/res/drawable/se_launcher.png app/src/main/res/drawable/se_launcher_foreground.xml
+          cp build_payload/app_logo.webp app/src/main/res/drawable/app_logo.webp
+          cp build_payload/xtream_logo.webp app/src/main/res/drawable/xtream_logo.webp
+          grep -q 'heartView.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt
+          grep -q 'heartView.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
+          grep -q 'android.widget.ScrollView' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
+          grep -q 'PopupWindow' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Assemble
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+      - name: Package
+        run: |
+          set -e
+          mkdir -p out source
+          cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.23.apk
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source' --exclude='build_payload' ./ source/
+          (cd source && zip -qr ../out/SEAndroid_v100.0.23-source.zip .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.23-apk
+          path: out/SEAndroid_v100.0.23.apk
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.23-source
+          path: out/SEAndroid_v100.0.23-source.zip
+          retention-days: 30
