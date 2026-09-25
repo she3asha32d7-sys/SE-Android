@@ -39,7 +39,9 @@ jobs:
       - name: Apply v100.0.22 source patch
         run: |
           set -euo pipefail
-          cat build_payload/v22-text-patch/part-* > /tmp/v18-v22.patch.xz
+          cat build_payload/v22-exact-patch/part-* > /tmp/v18-v22.patch.xz
+          echo "b1534dbd5b52b7c6705e12330098841f7b81dc0029c9908e0af1df781367d0c8  /tmp/v18-v22.patch.xz" | sha256sum -c -
+          xz -t /tmp/v18-v22.patch.xz
           xz -dc /tmp/v18-v22.patch.xz > /tmp/v18-v22.patch
           git init -q
           git add -A
@@ -122,4 +124,4 @@ jobs:
           path: out/SEAndroid_v100.0.23-source.zip
           retention-days: 30
 
-# Trigger build after registering workflow on the default branch.
+# Verified exact v18-to-v22 patch payload.
