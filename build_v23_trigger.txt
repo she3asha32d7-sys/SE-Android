@@ -1,1 +1,1 @@
-Rebuild v100.0.23 after exact v22 source file synchronization.
+Final v23 build after restoring complete v22 HomeActivity and TvModeActivity.
