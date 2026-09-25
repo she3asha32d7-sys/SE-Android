@@ -1,0 +1,1000 @@
+--- a/SE_BUILD_MANIFEST.txt
++++ b/SE_BUILD_MANIFEST.txt
+@@ -1,5 +1,4 @@
+-SE IPTV PLAYER — SEAndroid v100.0.12
+-Base source: SEAndroid_v100.0.10.zip
+-APK: SEAndroid_v100.0.12.apk
+-Source: SEAndroid_v100.0.12.zip
+-Requested navigation, rotation, category-search, live-grid, clock, and default-page changes applied.
++SE IPTV PLAYER — SEAndroid v100.0.22
++Base source: SEAndroid_v100.0.21-source.zip
++Sidebar update: category rows in Movies, Series, and Live TV now use a left-aligned category name and an independent right-side heart control. Only the heart control toggles category favourites; tapping the name selects/opens the category. Arabic and Latin category labels share the same left/right visual positions.
++No APK build was performed for this revision.
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -17,8 +17,8 @@
+         applicationId "com.se.iptv.player"
+         minSdk 23
+         targetSdk 34
+-        versionCode 1000018
+-        versionName "100.0.18"
++        versionCode 1000022
++        versionName "100.0.22"
+ 
+         ndk {
+             abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+--- a/app/src/main/java/com/orbital/iptv/OrbitalApp.kt
++++ b/app/src/main/java/com/orbital/iptv/OrbitalApp.kt
+@@ -7,6 +7,7 @@
+ import android.os.Build
+ import android.os.Bundle
+ import android.view.WindowManager
++import com.orbital.iptv.utils.SEKeyboardController
+ 
+ class OrbitalApp : Application() {
+     override fun onCreate() {
+@@ -18,6 +19,7 @@
+                 // Genç IPTV-style auto-rotation: follow the sensor between the two
+                 // landscape directions only. Portrait is never requested by SE.
+                 a.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
++                SEKeyboardController.install(a)
+             }
+             override fun onActivityStarted(a: Activity) {}
+             override fun onActivityResumed(a: Activity) {
+@@ -25,6 +27,7 @@
+                 // is brought back to the foreground (for example via REORDER_TO_FRONT).
+                 // This prevents navigation from reverting a manually rotated landscape side.
+                 a.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
++                SEKeyboardController.install(a)
+             }
+             override fun onActivityPaused(a: Activity) {}
+             override fun onActivityStopped(a: Activity) {}
+--- a/app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
++++ b/app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
+@@ -6,12 +6,13 @@
+ import android.os.Handler
+ import android.os.Looper
+ import android.view.View
+-import android.view.MotionEvent
+ import android.view.Gravity
+ import android.view.ViewGroup
++import android.view.LayoutInflater
+ import android.graphics.Color
+ import android.widget.ImageView
+ import android.widget.LinearLayout
++import android.widget.FrameLayout
+ import android.widget.TextView
+ import android.widget.Toast
+ import androidx.activity.OnBackPressedCallback
+@@ -56,6 +57,8 @@
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.Job
++import kotlinx.coroutines.async
++import kotlinx.coroutines.awaitAll
+ import kotlinx.coroutines.coroutineScope
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.launch
+@@ -204,18 +207,60 @@
+         if(home) buildHomeDashboard()
+     }
+ 
++    private var homeMetadataJob: Job? = null
++
++    /**
++     * Home dashboard is intentionally a real vertical ScrollView so the whole mobile screen
++     * can be swiped.  Continue Watching cards reuse the same visual card resources used by the
++     * Movies / Series screens, while Live TV gets a matching icon + programme card.
++     */
+     private fun buildHomeDashboard() {
+         val dash = binding.root.findViewById<LinearLayout>(R.id.dashboard_container) ?: return
+-        dash.removeAllViews(); dash.visibility = View.VISIBLE
++        homeMetadataJob?.cancel()
++        dash.removeAllViews()
++        dash.visibility = View.VISIBLE
++
+         val p = ThemeManager.palette()
+         val d = resources.displayMetrics.density
+-
+-        val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
++        val scroll = android.widget.ScrollView(this).apply {
++            layoutParams = ViewGroup.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT,
++                ViewGroup.LayoutParams.MATCH_PARENT
++            )
++            isFillViewport = true
++            isVerticalScrollBarEnabled = true
++            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
++        }
++        val content = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            layoutParams = ViewGroup.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT,
++                ViewGroup.LayoutParams.WRAP_CONTENT
++            )
++            setPadding((8*d).toInt(), (6*d).toInt(), (8*d).toInt(), (24*d).toInt())
++        }
++        scroll.addView(content)
++        dash.addView(scroll)
++
++        // Home shortcuts.
++        val buttons = LinearLayout(this).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER
++            layoutParams = LinearLayout.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT,
++                ViewGroup.LayoutParams.WRAP_CONTENT
++            )
++        }
+         listOf("LIVE TV" to "LIVE", "MOVIES" to "MOVIES", "SERIES" to "SERIES").forEach { (label, mode) ->
+             buttons.addView(TextView(this).apply {
+-                text = label; textSize = 15f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+-                background = ThemeManager.roundedBg(p.bgMid, d); isFocusable = true; isClickable = true
+-                setPadding(10, 0, 10, 0)
++                text = label
++                textSize = 15f
++                setTextColor(Color.WHITE)
++                gravity = Gravity.CENTER
++                background = ThemeManager.roundedBg(p.bgMid, d)
++                isFocusable = true
++                isClickable = true
++                setPadding((10*d).toInt(), 0, (10*d).toInt(), 0)
+                 setOnClickListener {
+                     when (mode) {
+                         "LIVE" -> showSection("LIVE")
+@@ -223,39 +268,352 @@
+                         "SERIES" -> startActivity(Intent(this@HomeActivity, SeriesActivity::class.java).apply { addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT) })
+                     }
+                 }
+-                layoutParams = LinearLayout.LayoutParams(0, (58 * d).toInt(), 1f).also { it.setMargins((8*d).toInt(), (8*d).toInt(), (8*d).toInt(), (8*d).toInt()) }
++                layoutParams = LinearLayout.LayoutParams(0, (58*d).toInt(), 1f).also {
++                    it.setMargins((8*d).toInt(), (8*d).toInt(), (8*d).toInt(), (8*d).toInt())
++                }
+             })
+         }
+-        dash.addView(buttons)
+-
+-        listOf(
+-            "LIVE" to "CONTINUE WATCHING LIVE TV",
+-            "MOVIE" to "CONTINUE WATCHING MOVIES",
+-            "SERIES" to "CONTINUE WATCHING SERIES"
+-        ).forEach { (type, title) ->
+-            dash.addView(TextView(this).apply {
+-                text = title; setTextColor(p.accent); textSize = 14f; setTypeface(typeface, Typeface.BOLD)
+-                setPadding((14*d).toInt(), (12*d).toInt(), (14*d).toInt(), (6*d).toInt())
++        content.addView(buttons)
++
++        val metadataTextViews = mutableMapOf<String, TextView>()
++        val metadataSeriesTextViews = mutableMapOf<String, TextView>()
++
++        fun addSectionTitle(title: String) {
++            content.addView(TextView(this).apply {
++                text = title
++                setTextColor(p.accent)
++                textSize = 14f
++                setTypeface(typeface, Typeface.BOLD)
++                setPadding((14*d).toInt(), (18*d).toInt(), (14*d).toInt(), (6*d).toInt())
++                layoutParams = LinearLayout.LayoutParams(
++                    ViewGroup.LayoutParams.MATCH_PARENT,
++                    ViewGroup.LayoutParams.WRAP_CONTENT
++                )
+             })
++        }
++
++        fun addHorizontalRow(row: LinearLayout, cardHeight: Int) {
++            content.addView(android.widget.HorizontalScrollView(this).apply {
++                layoutParams = LinearLayout.LayoutParams(
++                    ViewGroup.LayoutParams.MATCH_PARENT,
++                    (cardHeight*d).toInt()
++                )
++                isHorizontalScrollBarEnabled = false
++                isFillViewport = false
++                clipChildren = false
++                clipToPadding = false
++                addView(row, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT)
++            })
++        }
++
++        // LIVE TV: keep the actual watched channel data, but present it as a media card with icon,
++        // channel name, current programme when available, resume time, favourite and remove.
++        val liveHistory = WatchHistoryManager.get(this, "LIVE").take(15)
++        if (liveHistory.isNotEmpty()) {
++            addSectionTitle("CONTINUE WATCHING LIVE TV")
++            val row = LinearLayout(this).apply {
++                orientation = LinearLayout.HORIZONTAL
++                gravity = Gravity.CENTER_VERTICAL
++            }
++            liveHistory.forEach { h ->
++                val channel = currentChannels.firstOrNull { it.streamId == h.streamId }
++                row.addView(makeHomeLiveContinueCard(h, channel?.epgNow, channel?.streamIcon ?: h.artUrl, d))
++            }
++            addHorizontalRow(row, 186)
++        }
++
++        // MOVIES: same card resource as the Movies page, sourced from its real Continue Watching
++        // entries so poster + title + favourite state stay consistent with that screen.
++        val movieHistory = FavouritesManager.getAll(this)
++            .filter { it.type == com.orbital.iptv.data.model.FavType.MOVIE && it.hasResume }
++            .sortedByDescending { it.addedAt }
++            .take(15)
++        if (movieHistory.isNotEmpty()) {
++            addSectionTitle("CONTINUE WATCHING MOVIES")
+             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+-            WatchHistoryManager.get(this, type).take(15).forEach { h ->
+-                val item = LinearLayout(this).apply {
+-                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+-                    background = ThemeManager.roundedBg(p.bgMid, d); isFocusable = true; isClickable = true
+-                    layoutParams = LinearLayout.LayoutParams((230*d).toInt(), (56*d).toInt()).also { it.setMargins((4*d).toInt(), (4*d).toInt(), (4*d).toInt(), (4*d).toInt()) }
+-                    setOnClickListener { PlayerLauncher.launch(this@HomeActivity, h.streamUrl, h.title, h.streamId, type == "LIVE", resumeMs = h.positionMs, artUrl = h.artUrl) }
+-                }
+-                item.addView(TextView(this@HomeActivity).apply { text = h.title; textSize = 12f; setTextColor(Color.WHITE); gravity = Gravity.CENTER_VERTICAL; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; layoutParams = LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = (8*d).toInt() } })
+-                item.addView(TextView(this@HomeActivity).apply {
+-                    text = "🗑"; textSize = 18f; gravity = Gravity.CENTER; setTextColor(0xFFFF6666.toInt()); isFocusable = true; isClickable = true
+-                    layoutParams = LinearLayout.LayoutParams((48*d).toInt(), -1)
+-                    setOnClickListener { WatchHistoryManager.remove(this@HomeActivity, h.id); buildHomeDashboard() }
+-                })
+-                row.addView(item)
+-            }
+-            dash.addView(android.widget.HorizontalScrollView(this).apply {
+-                isHorizontalScrollBarEnabled = false; addView(row, ViewGroup.LayoutParams(-1, (64*d).toInt()))
+-            })
++            movieHistory.forEach { fav ->
++                row.addView(makeHomeMovieContinueCard(fav, d, metadataTextViews))
++            }
++            addHorizontalRow(row, 320)
++        }
++
++        // SERIES: exactly one latest Continue item per series, matching SeriesActivity's own logic.
++        val seriesHistory = FavouritesManager.getAll(this)
++            .filter { it.type == com.orbital.iptv.data.model.FavType.EPISODE && (it.hasResume || it.isUpNext) }
++            .groupBy { it.seriesId }
++            .mapNotNull { (_, eps) -> eps.maxByOrNull { it.addedAt } }
++            .sortedByDescending { it.addedAt }
++            .take(15)
++        if (seriesHistory.isNotEmpty()) {
++            addSectionTitle("CONTINUE WATCHING SERIES")
++            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
++            seriesHistory.forEach { fav ->
++                row.addView(makeHomeSeriesContinueCard(fav, d, metadataSeriesTextViews))
++            }
++            addHorizontalRow(row, 320)
++        }
++
++        // Pull fresh movie/series metadata only when available so the card can show the same
++        // rating/year information as the library pages without blocking Home rendering.
++        val profile = PrefsManager.getActiveProfile(this)
++        if (profile != null && (metadataTextViews.isNotEmpty() || metadataSeriesTextViews.isNotEmpty())) {
++            homeMetadataJob = lifecycleScope.launch {
++                val gate = Semaphore(4)
++                val movieJobs = movieHistory.map { fav ->
++                    async(Dispatchers.IO) {
++                        gate.withPermit {
++                            val info = repository.getVodInfo(profile.serverUrl, profile.username, profile.password, fav.streamId).getOrNull()?.info
++                            fav.id to info
++                        }
++                    }
++                }
++                val seriesJobs = seriesHistory.map { fav ->
++                    async(Dispatchers.IO) {
++                        gate.withPermit {
++                            val info = repository.getSeriesInfo(profile.serverUrl, profile.username, profile.password, fav.seriesId).getOrNull()?.info
++                            fav.id to info
++                        }
++                    }
++                }
++                val movieInfo = movieJobs.awaitAll()
++                val seriesInfo = seriesJobs.awaitAll()
++                withContext(Dispatchers.Main) {
++                    movieInfo.forEach { (id, info) ->
++                        val tv = metadataTextViews[id] ?: return@forEach
++                        val fav = movieHistory.firstOrNull { it.id == id } ?: return@forEach
++                        tv.text = buildString {
++                            info?.rating?.trim()?.takeIf { it.isNotBlank() && it != "0" && it != "0.0" }?.let { append("★ ").append(it) }
++                            info?.releaseDate?.let { Regex("\\d{4}").find(it)?.value }?.let { y -> if (isNotEmpty()) append("  •  "); append(y) }
++                            if (isNotEmpty()) append("  •  ")
++                            append("▶ ").append(FavouritesManager.formatDuration(fav.resumePositionMs))
++                            if (fav.durationMs > 0) append(" / ").append(FavouritesManager.formatDuration(fav.durationMs))
++                        }
++                    }
++                    seriesInfo.forEach { (id, info) ->
++                        val tv = metadataSeriesTextViews[id] ?: return@forEach
++                        val fav = seriesHistory.firstOrNull { it.id == id } ?: return@forEach
++                        val episodeTag = if (fav.season.isNotBlank() && fav.episodeNum > 0)
++                            "S${fav.season}E${"%02d".format(fav.episodeNum)}" else ""
++                        tv.text = buildString {
++                            info?.rating?.trim()?.takeIf { it.isNotBlank() && it != "0" && it != "0.0" }?.let { append("★ ").append(it) }
++                            info?.releaseDate?.let { Regex("\\d{4}").find(it)?.value }?.let { y -> if (isNotEmpty()) append("  •  "); append(y) }
++                            if (episodeTag.isNotBlank()) { if (isNotEmpty()) append("  •  "); append(episodeTag) }
++                            if (isNotEmpty()) append("  •  ")
++                            if (fav.isUpNext) append("▶ UP NEXT")
++                            else {
++                                append("▶ ").append(FavouritesManager.formatDuration(fav.resumePositionMs))
++                                if (fav.durationMs > 0) append(" / ").append(FavouritesManager.formatDuration(fav.durationMs))
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    private fun makeHomeMovieContinueCard(
++        fav: com.orbital.iptv.data.model.FavouriteItem,
++        d: Float,
++        metadataTextViews: MutableMap<String, TextView>
++    ): View {
++        val root = LayoutInflater.from(this).inflate(R.layout.item_vod_movie, null, false)
++        root.layoutParams = LinearLayout.LayoutParams((170*d).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT).also {
++            it.setMargins((5*d).toInt(), (4*d).toInt(), (5*d).toInt(), (8*d).toInt())
++        }
++        val poster = root.findViewById<ImageView>(R.id.iv_poster)
++        val title = root.findViewById<TextView>(R.id.tv_title)
++        val rating = root.findViewById<TextView>(R.id.tv_rating)
++        val favBtn = root.findViewById<TextView>(R.id.btn_fav)
++        title.text = fav.title
++        rating.text = "▶ ${FavouritesManager.formatDuration(fav.resumePositionMs)}" + if (fav.durationMs > 0) " / ${FavouritesManager.formatDuration(fav.durationMs)}" else ""
++        rating.setTextColor(0xFF00CCFF.toInt())
++        poster.setBackgroundColor(ThemeManager.palette().bgMid)
++        if (fav.artUrl.isNotBlank()) Glide.with(this).load(fav.artUrl).centerCrop().into(poster)
++        fun syncFavorite() {
++            val checked = FavouritesManager.contains(this, fav.id)
++            favBtn.text = if (checked) "♥" else "♡"
++            favBtn.setTextColor(if (checked) 0xFFFF2222.toInt() else Color.WHITE)
++        }
++        syncFavorite()
++        favBtn.setOnClickListener {
++            if (FavouritesManager.contains(this, fav.id)) FavouritesManager.remove(this, fav.id)
++            else FavouritesManager.addOrUpdate(this, fav)
++            syncFavorite()
++        }
++        root.setOnClickListener {
++            PlayerLauncher.launch(this, fav.streamUrl, fav.title, fav.streamId, false, fav.id, fav.artUrl, fav.resumePositionMs)
++        }
++        applyHomeCardFocus(root, title, d)
++        metadataTextViews[fav.id] = rating
++        return root
++    }
++
++    private fun makeHomeSeriesContinueCard(
++        fav: com.orbital.iptv.data.model.FavouriteItem,
++        d: Float,
++        metadataTextViews: MutableMap<String, TextView>
++    ): View {
++        val root = LayoutInflater.from(this).inflate(R.layout.item_series_show, null, false)
++        root.layoutParams = LinearLayout.LayoutParams((170*d).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT).also {
++            it.setMargins((5*d).toInt(), (4*d).toInt(), (5*d).toInt(), (8*d).toInt())
++        }
++        val poster = root.findViewById<ImageView>(R.id.iv_poster)
++        val title = root.findViewById<TextView>(R.id.tv_title)
++        val rating = root.findViewById<TextView>(R.id.tv_rating)
++        val favBtn = root.findViewById<TextView>(R.id.btn_fav)
++        title.text = fav.title.substringBefore(" — ").ifBlank { fav.title }
++        val ep = if (fav.season.isNotBlank() && fav.episodeNum > 0) "S${fav.season}E${"%02d".format(fav.episodeNum)}" else ""
++        rating.text = buildString {
++            if (ep.isNotBlank()) append(ep).append("  •  ")
++            if (fav.isUpNext) append("▶ UP NEXT") else {
++                append("▶ ").append(FavouritesManager.formatDuration(fav.resumePositionMs))
++                if (fav.durationMs > 0) append(" / ").append(FavouritesManager.formatDuration(fav.durationMs))
++            }
++        }
++        rating.setTextColor(0xFF00CCFF.toInt())
++        poster.setBackgroundColor(ThemeManager.palette().bgMid)
++        if (fav.artUrl.isNotBlank()) Glide.with(this).load(fav.artUrl).centerCrop().into(poster)
++        fun syncFavorite() {
++            val checked = FavouritesManager.contains(this, fav.id)
++            favBtn.text = if (checked) "♥" else "♡"
++            favBtn.setTextColor(if (checked) 0xFFFF2222.toInt() else Color.WHITE)
++        }
++        syncFavorite()
++        favBtn.setOnClickListener {
++            if (FavouritesManager.contains(this, fav.id)) FavouritesManager.remove(this, fav.id)
++            else FavouritesManager.addOrUpdate(this, fav)
++            syncFavorite()
++        }
++        root.setOnClickListener {
++            PlayerLauncher.launch(
++                activity = this,
++                streamUrl = fav.streamUrl,
++                title = fav.title,
++                streamId = fav.streamId,
++                isLive = false,
++                favId = fav.id,
++                artUrl = fav.artUrl,
++                resumeMs = fav.resumePositionMs,
++                seriesId = fav.seriesId,
++                season = fav.season,
++                episodeNum = fav.episodeNum,
++                episodeId = fav.episodeId,
++                nextEpUrl = fav.nextEpisodeUrl,
++                nextEpTitle = fav.nextEpisodeTitle,
++                nextEpNum = fav.nextEpisodeNum,
++                nextEpSeason = fav.nextEpisodeSeason,
++                nextEpId = fav.nextEpisodeId
++            )
++        }
++        applyHomeCardFocus(root, title, d)
++        metadataTextViews[fav.id] = rating
++        return root
++    }
++
++    private fun makeHomeLiveContinueCard(
++        h: WatchHistoryItem,
++        currentProgramme: String?,
++        iconUrl: String,
++        d: Float
++    ): View {
++        val root = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            background = ThemeManager.roundedBg(ThemeManager.palette().bgMid, d)
++            isFocusable = true
++            isClickable = true
++            layoutParams = LinearLayout.LayoutParams((182*d).toInt(), (168*d).toInt()).also {
++                it.setMargins((5*d).toInt(), (4*d).toInt(), (5*d).toInt(), (8*d).toInt())
++            }
++            setPadding((8*d).toInt(), (8*d).toInt(), (8*d).toInt(), (8*d).toInt())
++        }
++        val top = FrameLayout(this).apply { layoutParams = LinearLayout.LayoutParams(-1, (100*d).toInt()) }
++        val icon = ImageView(this).apply {
++            layoutParams = FrameLayout.LayoutParams(-1, -1)
++            scaleType = ImageView.ScaleType.CENTER_CROP
++            setBackgroundColor(ThemeManager.palette().bgPrimary)
++        }
++        top.addView(icon)
++        val liveTag = TextView(this).apply {
++            text = "LIVE TV"
++            textSize = 9f
++            setTextColor(Color.WHITE)
++            setBackgroundColor(0xAA000000.toInt())
++            setPadding((6*d).toInt(), (3*d).toInt(), (6*d).toInt(), (3*d).toInt())
++            layoutParams = FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START)
++        }
++        top.addView(liveTag)
++        root.addView(top)
++        root.addView(TextView(this).apply {
++            text = h.title
++            textSize = 13f
++            setTypeface(typeface, Typeface.BOLD)
++            setTextColor(Color.WHITE)
++            maxLines = 1
++            ellipsize = android.text.TextUtils.TruncateAt.END
++            gravity = Gravity.CENTER_VERTICAL
++            layoutParams = LinearLayout.LayoutParams(-1, (26*d).toInt())
++        })
++        root.addView(TextView(this).apply {
++            text = currentProgramme?.takeIf { it.isNotBlank() } ?: "CONTINUE WATCHING"
++            textSize = 10f
++            setTextColor(0xFF9AA8C8.toInt())
++            maxLines = 1
++            ellipsize = android.text.TextUtils.TruncateAt.END
++            layoutParams = LinearLayout.LayoutParams(-1, (20*d).toInt())
++        })
++        val bottom = LinearLayout(this).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER_VERTICAL
++            layoutParams = LinearLayout.LayoutParams(-1, (24*d).toInt())
++        }
++        bottom.addView(TextView(this).apply {
++            text = "▶ RESUME"
++            textSize = 9f
++            setTextColor(ThemeManager.palette().accent)
++            layoutParams = LinearLayout.LayoutParams(0, -1, 1f)
++            gravity = Gravity.CENTER_VERTICAL
++        })
++        bottom.addView(TextView(this).apply {
++            text = "🗑"
++            textSize = 15f
++            setTextColor(0xFFFF6666.toInt())
++            gravity = Gravity.CENTER
++            isFocusable = true
++            isClickable = true
++            layoutParams = LinearLayout.LayoutParams((34*d).toInt(), -1)
++            setOnClickListener {
++                WatchHistoryManager.remove(this@HomeActivity, h.id)
++                buildHomeDashboard()
++            }
++        })
++        root.addView(bottom)
++        if (iconUrl.isNotBlank()) Glide.with(this).load(iconUrl).centerCrop().into(icon)
++        root.setOnClickListener {
++            PlayerLauncher.launch(this, h.streamUrl, h.title, h.streamId, true, artUrl = h.artUrl, resumeMs = h.positionMs)
++        }
++        applyHomeCardFocus(root, root.getChildAt(1) as TextView, d)
++        return root
++    }
++
++    private fun applyHomeCardFocus(root: View, title: TextView, d: Float) {
++        root.setOnFocusChangeListener { _, hasFocus ->
++            val pp = ThemeManager.palette()
++            if (hasFocus) {
++                root.scaleX = 1.045f
++                root.scaleY = 1.045f
++                root.elevation = (8*d)
++                title.setTextColor(pp.accent)
++                val bg = android.graphics.drawable.GradientDrawable()
++                bg.setColor(pp.bgMid)
++                bg.setStroke((3*d).toInt().coerceAtLeast(2), pp.accent)
++                root.background = bg
++            } else {
++                root.scaleX = 1f
++                root.scaleY = 1f
++                root.elevation = 0f
++                title.setTextColor(Color.WHITE)
++                root.background = ThemeManager.roundedBg(pp.bgMid, d)
++            }
+         }
+     }
+ 
+@@ -342,11 +700,11 @@
+ 
+     private fun showTorboxKeyDialog() {
+         val current = com.orbital.iptv.utils.TorboxPrefsManager.getApiKey(this) ?: ""
+-        val et = android.widget.EditText(this).apply {
++        val et = com.orbital.iptv.utils.SEKeyboardController.prepare(android.widget.EditText(this).apply {
+             setText(current)
+             hint = "PASTE TORBOX API KEY HERE"
+             setPadding(48, 24, 48, 24)
+-        }
++        })
+         val builder = androidx.appcompat.app.AlertDialog.Builder(this, com.orbital.iptv.utils.ThemeManager.dialogStyle())
+             .setTitle("TORBOX API KEY")
+             .setMessage("Get your key at torbox.app → Settings → API")
+@@ -365,7 +723,8 @@
+                 Toast.makeText(this, "TORBOX KEY REMOVED", Toast.LENGTH_SHORT).show()
+             }
+         }
+-        builder.show()
++        val dlg = builder.show()
++        dlg.window?.decorView?.post { com.orbital.iptv.utils.SEKeyboardController.showFocused(dlg.window!!.decorView) }
+     }
+ 
+     private fun showTickerSportPicker() {
+@@ -416,11 +775,11 @@
+ 
+     private fun showOpenSubsKeyDialog() {
+         val current = PrefsManager.getOpenSubsApiKey(this) ?: ""
+-        val et = android.widget.EditText(this).apply {
++        val et = com.orbital.iptv.utils.SEKeyboardController.prepare(android.widget.EditText(this).apply {
+             setText(current)
+             hint = "PASTE API KEY HERE"
+             setPadding(48, 24, 48, 24)
+-        }
++        })
+         val builder = androidx.appcompat.app.AlertDialog.Builder(this, com.orbital.iptv.utils.ThemeManager.dialogStyle())
+             .setTitle("OPENSUBTITLES API KEY")
+             .setMessage("Get a free key at opensubtitles.com → Consumers")
+@@ -435,16 +794,17 @@
+                 PrefsManager.setOpenSubsApiKey(this, "")
+             }
+         }
+-        builder.show()
++        val dlg = builder.show()
++        dlg.window?.decorView?.post { com.orbital.iptv.utils.SEKeyboardController.showFocused(dlg.window!!.decorView) }
+     }
+ 
+     private fun showTmdbKeyDialog() {
+         val current = PrefsManager.getTmdbApiKey(this) ?: ""
+-        val et = android.widget.EditText(this).apply {
++        val et = com.orbital.iptv.utils.SEKeyboardController.prepare(android.widget.EditText(this).apply {
+             setText(current)
+             hint = "PASTE API KEY HERE"
+             setPadding(48, 24, 48, 24)
+-        }
++        })
+         val builder = androidx.appcompat.app.AlertDialog.Builder(this, com.orbital.iptv.utils.ThemeManager.dialogStyle())
+             .setTitle("TMDB API KEY")
+             .setMessage("Get a free key at themoviedb.org → Settings → API. Used for EPG posters/synopsis.")
+@@ -459,7 +819,8 @@
+                 PrefsManager.setTmdbApiKey(this, "")
+             }
+         }
+-        builder.show()
++        val dlg = builder.show()
++        dlg.window?.decorView?.post { com.orbital.iptv.utils.SEKeyboardController.showFocused(dlg.window!!.decorView) }
+     }
+ 
+     private fun showServerManager() {
+@@ -655,46 +1016,82 @@
+         categoryRows.forEachIndexed { index, category ->
+             val normalBg = if (index % 2 == 0) p.rowEven else p.rowOdd
+             val isSelected = !liveSearchActive && category.categoryId == selected?.categoryId
+-            val tv = TextView(this).apply {
++            val row = LinearLayout(this).apply {
+                 val lp = android.widget.LinearLayout.LayoutParams(
+                     android.widget.LinearLayout.LayoutParams.MATCH_PARENT, rowHeightPx
+                 )
+                 if (marginPx > 0) lp.setMargins(marginPx, marginPx / 2, marginPx, marginPx / 2)
+                 layoutParams = lp
+-                gravity = Gravity.START or Gravity.CENTER_VERTICAL
++                orientation = LinearLayout.HORIZONTAL
++                gravity = Gravity.CENTER_VERTICAL
++                layoutDirection = View.LAYOUT_DIRECTION_LTR
++                tag = category.categoryId
++                if (p.cardElevation > 0f) elevation = p.cardElevation * density
++                isFocusable = false
++            }
++            val nameView = TextView(this).apply {
++                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
++                gravity = Gravity.LEFT or Gravity.CENTER_VERTICAL
+                 setPadding(paddingPx, 0, 0, 0)
+-                val profile = PrefsManager.getActiveProfile(this@HomeActivity)
+-                val favNow = profile?.let { FavouritesManager.containsCategory(this@HomeActivity,"LIVE",it.serverUrl,category.categoryId) } == true
+-                text = category.categoryName + if(favNow) "   ♥" else "   ♡"
++                layoutDirection = View.LAYOUT_DIRECTION_LTR
++                textDirection = View.TEXT_DIRECTION_ANY_RTL
++                text = category.categoryName
+                 textSize = 12f
+                 typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+                 isClickable = true; isFocusable = true
++            }
++            val heartView = TextView(this).apply {
++                id = View.generateViewId()
++                layoutParams = LinearLayout.LayoutParams((56 * density).toInt(), LinearLayout.LayoutParams.MATCH_PARENT)
++                gravity = Gravity.CENTER
++                setPadding(0, 0, paddingPx / 2, 0)
++                textSize = 23f
++                typeface = Typeface.DEFAULT
++                isClickable = true; isFocusable = true
+                 nextFocusRightId = R.id.rv_live_channels
+-                tag = category.categoryId
+-                if (p.cardElevation > 0f) elevation = p.cardElevation * density
+-                background = if (isSelected) ThemeManager.roundedBg(p.highlight, density) else ThemeManager.roundedBg(normalBg, density)
+-                setTextColor(if (isSelected) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
+-                setOnFocusChangeListener { _, hasFocus -> if (!isSelected) background = ThemeManager.focusRowDrawable(density, normalBg, hasFocus) }
+-                setOnTouchListener { v,e -> if(e.action==MotionEvent.ACTION_UP && e.x>v.width-(56*density)) { val profile=PrefsManager.getActiveProfile(this@HomeActivity); if(profile!=null) (v as TextView).text=category.categoryName+if(FavouritesManager.toggleCategory(this@HomeActivity,"LIVE",category.categoryId,category.categoryName,profile.serverUrl,profile.id)) "   ♥" else "   ♡"; true } else false }
+-                setOnClickListener {
+-                    liveSearchActive = false
+-                    if (PinManager.isCategoryLocked(this@HomeActivity, category.categoryId)) {
+-                        promptPin("ENTER PIN TO VIEW CATEGORY") { viewModel.selectXtreamCategory(category) }
+-                    } else viewModel.selectXtreamCategory(category)
+-                }
+-            }
+-            container.addView(tv)
++            }
++            nameView.nextFocusRightId = heartView.id
++            val profile = PrefsManager.getActiveProfile(this@HomeActivity)
++            fun syncHeart() {
++                val fav = profile?.let { FavouritesManager.containsCategory(this@HomeActivity, "LIVE", it.serverUrl, category.categoryId) } == true
++                heartView.text = if (fav) "♥" else "♡"
++                heartView.setTextColor(if (fav) 0xFFFF2222.toInt() else 0xFFFFFFFF.toInt())
++            }
++            syncHeart()
++            fun syncBackground(hasFocus: Boolean = nameView.hasFocus() || heartView.hasFocus()) {
++                row.background = if (isSelected) ThemeManager.roundedBg(p.highlight, density)
++                else ThemeManager.focusRowDrawable(density, normalBg, hasFocus)
++                nameView.setTextColor(if (isSelected) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
++            }
++            nameView.setOnFocusChangeListener { _, hasFocus -> syncBackground(hasFocus) }
++            heartView.setOnFocusChangeListener { _, hasFocus -> syncBackground(hasFocus) }
++            nameView.setOnClickListener {
++                liveSearchActive = false
++                if (PinManager.isCategoryLocked(this@HomeActivity, category.categoryId)) {
++                    promptPin("ENTER PIN TO VIEW CATEGORY") { viewModel.selectXtreamCategory(category) }
++                } else viewModel.selectXtreamCategory(category)
++            }
++            heartView.setOnClickListener {
++                if (profile != null) {
++                    FavouritesManager.toggleCategory(this@HomeActivity, "LIVE", category.categoryId, category.categoryName, profile.serverUrl, profile.id)
++                    syncHeart()
++                }
++            }
++            row.addView(nameView)
++            row.addView(heartView)
++            syncBackground()
++            container.addView(row)
+         }
+     }
+ 
+     private var liveSearchQuery: String = ""
+ 
+     private fun showLiveSearchDialog() {
+-        val input = android.widget.EditText(this).apply {
++        val input = com.orbital.iptv.utils.SEKeyboardController.prepare(android.widget.EditText(this).apply {
+             hint = "SEARCH CHANNEL OR CATEGORY"
+             setSingleLine(true)
+             requestFocus()
+-        }
++        })
+         AlertDialog.Builder(this, ThemeManager.dialogStyle())
+             .setTitle("SEARCH LIVE TV")
+             .setView(input)
+@@ -708,7 +1105,10 @@
+                 setupCategoryMenu(state?.xtreamCategories ?: emptyList(), state?.selectedXtreamCategory)
+             }
+             .setNegativeButton("CANCEL", null)
+-            .show()
++            .create().also { dlg ->
++                dlg.setOnShowListener { dlg.window?.decorView?.let { root -> com.orbital.iptv.utils.SEKeyboardController.showFocused(root) } }
++                dlg.show()
++            }
+     }
+ 
+     private fun toggleLiveFormat() {
+@@ -1096,7 +1496,7 @@
+ 
+     // ── PIN helpers ───────────────────────────────────────────────────────────
+ 
+-    private fun pinEditText(hint: String) = android.widget.EditText(this).apply {
++    private fun pinEditText(hint: String) = com.orbital.iptv.utils.SEKeyboardController.prepare(android.widget.EditText(this).apply {
+         inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                     android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+         filters = arrayOf(android.text.InputFilter.LengthFilter(4))
+@@ -1104,7 +1504,7 @@
+         gravity = android.view.Gravity.CENTER
+         textSize = 22f
+         setPadding(48, 32, 48, 16)
+-    }
++    })
+ 
+     private fun promptPin(title: String, onCorrect: () -> Unit) {
+         val et = pinEditText("ENTER PIN")
+@@ -1116,7 +1516,10 @@
+                 else Toast.makeText(this, "INCORRECT PIN", Toast.LENGTH_SHORT).show()
+             }
+             .setNegativeButton("CANCEL", null)
+-            .show()
++            .create().also { dlg ->
++                dlg.setOnShowListener { dlg.window?.decorView?.let { root -> com.orbital.iptv.utils.SEKeyboardController.showFocused(root) } }
++                dlg.show()
++            }
+     }
+ 
+     private fun showPinProtectedCategories() {
+@@ -1161,7 +1564,10 @@
+                 else Toast.makeText(this, "PIN MUST BE 4 DIGITS", Toast.LENGTH_SHORT).show()
+             }
+             .setNegativeButton("CANCEL", null)
+-            .show()
++            .create().also { dlg ->
++                dlg.setOnShowListener { dlg.window?.decorView?.let { root -> com.orbital.iptv.utils.SEKeyboardController.showFocused(root) } }
++                dlg.show()
++            }
+     }
+ 
+     private fun confirmNewPin(newPin: String) {
+@@ -1178,6 +1584,9 @@
+                 }
+             }
+             .setNegativeButton("CANCEL", null)
+-            .show()
++            .create().also { dlg ->
++                dlg.setOnShowListener { dlg.window?.decorView?.let { root -> com.orbital.iptv.utils.SEKeyboardController.showFocused(root) } }
++                dlg.show()
++            }
+     }
+ }
+--- a/app/src/main/java/com/orbital/iptv/ui/login/LoginActivity.kt
++++ b/app/src/main/java/com/orbital/iptv/ui/login/LoginActivity.kt
+@@ -1,6 +1,5 @@
+ package com.orbital.iptv.ui.login
+ 
+-import android.content.Context
+ import android.content.Intent
+ import android.content.pm.PackageManager
+ import android.os.Build
+@@ -8,7 +7,6 @@
+ import android.view.KeyEvent
+ import android.view.View
+ import android.view.inputmethod.EditorInfo
+-import android.view.inputmethod.InputMethodManager
+ import android.widget.EditText
+ import androidx.appcompat.app.AppCompatActivity
+ import androidx.lifecycle.lifecycleScope
+@@ -21,6 +19,7 @@
+ import kotlinx.coroutines.launch
+ import com.orbital.iptv.utils.ThemeManager
+ import com.orbital.iptv.R
++import com.orbital.iptv.utils.SEKeyboardController
+ 
+ class LoginActivity : AppCompatActivity() {
+ 
+@@ -70,15 +69,13 @@
+ 
+     private fun setupKeyboardOnFocus() {
+         listOf(binding.etProfileName, binding.etServerUrl, binding.etUsername, binding.etPassword).forEach { et ->
+-            et.setOnFocusChangeListener { view, hasFocus ->
+-                if (hasFocus) view.postDelayed({ showKeyboard(view) }, 200)
+-            }
+-            et.setOnClickListener { view -> showKeyboard(view) }
++            et.showSoftInputOnFocus = false
+         }
+ 
+-        // Fire TV / Android TV on-screen keyboards capture D-pad up/down for their own key
+-        // grid, so D-pad focus search alone can't escape a field once the IME is open. Wire
+-        // the keyboard's Next/Done action explicitly so it always advances focus.
++        // The original screen opened the Android/TV IME. SE now keeps text entry
++        // completely inside the app with SEKeyboardController.
++        SEKeyboardController.install(this)
++
+         binding.etProfileName.setOnEditorActionListener { _, actionId, _ ->
+             if (actionId == EditorInfo.IME_ACTION_NEXT) { binding.etServerUrl.requestFocus(); true } else false
+         }
+@@ -93,22 +90,11 @@
+         }
+     }
+ 
+-    private fun showKeyboard(view: View) {
+-        view.requestFocus()
+-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+-            view.windowInsetsController?.show(android.view.WindowInsets.Type.ime())
+-        } else {
+-            @Suppress("DEPRECATION")
+-            (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+-                .showSoftInput(view, InputMethodManager.SHOW_FORCED)
+-        }
+-    }
+-
+     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+         if (event.action == KeyEvent.ACTION_DOWN &&
+             (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)) {
+             val focused = currentFocus
+-            if (focused is EditText) showKeyboard(focused)
++            if (focused is EditText) SEKeyboardController.showFor(focused)
+         }
+         return super.dispatchKeyEvent(event)
+     }
+--- a/app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
++++ b/app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
+@@ -6,7 +6,6 @@
+ import android.os.Bundle
+ import android.view.Gravity
+ import android.view.View
+-import android.view.MotionEvent
+ import android.widget.LinearLayout
+ import android.widget.TextView
+ import android.widget.Toast
+@@ -186,38 +185,70 @@
+             val isSelected = !showingContinue && !showingFavourites && !showingSearch && !showingAll && !showingLastAdded && cat.categoryId == selected?.categoryId
+             val idx = i + offset
+             val normalBg = if (idx % 2 == 0) p.bgMid else p.bgPrimary
+-            container.addView(TextView(this).apply {
++            val row = LinearLayout(this).apply {
+                 val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, rowH)
+                 if (marginPx > 0) lp.setMargins(marginPx, marginPx / 2, marginPx, marginPx / 2)
+                 layoutParams = lp
+-                gravity = Gravity.START or Gravity.CENTER_VERTICAL
++                orientation = LinearLayout.HORIZONTAL
++                gravity = Gravity.CENTER_VERTICAL
++                layoutDirection = View.LAYOUT_DIRECTION_LTR
++                isFocusable = false
++            }
++            val nameView = TextView(this).apply {
++                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
++                gravity = Gravity.LEFT or Gravity.CENTER_VERTICAL
+                 setPadding(pad, 0, 0, 0)
+-                val profile = PrefsManager.getActiveProfile(this@SeriesActivity)
+-                val favNow = profile?.let { FavouritesManager.containsCategory(this@SeriesActivity, "SERIES", it.serverUrl, cat.categoryId) } == true
+-                text = cat.categoryName + if (favNow) "   ♥" else "   ♡"
++                layoutDirection = View.LAYOUT_DIRECTION_LTR
++                textDirection = View.TEXT_DIRECTION_ANY_RTL
++                text = cat.categoryName
+                 textSize = 13f
+                 typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+                 isClickable = true; isFocusable = true
+-                background = if (isSelected) ThemeManager.roundedBg(p.highlight, density) else ThemeManager.roundedBg(normalBg, density)
+-                setTextColor(if (isSelected) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
+-                setOnFocusChangeListener { _, hasFocus -> if (!isSelected) background = ThemeManager.focusRowDrawable(density, normalBg, hasFocus) }
+-                setOnTouchListener { v,e ->
+-                    if(e.action==MotionEvent.ACTION_UP && e.x>v.width-(56*density)) {
+-                        val profile=PrefsManager.getActiveProfile(this@SeriesActivity)
+-                        if(profile!=null) (v as TextView).text=cat.categoryName+if(FavouritesManager.toggleCategory(this@SeriesActivity,"SERIES",cat.categoryId,cat.categoryName,profile.serverUrl,profile.id)) "   ♥" else "   ♡"
+-                        true
+-                    } else false
+-                }
+-                setOnClickListener {
+-                    showingContinue = false; showingFavourites = false; showingSearch = false; showingAll = false; showingLastAdded = false
+-                    viewModel.selectCategory(cat)
+-                }
+-            })
++            }
++            val heartView = TextView(this).apply {
++                id = View.generateViewId()
++                layoutParams = LinearLayout.LayoutParams((56 * density).toInt(), LinearLayout.LayoutParams.MATCH_PARENT)
++                gravity = Gravity.CENTER
++                setPadding(0, 0, pad / 2, 0)
++                textSize = 24f
++                typeface = Typeface.DEFAULT
++                isClickable = true; isFocusable = true
++                nextFocusRightId = R.id.rv_shows
++            }
++            nameView.nextFocusRightId = heartView.id
++            val profile = PrefsManager.getActiveProfile(this@SeriesActivity)
++            fun syncHeart() {
++                val fav = profile?.let { FavouritesManager.containsCategory(this@SeriesActivity, "SERIES", it.serverUrl, cat.categoryId) } == true
++                heartView.text = if (fav) "♥" else "♡"
++                heartView.setTextColor(if (fav) 0xFFFF2222.toInt() else 0xFFFFFFFF.toInt())
++            }
++            syncHeart()
++            fun syncBackground(hasFocus: Boolean = nameView.hasFocus() || heartView.hasFocus()) {
++                row.background = if (isSelected) ThemeManager.roundedBg(p.highlight, density)
++                else ThemeManager.focusRowDrawable(density, normalBg, hasFocus)
++                nameView.setTextColor(if (isSelected) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
++            }
++            nameView.setOnFocusChangeListener { _, hasFocus -> syncBackground(hasFocus) }
++            heartView.setOnFocusChangeListener { _, hasFocus -> syncBackground(hasFocus) }
++            nameView.setOnClickListener {
++                showingContinue = false; showingFavourites = false; showingSearch = false; showingAll = false; showingLastAdded = false
++                viewModel.selectCategory(cat)
++            }
++            heartView.setOnClickListener {
++                if (profile != null) {
++                    FavouritesManager.toggleCategory(this@SeriesActivity, "SERIES", cat.categoryId, cat.categoryName, profile.serverUrl, profile.id)
++                    syncHeart()
++                }
++            }
++            row.addView(nameView)
++            row.addView(heartView)
++            syncBackground()
++            container.addView(row)
+         }
+     }
+ 
+     private fun showSeriesSearchDialog() {
+-        val input = EditText(this).apply { hint = "SEARCH SERIES"; setSingleLine(true); requestFocus() }
++        val input = com.orbital.iptv.utils.SEKeyboardController.prepare(EditText(this).apply { hint = "SEARCH SERIES"; setSingleLine(true); requestFocus() })
+         AlertDialog.Builder(this, ThemeManager.dialogStyle())
+             .setTitle("SEARCH SERIES")
+             .setView(input)
+@@ -232,7 +263,10 @@
+                 }
+             }
+             .setNegativeButton("CANCEL", null)
+-            .show()
++            .create().also { dlg ->
++                dlg.setOnShowListener { dlg.window?.decorView?.let { root -> com.orbital.iptv.utils.SEKeyboardController.showFocused(root) } }
++                dlg.show()
++            }
+     }
+ 
+     private suspend fun ensureAllSeries(): List<SeriesStream> {
+--- a/app/src/main/java/com/orbital/iptv/ui/tv/TvModeActivity.kt
++++ b/app/src/main/java/com/orbital/iptv/ui/tv/TvModeActivity.kt
+@@ -1666,12 +1666,13 @@
+             } else false
+         }
+         activeDialog = dlg
++        dlg.window?.decorView?.post { com.orbital.iptv.utils.SEKeyboardController.showFocused(dlg.window?.decorView ?: return@post) }
+         return dlg
+     }
+ 
+     // ── PIN helpers ───────────────────────────────────────────────────────────
+ 
+-    private fun tvPinEditText(hint: String) = android.widget.EditText(this).apply {
++    private fun tvPinEditText(hint: String) = com.orbital.iptv.utils.SEKeyboardController.prepare(android.widget.EditText(this).apply {
+         inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                     android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+         filters = arrayOf(android.text.InputFilter.LengthFilter(4))
+@@ -1679,7 +1680,7 @@
+         gravity = Gravity.CENTER
+         textSize = 22f
+         setPadding(48, 32, 48, 16)
+-    }
++    })
+ 
+     private fun tvPromptPin(title: String, onCorrect: () -> Unit) {
+         val et = tvPinEditText("ENTER PIN")
+@@ -1819,11 +1820,11 @@
+ 
+     private fun showTorboxKeyDialog() {
+         val current = com.orbital.iptv.utils.TorboxPrefsManager.getApiKey(this) ?: ""
+-        val et = android.widget.EditText(this).apply {
++        val et = com.orbital.iptv.utils.SEKeyboardController.prepare(android.widget.EditText(this).apply {
+             setText(current)
+             hint = "PASTE TORBOX API KEY HERE"
+             setPadding(48, 24, 48, 24)
+-        }
++        })
+         val builder = AlertDialog.Builder(this, com.orbital.iptv.utils.ThemeManager.dialogStyle())
+             .setTitle("TORBOX API KEY")
+             .setMessage("Get your key at torbox.app → Settings → API")
+@@ -2046,11 +2047,11 @@
+ 
+     private fun showOpenSubsKeyDialog() {
+         val current = PrefsManager.getOpenSubsApiKey(this) ?: ""
+-        val et = android.widget.EditText(this).apply {
++        val et = com.orbital.iptv.utils.SEKeyboardController.prepare(android.widget.EditText(this).apply {
+             setText(current)
+             hint = "PASTE API KEY HERE"
+             setPadding(48, 24, 48, 24)
+-        }
++        })
+         val builder = AlertDialog.Builder(this, com.orbital.iptv.utils.ThemeManager.dialogStyle())
