@@ -51,11 +51,11 @@ jobs:
       - name: Set v100.0.23 version
         run: |
           set -euo pipefail
-          sed -E -i \
-            -e 's/100002[0-9]+/1000023/g' \
-            -e 's/100\\.0\\.[0-9]+/100.0.23/g' \
-            -e 's/V100\\.0\\.[0-9]+/V100.0.23/g' \
-            app/build.gradle settings.gradle app/src/main/res/layout/activity_settings.xml SE_BUILD_MANIFEST.txt 2>/dev/null || true
+          perl -0pi -e 's/versionCode\s+\d+/versionCode 1000023/' app/build.gradle
+          perl -0pi -e 's/versionName\s+"[^"]+"/versionName "100.0.23"/' app/build.gradle
+          printf 'rootProject.name = "SEAndroid_v100.0.23"\ninclude '\''\:app'\''\n' > settings.gradle
+          sed -E -i 's/V100\.0\.[0-9]+/V100.0.23/g' app/src/main/res/layout/activity_settings.xml 2>/dev/null || true
+          printf 'SE IPTV PLAYER — SEAndroid v100.0.23\nBase source: SEAndroid_v100.0.22-source.zip\nGitHub build output increments the version to v100.0.23.\n' > SE_BUILD_MANIFEST.txt
           grep -q 'versionCode 1000023' app/build.gradle
           grep -q 'versionName "100.0.23"' app/build.gradle
           grep -q 'SEAndroid_v100.0.23' settings.gradle
