@@ -1,1 +1,1 @@
-Trigger GitHub build for SEAndroid_v100.0.23 from exact v100.0.22 source.
+Trigger v23 build after settings.gradle syntax fix.
