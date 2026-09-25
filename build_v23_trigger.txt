@@ -1,1 +1,1 @@
-Final v23 build from complete v22 source.
+Final v23 build after newline-preserving source sync.
