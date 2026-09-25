@@ -1,0 +1,5 @@
+<scale xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/app_logo"
+    android:scaleWidth="85%"
+    android:scaleHeight="85%"
+    android:scaleGravity="center" />
