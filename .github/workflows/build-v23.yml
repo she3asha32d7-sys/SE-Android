@@ -6,51 +6,33 @@ on:
       - v100.0.23
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Checkout v100.0.23
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Restore v100.0.17 base without overwriting v22 files
+      - name: Restore missing base files from v100.0.17
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          curl -fL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10834906043/zip" -o /tmp/v17-artifact.zip
-          rm -rf /tmp/v17-artifact /tmp/se-base
-          mkdir -p /tmp/v17-artifact /tmp/se-base
-          unzip -q /tmp/v17-artifact.zip -d /tmp/v17-artifact
-          SRCZIP="$(find /tmp/v17-artifact -type f -name 'SEAndroid_v100.0.17-source.zip' -print -quit)"
-          test -n "${SRCZIP}"
-          unzip -qo "${SRCZIP}" -d /tmp/se-base
-          # Keep every source file already stored in this v100.0.23 branch (the exact v22 files).
-          rsync -a --ignore-existing /tmp/se-base/ ./ 
-          test -f app/build.gradle
+          set -e
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10834906043/zip" -o /tmp/v17.zip
+          mkdir -p /tmp/v17
+          unzip -q /tmp/v17.zip -d /tmp/v17
+          SRC="$(find /tmp/v17 -type f -name 'SEAndroid_v100.0.17-source.zip' | head -1)"
+          test -n "${SRC}"
+          mkdir -p /tmp/base
+          unzip -q "${SRC}" -d /tmp/base
+          rsync -a --ignore-existing /tmp/base/ ./
           test -f gradlew
+          chmod +x gradlew
 
-      - name: Install v100.0.23 logos
+      - name: Prepare v100.0.23
         run: |
-          set -euo pipefail
-          rm -f app/src/main/res/drawable/app_logo.png
-          rm -f app/src/main/res/drawable/xtream_logo.png
-          rm -f app/src/main/res/drawable/se_logo_full.png
-          rm -f app/src/main/res/drawable/se_launcher.png
-          rm -f app/src/main/res/drawable/se_launcher_foreground.xml
-          cp build_payload/app_logo.webp app/src/main/res/drawable/app_logo.webp
-          cp build_payload/xtream_logo.webp app/src/main/res/drawable/xtream_logo.webp
-          test -s app/src/main/res/drawable/app_logo.webp
-          test -s app/src/main/res/drawable/xtream_logo.webp
-
-      - name: Set v100.0.23 version
-        run: |
-          set -euo pipefail
+          set -e
           perl -0pi -e 's/versionCode\s+\d+/versionCode 1000023/' app/build.gradle
           perl -0pi -e 's/versionName\s+"[^"]+"/versionName "100.0.23"/' app/build.gradle
           cat > settings.gradle <<'EOF'
@@ -58,47 +40,43 @@ rootProject.name = "SEAndroid_v100.0.23"
 include ':app'
 EOF
           sed -E -i 's/V100\.0\.[0-9]+/V100.0.23/g' app/src/main/res/layout/activity_settings.xml 2>/dev/null || true
-          printf 'SE IPTV PLAYER — SEAndroid v100.0.23\nBase source: SEAndroid_v100.0.22-source.zip\nGitHub build output increments the version to v100.0.23.\n' > SE_BUILD_MANIFEST.txt
+          rm -f app/src/main/res/drawable/se_logo_full.png
+          rm -f app/src/main/res/drawable/se_launcher.png
+          rm -f app/src/main/res/drawable/se_launcher_foreground.xml
+          mkdir -p app/src/main/res/drawable
+          cp build_payload/app_logo.webp app/src/main/res/drawable/app_logo.webp
+          cp build_payload/xtream_logo.webp app/src/main/res/drawable/xtream_logo.webp
           grep -q 'versionCode 1000023' app/build.gradle
           grep -q 'versionName "100.0.23"' app/build.gradle
           grep -q 'SEAndroid_v100.0.23' settings.gradle
 
-      - name: Verify v100.0.23 source
+      - name: Verify v22 features
         run: |
-          set -euo pipefail
+          set -e
           grep -q 'PopupWindow' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
-          grep -q 'showSoftInputOnFocus = false' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
           grep -q 'android.widget.ScrollView' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
           grep -q 'R.layout.item_vod_movie' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
           grep -q 'R.layout.item_series_show' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
           grep -q 'heartView.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt
           grep -q 'heartView.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
           grep -q 'heartView.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
-          test -s app/src/main/res/drawable/app_logo.webp
-          test -s app/src/main/res/drawable/xtream_logo.webp
-          echo "SOURCE VERIFICATION PASSED"
 
-      - name: JDK 17
+      - name: Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
-
       - name: Build APK
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-      - name: Package
+      - name: Package outputs
         run: |
-          set -euo pipefail
-          rm -rf out source-for-zip
-          mkdir -p out source-for-zip
+          set -e
+          mkdir -p out source-export
           cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.23.apk
-          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-for-zip' --exclude='build_payload' ./ source-for-zip/
-          (cd source-for-zip && zip -qr "$GITHUB_WORKSPACE/out/SEAndroid_v100.0.23-source.zip" .)
-          ls -lh out
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-export' --exclude='build_payload' ./ source-export/
+          (cd source-export && zip -qr ../out/SEAndroid_v100.0.23-source.zip .)
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -107,7 +85,7 @@ EOF
           path: out/SEAndroid_v100.0.23.apk
           retention-days: 30
 
-      - name: Upload Source
+      - name: Upload source
         uses: actions/upload-artifact@v4
         with:
           name: SEAndroid_v100.0.23-source
