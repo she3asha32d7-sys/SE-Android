@@ -497,7 +497,8 @@ class TvModeActivity : AppCompatActivity() {
         timerReset(binding.btnHudAudio)
 
         updateSurroundButton()
-        binding.btnHudSurround.setOnClickListener { toggleSurroundSound() }        timerReset(binding.btnHudSurround)
+        binding.btnHudSurround.setOnClickListener { toggleSurroundSound() }
+        timerReset(binding.btnHudSurround)
 
         updateRecordButton()
         binding.btnHudRecord.setOnFocusChangeListener { _, hasFocus ->
@@ -997,6 +998,7 @@ class TvModeActivity : AppCompatActivity() {
         refreshCategoryChannels()
         loadChannelPanel(categoryChannels)
     }
+
     /** Open the CATEGORIES panel (category picker). */
     private fun showCategoryPanel() {
         panelState = PanelState.CATEGORIES
@@ -1495,7 +1497,8 @@ class TvModeActivity : AppCompatActivity() {
             setTextColor(0xFFCCDDEE.toInt())
             textSize = 12f
             typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
-        }        root.addView(poster)
+        }
+        root.addView(poster)
         root.addView(infoTv)
         return Triple(root, poster, infoTv)
     }
@@ -1994,6 +1997,7 @@ class TvModeActivity : AppCompatActivity() {
             }
             .setNegativeButton("CANCEL", null))
     }
+
     private fun showManageCategoriesDialog() {
         val categories = TvModeHolder.categories
         if (categories.isEmpty()) {
@@ -2493,7 +2497,8 @@ class CategoryPanelAdapter(
     private val items: List<LiveCategory>,
     private val currentCategoryId: String,
     private val countMap: Map<String, Int>,
-    private val alpha: Int = 255,    private val onSelect: (LiveCategory) -> Unit
+    private val alpha: Int = 255,
+    private val onSelect: (LiveCategory) -> Unit
 ) : RecyclerView.Adapter<CategoryPanelAdapter.VH>() {
 
     inner class VH(val tv: TextView) : RecyclerView.ViewHolder(tv)
