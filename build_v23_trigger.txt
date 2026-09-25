@@ -1,1 +1,1 @@
-Trigger v23 build after settings.gradle syntax fix.
+Trigger clean v23 build workflow.
