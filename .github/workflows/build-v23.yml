@@ -40,8 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s build_payload/v22-text-clean.patch
-          cp build_payload/v22-text-clean.patch /tmp/v18-v22-text.patch
-          patch -p1 --forward --batch < /tmp/v18-v22-text.patch
+          patch -p1 --forward --batch < build_payload/v22-text-clean.patch
 
       - name: Install v100.0.23 logos
         run: |

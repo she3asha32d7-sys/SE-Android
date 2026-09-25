@@ -397,8 +397,7 @@
 +                streamUrl = fav.streamUrl,
 +                title = fav.title,
 +                streamId = fav.streamId,
-+                isLive = false,
-+                favId = fav.id,
++                isLive = false,+                favId = fav.id,
 +                artUrl = fav.artUrl,
 +                resumeMs = fav.resumePositionMs,
 +                seriesId = fav.seriesId,
@@ -797,8 +796,7 @@
 -            et.setOnClickListener { view -> showKeyboard(view) }
 +            et.showSoftInputOnFocus = false
          }
- 
--        // Fire TV / Android TV on-screen keyboards capture D-pad up/down for their own key
+ -        // Fire TV / Android TV on-screen keyboards capture D-pad up/down for their own key
 -        // grid, so D-pad focus search alone can't escape a field once the IME is open. Wire
 -        // the keyboard's Next/Done action explicitly so it always advances focus.
 +        // The original screen opened the Android/TV IME. SE now keeps text entry
@@ -998,3 +996,569 @@
 -        }
 +        })
          val builder = AlertDialog.Builder(this, com.orbital.iptv.utils.ThemeManager.dialogStyle())
+             .setTitle("OPENSUBTITLES API KEY")
+             .setMessage("Get a free key at opensubtitles.com → Consumers")
+@@ -2070,11 +2071,11 @@
+ 
+     private fun showTmdbKeyDialog() {
+         val current = PrefsManager.getTmdbApiKey(this) ?: ""
+-        val et = android.widget.EditText(this).apply {
++        val et = com.orbital.iptv.utils.SEKeyboardController.prepare(android.widget.EditText(this).apply {
+             setText(current)
+             hint = "PASTE API KEY HERE"
+             setPadding(48, 24, 48, 24)
+-        }
++        })
+         val builder = AlertDialog.Builder(this, com.orbital.iptv.utils.ThemeManager.dialogStyle())
+             .setTitle("TMDB API KEY")
+             .setMessage("Get a free key at themoviedb.org → Settings → API. Used for EPG posters/synopsis.")
+--- a/app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt
++++ b/app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt
+@@ -6,7 +6,6 @@
+ import android.os.Bundle
+ import android.view.Gravity
+ import android.view.View
+-import android.view.MotionEvent
+ import android.widget.LinearLayout
+ import android.widget.TextView
+ import android.widget.Toast
+@@ -183,43 +182,75 @@
+             val isSelected = !showingContinue && !showingFavourites && !showingSearch && !showingAll && cat.categoryId == selected?.categoryId
+             val idx = i + offset
+             val normalBg = if (idx % 2 == 0) p.bgMid else p.bgPrimary
+-            container.addView(TextView(this).apply {
++            val row = LinearLayout(this).apply {
+                 val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, rowH)
+                 if (marginPx > 0) lp.setMargins(marginPx, marginPx / 2, marginPx, marginPx / 2)
+                 layoutParams = lp
+-                gravity = Gravity.START or Gravity.CENTER_VERTICAL
++                orientation = LinearLayout.HORIZONTAL
++                gravity = Gravity.CENTER_VERTICAL
++                layoutDirection = View.LAYOUT_DIRECTION_LTR
++                isFocusable = false
++            }
++            val nameView = TextView(this).apply {
++                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
++                gravity = Gravity.LEFT or Gravity.CENTER_VERTICAL
+                 setPadding(pad, 0, 0, 0)
+-                val profile = PrefsManager.getActiveProfile(this@VodActivity)
+-                val favNow = profile?.let { FavouritesManager.containsCategory(this@VodActivity, "MOVIES", it.serverUrl, cat.categoryId) } == true
+-                text = cat.categoryName + if (favNow) "   ♥" else "   ♡"
++                layoutDirection = View.LAYOUT_DIRECTION_LTR
++                textDirection = View.TEXT_DIRECTION_ANY_RTL
++                text = cat.categoryName
+                 textSize = 13f
+                 typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+                 isClickable = true; isFocusable = true
+-                background = if (isSelected) ThemeManager.roundedBg(p.highlight, density) else ThemeManager.roundedBg(normalBg, density)
+-                setTextColor(if (isSelected) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
+-                setOnFocusChangeListener { _, hasFocus -> if (!isSelected) background = ThemeManager.focusRowDrawable(density, normalBg, hasFocus) }
+-                setOnTouchListener { v,e ->
+-                    if(e.action==MotionEvent.ACTION_UP && e.x>v.width-(56*density)) {
+-                        val profile=PrefsManager.getActiveProfile(this@VodActivity)
+-                        if(profile!=null) (v as TextView).text=cat.categoryName+if(FavouritesManager.toggleCategory(this@VodActivity,"MOVIES",cat.categoryId,cat.categoryName,profile.serverUrl,profile.id)) "   ♥" else "   ♡"
+-                        true
+-                    } else false
+-                }
+-                setOnClickListener {
+-                    showingContinue = false; showingFavourites = false; showingSearch = false; showingAll = false
+-                    viewModel.selectCategory(cat)
+-                }
+-            })
++            }
++            val heartView = TextView(this).apply {
++                id = View.generateViewId()
++                layoutParams = LinearLayout.LayoutParams((56 * density).toInt(), LinearLayout.LayoutParams.MATCH_PARENT)
++                gravity = Gravity.CENTER
++                setPadding(0, 0, pad / 2, 0)
++                textSize = 24f
++                typeface = Typeface.DEFAULT
++                isClickable = true; isFocusable = true
++                nextFocusRightId = R.id.rv_movies
++            }
++            nameView.nextFocusRightId = heartView.id
++            val profile = PrefsManager.getActiveProfile(this@VodActivity)
++            fun syncHeart() {
++                val fav = profile?.let { FavouritesManager.containsCategory(this@VodActivity, "MOVIES", it.serverUrl, cat.categoryId) } == true
++                heartView.text = if (fav) "♥" else "♡"
++                heartView.setTextColor(if (fav) 0xFFFF2222.toInt() else 0xFFFFFFFF.toInt())
++            }
++            syncHeart()
++            fun syncBackground(hasFocus: Boolean = nameView.hasFocus() || heartView.hasFocus()) {
++                row.background = if (isSelected) ThemeManager.roundedBg(p.highlight, density)
++                else ThemeManager.focusRowDrawable(density, normalBg, hasFocus)
++                nameView.setTextColor(if (isSelected) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
++            }
++            nameView.setOnFocusChangeListener { _, hasFocus -> syncBackground(hasFocus) }
++            heartView.setOnFocusChangeListener { _, hasFocus -> syncBackground(hasFocus) }
++            nameView.setOnClickListener {
++                showingContinue = false; showingFavourites = false; showingSearch = false; showingAll = false
++                viewModel.selectCategory(cat)
++            }
++            heartView.setOnClickListener {
++                if (profile != null) {
++                    FavouritesManager.toggleCategory(this@VodActivity, "MOVIES", cat.categoryId, cat.categoryName, profile.serverUrl, profile.id)
++                    syncHeart()
++                }
++            }
++            row.addView(nameView)
++            row.addView(heartView)
++            syncBackground()
++            container.addView(row)
+         }
+     }
+ 
+     private fun showMovieSearchDialog() {
+-        val input = EditText(this).apply {
++        val input = com.orbital.iptv.utils.SEKeyboardController.prepare(EditText(this).apply {
+             hint = "SEARCH MOVIES"
+             setSingleLine(true)
+             setText("")
+             requestFocus()
+-        }
++        })
+         AlertDialog.Builder(this, ThemeManager.dialogStyle())
+             .setTitle("SEARCH MOVIES")
+             .setView(input)
+@@ -234,7 +265,10 @@
+                 }
+             }
+             .setNegativeButton("CANCEL", null)
+-            .show()
++            .create().also { dlg ->
++                dlg.setOnShowListener { dlg.window?.decorView?.let { root -> com.orbital.iptv.utils.SEKeyboardController.showFocused(root) } }
++                dlg.show()
++            }
+     }
+ 
+     private suspend fun ensureAllMovies(): List<VodStream> {
+--- /dev/null
++++ b/app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+@@ -0,0 +1,325 @@
++package com.orbital.iptv.utils
++
++import android.app.Activity
++import android.app.Dialog
++import android.content.Context
++import android.graphics.Color
++import android.graphics.Rect
++import android.graphics.drawable.GradientDrawable
++import android.text.Editable
++import android.text.InputType
++import android.view.Gravity
++import android.view.View
++import android.view.ViewGroup
++import android.view.ViewTreeObserver
++import android.view.inputmethod.InputMethodManager
++import android.widget.EditText
++import android.widget.LinearLayout
++import android.widget.PopupWindow
++import android.widget.TextView
++import androidx.core.content.ContextCompat
++import com.orbital.iptv.R
++import java.lang.ref.WeakReference
++import java.util.WeakHashMap
++
++/**
++ * SE's in-app keyboard. It deliberately does not register an Android IME:
++ * the keyboard is rendered inside SE and writes directly to the focused field.
++ */
++object SEKeyboardController {
++    private const val KEY_HEIGHT_DP = 42
++    private const val KEY_GAP_DP = 4
++    private const val PANEL_PADDING_DP = 8
++
++    private val installedRoots = WeakHashMap<View, Boolean>()
++    private var activeTarget: WeakReference<EditText>? = null
++    private var activePopup: PopupWindow? = null
++    private var shift = false
++    private var symbols = false
++
++    fun install(activity: Activity) {
++        activity.window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
++        installRoot(activity.window.decorView)
++    }
++
++    fun installDialog(dialog: Dialog) {
++        dialog.setOnShowListener {
++            dialog.window?.decorView?.let { installRoot(it) }
++        }
++    }
++
++    fun prepare(editText: EditText): EditText {
++        editText.showSoftInputOnFocus = false
++        editText.setOnTouchListener { v, _ ->
++            (v as? EditText)?.let { showFor(it) }
++            false
++        }
++        editText.setOnFocusChangeListener { v, hasFocus ->
++            if (hasFocus) (v as? EditText)?.let { showFor(it) }
++            else if (activeTarget?.get() === v) hide()
++        }
++        return editText+    }
++
++    fun showFor(editText: EditText) {
++        editText.showSoftInputOnFocus = false
++        hideSystemIme(editText)
++        activeTarget = WeakReference(editText)
++        val root = editText.rootView
++        if (root == null || root.width <= 0 || root.height <= 0) {
++            editText.post { showFor(editText) }
++            return
++        }
++        shift = false
++        symbols = isNumericField(editText)
++        showKeyboardPopup(editText, root)
++    }
++
++    fun hide() {
++        activePopup?.dismiss()
++        activePopup = null
++        activeTarget = null
++    }
++
++    fun showFocused(root: View) {
++        val focused = root.findFocus()
++        if (focused is EditText) showFor(focused)
++    }
++
++    private fun installRoot(root: View) {
++        if (installedRoots.containsKey(root)) return
++        installedRoots[root] = true
++
++        fun disableIme(view: View) {
++            if (view is EditText) {
++                view.showSoftInputOnFocus = false
++                view.setOnTouchListener { v, _ ->
++                    (v as? EditText)?.let { showFor(it) }
++                    false
++                }
++            }
++            if (view is ViewGroup) {
++                for (i in 0 until view.childCount) disableIme(view.getChildAt(i))
++            }
++        }
++        disableIme(root)
++
++        root.viewTreeObserver.addOnGlobalFocusChangeListener(object : ViewTreeObserver.OnGlobalFocusChangeListener {
++            override fun onGlobalFocusChanged(oldFocus: View?, newFocus: View?) {
++                if (newFocus is EditText) {
++                    newFocus.showSoftInputOnFocus = false
++                    newFocus.post { showFor(newFocus) }
++                } else if (oldFocus is EditText) {
++                    hide()
++                }
++            }
++        })
++    }
++
++    private fun buildKeyboard(context: Context): View {
++        val panel = LinearLayout(context).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(context, PANEL_PADDING_DP), dp(context, PANEL_PADDING_DP), dp(context, PANEL_PADDING_DP), dp(context, PANEL_PADDING_DP))
++            background = GradientDrawable().apply {
++                cornerRadius = dp(context, 14).toFloat()
++                setColor(ContextCompat.getColor(context, R.color.se_panel))
++                setStroke(dp(context, 1), ContextCompat.getColor(context, R.color.sky_cyan))
++            }
++        }
++
++        if (symbols || isUrlField()) {
++            addRow(panel, if (symbols) listOf("1","2","3","4","5","6","7","8","9","0")
++                         else listOf("@",".","/",":","-","_","+","=","#","&"))
++            if (symbols) {
++                addRow(panel, listOf("@","#","$","%","&","*","-","_","+","="))
++                addRow(panel, listOf("(",")","[","]","{","}",";",",","?","!"))
++            } else {
++                addLetterRows(panel)
++            }
++        } else {
++            addRow(panel, listOf("1","2","3","4","5","6","7","8","9","0"))
++            addLetterRows(panel)
++        }
++
++        addBottomRow(panel)
++        return panel
++    }
++
++    private fun addLetterRows(panel: LinearLayout) {
++        val rows = listOf(
++            listOf("q","w","e","r","t","y","u","i","o","p"),
++            listOf("a","s","d","f","g","h","j","k","l"),
++            listOf("⇧","z","x","c","v","b","n","m","⌫")
++        )
++        rows.forEach { row -> addRow(panel, row) }
++    }
++
++    private fun addBottomRow(panel: LinearLayout) {
++        val row = LinearLayout(panel.context).apply { orientation = LinearLayout.HORIZONTAL }
++        addKey(row, if (symbols) "ABC" else "123#", 1.0f) { symbols = !symbols; refreshKeyboard() }
++        addKey(row, "SPACE", 2.5f) { insertText(" ") }
++        addKey(row, "PASTE", 1.3f) { paste() }
++        addKey(row, "CLEAR", 1.2f) { activeTarget?.get()?.setText("") }
++        val target = activeTarget?.get()
++        val action = if (target != null && (target.imeOptions and EditorActionMask.ACTION_DONE) != 0) "DONE" else "NEXT"
++        addKey(row, action, 1.4f) { performAction() }
++        panel.addView(row)
++    }
++
++    private fun addRow(panel: LinearLayout, keys: List<String>) {
++        val row = LinearLayout(panel.context).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER
++        }
++        keys.forEach { key ->
++            val weight = when (key) {
++                "⇧", "⌫" -> 1.3f
++                else -> 1f
++            }
++            addKey(row, displayKey(key), weight) {
++                when (key) {
++                    "⇧" -> { shift = !shift; refreshKeyboard() }
++                    "⌫" -> backspace()
++                    else -> insertText(key)
++                }
++            }
++        }
++        panel.addView(row, LinearLayout.LayoutParams(-1, dp(panel.context, KEY_HEIGHT_DP)).apply {
++            topMargin = dp(panel.context, KEY_GAP_DP)
++        })
++    }
++
++    private fun addKey(row: LinearLayout, label: String, weight: Float, onClick: () -> Unit) {
++        val context = row.context
++        val tv = TextView(context).apply {
++            text = label
++            gravity = Gravity.CENTER
++            setTextColor(ContextCompat.getColor(context, R.color.sky_white))
++            textSize = if (label.length > 5) 10f else 13f
++            isClickable = true
++            isFocusable = false
++            background = GradientDrawable().apply {
++                cornerRadius = dp(context, 8).toFloat()
++                setColor(ContextCompat.getColor(context, R.color.se_panel_alt))
++                setStroke(dp(context, 1), ContextCompat.getColor(context, R.color.sky_light_blue))
++            }
++            setOnClickListener { onClick() }
++        }
++        row.addView(tv, LinearLayout.LayoutParams(0, -1, weight).apply {
++            leftMargin = dp(context, KEY_GAP_DP / 2)
++            rightMargin = dp(context, KEY_GAP_DP / 2)
++        })
++    }
++
++    private fun refreshKeyboard() {
++        val target = activeTarget?.get() ?: return
++        val root = target.rootView
++        if (root.width <= 0 || root.height <= 0) return
++        showKeyboardPopup(target, root)
++    }
++
++    private fun showKeyboardPopup(editText: EditText, root: View) {
++        activePopup?.dismiss()
++        val keyboard = buildKeyboard(editText.context)
++        activePopup = PopupWindow(
++            keyboard,
++            ViewGroup.LayoutParams.MATCH_PARENT,
++            ViewGroup.LayoutParams.WRAP_CONTENT,
++            false
++        ).apply {
++            isFocusable = false
++            isTouchable = true
++            isOutsideTouchable = false
++            isClippingEnabled = false
++            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
++            elevation = dp(editText.context, 16).toFloat()
++            setOnDismissListener { activePopup = null }
++        }
++        keyboard.post {
++            activePopup?.showAtLocation(root, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 0, 0)
++            bringFocusedFieldIntoView(editText)
++        }
++    }
++
++    private fun displayKey(key: String): String {
++        if (key.length != 1 || !key[0].isLetter()) return key
++        return if (shift) key.uppercase() else key.lowercase()
++    }
++
++    private fun insertText(text: String) {
++        val target = activeTarget?.get() ?: return
++        val start = maxOf(0, target.selectionStart)
++        val end = maxOf(start, target.selectionEnd)
++        val editable: Editable = target.text ?: return
++        editable.replace(start, end, text)
++        val newPos = (start + text.length).coerceAtMost(editable.length)
++        target.setSelection(newPos)
++        target.post { hideSystemIme(target) }
++    }
++
++    private fun backspace() {
++        val target = activeTarget?.get() ?: return
++        val editable = target.text ?: return
++        val start = target.selectionStart
++        val end = target.selectionEnd
++        if (start != end) {
++            editable.delete(start, end)
++            target.setSelection(start)
++        } else if (start > 0) {
++            editable.delete(start - 1, start)
++            target.setSelection(start - 1)
++        }
++        target.post { hideSystemIme(target) }
++    }
++
++    private fun paste() {
++        val target = activeTarget?.get() ?: return
++        val clipboard = target.context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
++        val clip = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(target.context)?.toString() ?: return
++        insertText(clip)
++    }
++
++    private fun performAction() {
++        val target = activeTarget?.get() ?: return
++        hideSystemIme(target)
++        val isDone = (target.imeOptions and EditorActionMask.ACTION_DONE) != 0 || target.imeOptions == 0
++        if (isDone) {
++            target.onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
++            hide()
++        } else {
++            target.onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT)
++            val next = target.focusSearch(View.FOCUS_FORWARD)
++            if (next != null) next.requestFocus() else hide()
++        }
++    }
++
++    private fun hideSystemIme(view: View) {
++        val imm = view.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager ?: return
++        imm.hideSoftInputFromWindow(view.windowToken, 0)
++    }
++
++    private fun bringFocusedFieldIntoView(editText: EditText) {
++        editText.post {
++            val r = Rect()
++            editText.getDrawingRect(r)
++            editText.requestRectangleOnScreen(r, true)
++        }
++    }
++
++    private fun isNumericField(editText: EditText): Boolean {
++        val type = editText.inputType and InputType.TYPE_MASK_CLASS
++        return type == InputType.TYPE_CLASS_NUMBER || type == InputType.TYPE_CLASS_PHONE
++    }
++
++    private fun isUrlField(): Boolean {
++        val input = activeTarget?.get()?.inputType ?: return false
++        return (input and InputType.TYPE_TEXT_VARIATION_URI) != 0
++    }
++
++    private fun dp(context: Context, value: Int): Int =
++        (value * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
++
++    private object EditorActionMask {
++        const val ACTION_DONE = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
++    }
++}
+--- a/app/src/main/res/drawable/se_launcher_foreground.xml
++++ /dev/null
+@@ -1,6 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+-    <item android:gravity="center" android:left="14dp" android:top="14dp" android:right="14dp" android:bottom="14dp">
+-        <bitmap android:src="@drawable/se_launcher" android:gravity="fill"/>
+-    </item>
+-</layer-list>
+--- a/app/src/main/res/drawable/se_launcher_scaled.xml
++++ b/app/src/main/res/drawable/se_launcher_scaled.xml
+@@ -1,5 +1,5 @@
+ <scale xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:drawable="@drawable/se_launcher"
+-    android:scaleWidth="200%"
+-    android:scaleHeight="200%"
++    android:drawable="@drawable/app_logo"
++    android:scaleWidth="85%"
++    android:scaleHeight="85%"
+     android:scaleGravity="center" />
+--- a/app/src/main/res/layout/activity_login.xml
++++ b/app/src/main/res/layout/activity_login.xml
+@@ -14,9 +14,9 @@
+ 
+         <!-- SE IPTV PLAYER logo (Xtream login only) -->
+         <ImageView
+-            android:layout_width="384dp"
+-            android:layout_height="384dp"
+-            android:src="@drawable/se_logo_full"
++            android:layout_width="500dp"
++            android:layout_height="500dp"
++            android:src="@drawable/xtream_logo"
+             android:scaleType="fitCenter"
+             android:layout_marginBottom="8dp"
+             android:contentDescription="SE IPTV PLAYER" />
+@@ -81,7 +81,8 @@
+                     android:paddingEnd="10dp"
+                     android:inputType="text"
+                     android:layout_marginTop="4dp"
+-                    android:layout_marginBottom="14dp" />
++                    android:layout_marginBottom="14dp"
++                    android:imeOptions="actionNext" />
+ 
+                 <TextView
+                     android:layout_width="wrap_content"
+@@ -107,7 +108,8 @@
+                     android:paddingEnd="10dp"
+                     android:inputType="textUri"
+                     android:layout_marginTop="4dp"
+-                    android:layout_marginBottom="14dp" />
++                    android:layout_marginBottom="14dp"
++                    android:imeOptions="actionNext" />
+ 
+                 <TextView
+                     android:layout_width="wrap_content"
+@@ -132,7 +134,8 @@
+                     android:paddingEnd="10dp"
+                     android:inputType="text"
+                     android:layout_marginTop="4dp"
+-                    android:layout_marginBottom="14dp" />
++                    android:layout_marginBottom="14dp"
++                    android:imeOptions="actionNext" />
+ 
+                 <TextView
+                     android:layout_width="wrap_content"
+@@ -157,7 +160,8 @@
+                     android:paddingEnd="10dp"
+                     android:inputType="textPassword"
+                     android:layout_marginTop="4dp"
+-                    android:layout_marginBottom="20dp" />
++                    android:layout_marginBottom="20dp"
++                    android:imeOptions="actionDone" />
+ 
+                 <TextView
+                     android:id="@+id/tv_error"
+--- a/app/src/main/res/layout/activity_settings.xml
++++ b/app/src/main/res/layout/activity_settings.xml
+@@ -68,7 +68,7 @@
+     </TableRow>
+     <TableRow android:layout_width="match_parent" android:layout_height="wrap_content">
+         <TextView android:text="VERSION" android:textColor="@color/sky_cyan" android:textStyle="bold" android:padding="10dp" android:background="@color/se_panel_alt" android:layout_width="150dp" android:layout_height="wrap_content"/>
+-        <TextView android:text="V100.0.18" android:textColor="@color/sky_white" android:padding="10dp" android:background="@color/orbital_dark_blue" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
++        <TextView android:text="V100.0.20" android:textColor="@color/sky_white" android:padding="10dp" android:background="@color/orbital_dark_blue" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+     </TableRow>
+     <TableRow android:layout_width="match_parent" android:layout_height="wrap_content">
+         <TextView android:text="APPLICATION ID" android:textColor="@color/sky_cyan" android:textStyle="bold" android:padding="10dp" android:background="@color/se_panel_alt" android:layout_width="150dp" android:layout_height="wrap_content"/>
+--- a/scripts/apply_v18.py
++++ b/scripts/apply_v18.py
+@@ -39,7 +39,7 @@
+     </TableRow>
+     <TableRow android:layout_width="match_parent" android:layout_height="wrap_content">
+         <TextView android:text="VERSION" android:textColor="@color/sky_cyan" android:textStyle="bold" android:padding="10dp" android:background="@color/se_panel_alt" android:layout_width="150dp" android:layout_height="wrap_content"/>
+-        <TextView android:text="V100.0.18" android:textColor="@color/sky_white" android:padding="10dp" android:background="@color/orbital_dark_blue" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
++        <TextView android:text="V100.0.19" android:textColor="@color/sky_white" android:padding="10dp" android:background="@color/orbital_dark_blue" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+     </TableRow>
+     <TableRow android:layout_width="match_parent" android:layout_height="wrap_content">
+         <TextView android:text="APPLICATION ID" android:textColor="@color/sky_cyan" android:textStyle="bold" android:padding="10dp" android:background="@color/se_panel_alt" android:layout_width="150dp" android:layout_height="wrap_content"/>
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -1,2 +1,2 @@
+-rootProject.name = "SEAndroid_v100.0.18"
++rootProject.name = "SEAndroid_v100.0.22"
+ include ':app'
