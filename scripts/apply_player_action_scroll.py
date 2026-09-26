@@ -14,5 +14,12 @@ if old in s:
 elif '<com.orbital.iptv.ui.player.FocusHorizontalScrollView' not in s:
     raise SystemExit("player action scroll container not found")
 
+# Keep the matching closing tag in sync with the custom view.
+s = s.replace(
+    "</HorizontalScrollView>",
+    "</com.orbital.iptv.ui.player.FocusHorizontalScrollView>",
+    1
+)
+
 path.write_text(s)
 print("Player action bar now uses focus-aware horizontal scrolling")
