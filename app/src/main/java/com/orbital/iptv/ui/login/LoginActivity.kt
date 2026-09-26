@@ -8,6 +8,8 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
+import android.text.method.PasswordTransformationMethod
+import android.text.method.HideReturnsTransformationMethod
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.orbital.iptv.data.model.ServerProfile
@@ -85,6 +87,22 @@ class LoginActivity : AppCompatActivity() {
         binding.etUsername.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_NEXT) { binding.etPassword.requestFocus(); true } else false
         }
+
+        var passwordVisible = false
+        binding.etPassword.transformationMethod = PasswordTransformationMethod.getInstance()
+        binding.btnShowPassword.setOnClickListener {
+            passwordVisible = !passwordVisible
+            val selection = binding.etPassword.selectionStart.coerceAtLeast(0)
+            binding.etPassword.transformationMethod = if (passwordVisible) {
+                HideReturnsTransformationMethod.getInstance()
+            } else {
+                PasswordTransformationMethod.getInstance()
+            }
+            binding.etPassword.setSelection(selection.coerceAtMost(binding.etPassword.text.length))
+            binding.btnShowPassword.text = if (passwordVisible) "HIDE PASSWORD" else "SHOW PASSWORD"
+            binding.etPassword.requestFocus()
+        }
+
         binding.etPassword.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) { binding.btnConnect.performClick(); true } else false
         }
