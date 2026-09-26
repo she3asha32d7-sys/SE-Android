@@ -10,7 +10,7 @@ KEYBOARD = ROOT / "app/src/main/java/com/orbital/iptv/utils/SEKeyboardController
 PARTS = [ROOT / f"scripts/v25_keyboard_part_{i}.b64" for i in range(1, 5)]
 
 payload = "".join(p.read_text(encoding="utf-8").strip() for p in PARTS)
-expected = "19041eb1c34f5eea9b6b55c926a2a1881878d6ce686e55ec28afdcd079fc4c39"
+expected = "75e94401483f9369cb747abc30fd693138d5ee64ffe28faa68b5d7ca22a3f9e5"
 actual = hashlib.sha256(payload.encode("utf-8")).hexdigest()
 if actual != expected:
     raise SystemExit(f"V25 keyboard payload integrity failure: {actual}")
