@@ -70,7 +70,8 @@ jobs:
             -not -path './app/build/*' \
             -not -path './build_payload/*' \
             -not -path './out/*' \
-            -not -path './source/*' | wc -l)
+            -not -path './source/*' \
+            -not -path './.github/workflows/build-v59.yml' | wc -l)
           test "${COUNT}" -eq 225
 
       - uses: actions/setup-java@v4
