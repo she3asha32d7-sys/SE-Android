@@ -1,0 +1,35 @@
+name: Inspect V25 keyboard payload
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v100.0.25
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package payload
+        run: |
+          set -e
+          cat scripts/v25_keyboard_part_1.b64 scripts/v25_keyboard_part_2.b64 scripts/v25_keyboard_part_3.b64 scripts/v25_keyboard_part_4.b64 > /tmp/all.b64
+          mkdir -p out
+          cp /tmp/all.b64 out/v25_keyboard_all.b64
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p=Path('/tmp/all.b64')
+          s=p.read_text().strip()
+          print('length',len(s))
+          print('sha256',hashlib.sha256(s.encode()).hexdigest())
+          print('multiple_of_4',len(s)%4==0)
+          print('contains_eq', '=' in s)
+          print('tail',repr(s[-40:]))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v25-keyboard-inspection
+          path: out/v25_keyboard_all.b64
+          retention-days: 1
