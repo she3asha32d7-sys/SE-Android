@@ -33,6 +33,9 @@ jobs:
       - name: Apply Auto Rotate setting
         run: python3 scripts/apply_auto_rotate.py
 
+      - name: Apply larger exit and settings confirmation dialogs
+        run: python3 scripts/apply_large_confirm_dialogs.py
+
       - name: Apply Records header cleanup
         run: python3 scripts/apply_records_header_cleanup.py
 
