@@ -22,7 +22,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: SEAndroid_v100.0.25-source
-          repository: $GITHUB_REPOSITORY
+          repository: she3asha32d7-sys/SE-Android
           run-id: 36231369424
           github-token: \${{ github.token }}
           path: /tmp/v25
