@@ -95,7 +95,7 @@ replace_once("app/src/main/res/layout/activity_settings.xml", old, new)
 p = Path("app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt")
 s = p.read_text()
 old = """        b.tvBuiltinPlayerValue.text = "SE PLAYER"
-        b.btnDefaultQuality.text = "DEFAULT QUALITY: \${qualityLabel(PrefsManager.getDefaultQuality(this))}"
+        b.btnDefaultQuality.text = "DEFAULT QUALITY: ${qualityLabel(PrefsManager.getDefaultQuality(this))}"
 """
 new = """        b.tvBuiltinPlayerValue.text = "SE PLAYER"
         b.switchAutoRotate.isChecked = PrefsManager.isAutoRotateEnabled(this)
@@ -107,7 +107,7 @@ new = """        b.tvBuiltinPlayerValue.text = "SE PLAYER"
                 android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
             }
         }
-        b.btnDefaultQuality.text = "DEFAULT QUALITY: \${qualityLabel(PrefsManager.getDefaultQuality(this))}"
+        b.btnDefaultQuality.text = "DEFAULT QUALITY: ${qualityLabel(PrefsManager.getDefaultQuality(this))}"
 """
 replace_once("app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt", old, new)
 old = """        b.switchPip.setTextColor(if (ThemeManager.currentMode() == PrefsManager.ThemeMode.LIGHT) 0xFF20232B.toInt() else 0xFFFFFFFF.toInt())
