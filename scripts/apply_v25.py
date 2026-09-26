@@ -78,7 +78,13 @@ replacement = '''    private fun confirmExit(activity: Activity) {
             .setNegativeButton("No", null)
             .create()
         dialog.setOnShowListener {
-            dialog.findViewById<TextView>(android.R.id.alertTitle)?.textSize = 20f
+            val titleViews = ArrayList<View>()
+            dialog.window?.decorView?.findViewsWithText(
+                titleViews,
+                "Do You Want To Exit The App",
+                View.FIND_VIEWS_WITH_TEXT
+            )
+            titleViews.filterIsInstance<TextView>().firstOrNull()?.textSize = 20f
             dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.textSize = 18f
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.textSize = 18f
         }
