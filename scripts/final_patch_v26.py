@@ -5,8 +5,8 @@ java=R/'app/src/main/java'
 for p in java.rglob('*.kt'):
     s=p.read_text(encoding='utf-8')
     # Unwrap SEKeyboardController.prepare(...) while preserving the EditText expression.
-    s=re.sub(r'SEKeyboardController\\.prepare\\((android\\.widget\\.EditText\\(this\\)\\.apply\\s*\\{.*?\\n\\s*\\})\\)', r'\\1', s, flags=re.S)
-    s=re.sub(r'SEKeyboardController\\.prepare\\((EditText\\(this\\)\\.apply\\s*\\{.*?\\})\\)', r'\\1', s, flags=re.S)
+    s=re.sub(r'(?:com\\.orbital\\.iptv\\.utils\\.)?SEKeyboardController\\.prepare\\((android\\.widget\\.EditText\\(this\\)\\.apply\\s*\\{.*?\\n\\s*\\})\\)', r'\\1', s, flags=re.S)
+    s=re.sub(r'(?:com\\.orbital\\.iptv\\.utils\\.)?SEKeyboardController\\.prepare\\((EditText\\(this\\)\\.apply\\s*\\{.*?\\})\\)', r'\\1', s, flags=re.S)
     s=s.replace('SEKeyboardController.prepare(binding.etSearch)', 'binding.etSearch')
     s=s.replace('SEKeyboardController.prepare(it)', 'it')
     s=s.replace('com.orbital.iptv.utils.SEKeyboardController.install(this)', '')
