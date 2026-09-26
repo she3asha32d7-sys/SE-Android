@@ -2,6 +2,8 @@ package com.orbital.iptv.ui.search
 
 import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.appcompat.app.AppCompatActivity
@@ -20,6 +22,8 @@ import com.orbital.iptv.utils.SEKeyboardController
 import com.orbital.iptv.utils.ThemeManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class SearchActivity : AppCompatActivity() {
@@ -43,6 +47,7 @@ class SearchActivity : AppCompatActivity() {
     private var currentQuery = ""
     private var searchJob: Job? = null
     private val repository = XtreamRepository()
+    private var cachedLiveCategories: List<com.orbital.iptv.data.model.LiveCategory>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,7 +70,7 @@ class SearchActivity : AppCompatActivity() {
         currentQuery = if (shouldClear) "" else savedInstanceState?.getString(KEY_QUERY).orEmpty()
         binding.etSearch.setText(currentQuery)
         binding.etSearch.setSelection(binding.etSearch.text.length)
-        if (currentQuery.isNotBlank()) binding.etSearch.post { executeSearch() }
+        if (currentQuery.isNotBlank()) binding.etSearch.post { scheduleSearch(immediate = true) }
         activeInstance = this
     }
 
@@ -114,7 +119,19 @@ class SearchActivity : AppCompatActivity() {
         SEKeyboardController.prepare(binding.etSearch)
         binding.etSearch.nextFocusRightId = binding.btnSearch.id
         binding.btnSearch.nextFocusLeftId = binding.etSearch.id
-        binding.btnSearch.setOnClickListener { executeSearch() }
+
+        // Live search: results start updating as the user types instead of waiting for SEARCH.
+        // A short debounce keeps rapid remote-control presses from starting a separate search
+        // pass for every intermediate character.
+        binding.etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                scheduleSearch(immediate = false)
+            }
+        })
+
+        binding.btnSearch.setOnClickListener { scheduleSearch(immediate = true) }
         binding.btnSearch.setOnFocusChangeListener { view, hasFocus ->
             val p = ThemeManager.palette()
             val d = resources.displayMetrics.density
@@ -123,20 +140,31 @@ class SearchActivity : AppCompatActivity() {
         }
         binding.etSearch.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_SEARCH) {
-                executeSearch()
+                scheduleSearch(immediate = true)
                 true
             } else false
         }
     }
 
-    private fun executeSearch() {
+    private fun scheduleSearch(immediate: Boolean) {
         val query = binding.etSearch.text?.toString()?.trim().orEmpty()
         currentQuery = query
         searchJob?.cancel()
-        if (query.isBlank()) { clearResultsOnly(); return }
 
-        val profile = PrefsManager.getActiveProfile(this)
-        if (profile == null) {
+        if (query.isBlank()) {
+            clearResultsOnly()
+            return
+        }
+
+        searchJob = lifecycleScope.launch {
+            if (!immediate) delay(220L)
+            if (!isActive || query != binding.etSearch.text?.toString()?.trim()) return@launch
+            performSearch(query)
+        }
+    }
+
+    private suspend fun performSearch(query: String) {
+        val profile = PrefsManager.getActiveProfile(this) ?: run {
             clearResultsOnly()
             binding.tvEmpty.text = "NO ACTIVE XTREAM USER"
             return
@@ -144,69 +172,70 @@ class SearchActivity : AppCompatActivity() {
 
         binding.progressBar.visibility = View.VISIBLE
         binding.tvEmpty.visibility = View.GONE
-        binding.resultsScroll.visibility = View.GONE
 
-        searchJob = lifecycleScope.launch {
-            try {
-                val serverUrl = profile.serverUrl
-                val username = profile.username
-                val password = profile.password
+        try {
+            val serverUrl = profile.serverUrl
+            val username = profile.username
+            val password = profile.password
 
-                val moviesJob = async {
-                    if (ContentCache.getMovies(this@SearchActivity, serverUrl) == null) {
-                        ContentCache.downloadAndSaveMovies(this@SearchActivity, serverUrl, username, password)
-                    }
-                    ContentCache.searchMovies(this@SearchActivity, serverUrl, query)
+            val moviesJob = async {
+                if (ContentCache.getMovies(this@SearchActivity, serverUrl) == null) {
+                    ContentCache.downloadAndSaveMovies(this@SearchActivity, serverUrl, username, password)
                 }
-                val seriesJob = async {
-                    if (ContentCache.getSeries(this@SearchActivity, serverUrl) == null) {
-                        ContentCache.downloadAndSaveSeries(this@SearchActivity, serverUrl, username, password)
-                    }
-                    ContentCache.searchSeries(this@SearchActivity, serverUrl, query)
-                }
-                val liveJob = async {
-                    if (ContentCache.getLiveStreams(this@SearchActivity, serverUrl) == null) {
-                        ContentCache.downloadAndSaveLiveStreams(this@SearchActivity, serverUrl, username, password)
-                    }
-                    ContentCache.getLiveStreams(this@SearchActivity, serverUrl).orEmpty()
-                        .filter { it.name.contains(query, ignoreCase = true) }
-                }
-                val categoriesJob = async {
-                    repository.getLiveCategories(serverUrl, username, password).getOrNull().orEmpty()
-                        .filter { it.categoryName.contains(query, ignoreCase = true) }
-                }
-
-                val movies = moviesJob.await()
-                val series = seriesJob.await()
-                val live = liveJob.await()
-                val categories = categoriesJob.await()
-                if (query != binding.etSearch.text?.toString()?.trim()) return@launch
-
-                movieAdapter.submitList(movies.map { SearchAdapter.Item.Movie(it) })
-                seriesAdapter.submitList(series.map { SearchAdapter.Item.Series(it) })
-                liveAdapter.submitList(live.map { SearchAdapter.Item.Live(it) })
-                categoryAdapter.submitList(categories.map { SearchAdapter.Item.Category(it) })
-
-                binding.headerMovies.visibility = if (movies.isNotEmpty()) View.VISIBLE else View.GONE
-                binding.rvMovies.visibility = if (movies.isNotEmpty()) View.VISIBLE else View.GONE
-                binding.headerSeries.visibility = if (series.isNotEmpty()) View.VISIBLE else View.GONE
-                binding.rvSeries.visibility = if (series.isNotEmpty()) View.VISIBLE else View.GONE
-                binding.headerLive.visibility = if (live.isNotEmpty()) View.VISIBLE else View.GONE
-                binding.rvLive.visibility = if (live.isNotEmpty()) View.VISIBLE else View.GONE
-                binding.headerCategories.visibility = if (categories.isNotEmpty()) View.VISIBLE else View.GONE
-                binding.rvCategories.visibility = if (categories.isNotEmpty()) View.VISIBLE else View.GONE
-
-                val total = movies.size + series.size + live.size + categories.size
-                binding.resultsScroll.visibility = if (total > 0) View.VISIBLE else View.GONE
-                binding.tvEmpty.visibility = if (total == 0) View.VISIBLE else View.GONE
-                if (total == 0) binding.tvEmpty.text = "NO RESULTS FOUND"
-            } catch (e: Exception) {
-                binding.resultsScroll.visibility = View.GONE
-                binding.tvEmpty.visibility = View.VISIBLE
-                binding.tvEmpty.text = "SEARCH FAILED: ${e.message ?: "UNKNOWN ERROR"}"
-            } finally {
-                binding.progressBar.visibility = View.GONE
+                ContentCache.searchMovies(this@SearchActivity, serverUrl, query)
             }
+            val seriesJob = async {
+                if (ContentCache.getSeries(this@SearchActivity, serverUrl) == null) {
+                    ContentCache.downloadAndSaveSeries(this@SearchActivity, serverUrl, username, password)
+                }
+                ContentCache.searchSeries(this@SearchActivity, serverUrl, query)
+            }
+            val liveJob = async {
+                if (ContentCache.getLiveStreams(this@SearchActivity, serverUrl) == null) {
+                    ContentCache.downloadAndSaveLiveStreams(this@SearchActivity, serverUrl, username, password)
+                }
+                ContentCache.getLiveStreams(this@SearchActivity, serverUrl).orEmpty()
+                    .filter { it.name.contains(query, ignoreCase = true) }
+            }
+            val categoriesJob = async {
+                val categories = cachedLiveCategories ?: repository.getLiveCategories(
+                    serverUrl, username, password
+                ).getOrNull().orEmpty().also { cachedLiveCategories = it }
+                categories.filter { it.categoryName.contains(query, ignoreCase = true) }
+            }
+
+            val movies = moviesJob.await()
+            val series = seriesJob.await()
+            val live = liveJob.await()
+            val categories = categoriesJob.await()
+
+            if (!isActive || query != binding.etSearch.text?.toString()?.trim()) return
+
+            movieAdapter.submitList(movies.map { SearchAdapter.Item.Movie(it) })
+            seriesAdapter.submitList(series.map { SearchAdapter.Item.Series(it) })
+            liveAdapter.submitList(live.map { SearchAdapter.Item.Live(it) })
+            categoryAdapter.submitList(categories.map { SearchAdapter.Item.Category(it) })
+
+            binding.headerMovies.visibility = if (movies.isNotEmpty()) View.VISIBLE else View.GONE
+            binding.rvMovies.visibility = if (movies.isNotEmpty()) View.VISIBLE else View.GONE
+            binding.headerSeries.visibility = if (series.isNotEmpty()) View.VISIBLE else View.GONE
+            binding.rvSeries.visibility = if (series.isNotEmpty()) View.VISIBLE else View.GONE
+            binding.headerLive.visibility = if (live.isNotEmpty()) View.VISIBLE else View.GONE
+            binding.rvLive.visibility = if (live.isNotEmpty()) View.VISIBLE else View.GONE
+            binding.headerCategories.visibility = if (categories.isNotEmpty()) View.VISIBLE else View.GONE
+            binding.rvCategories.visibility = if (categories.isNotEmpty()) View.VISIBLE else View.GONE
+
+            val total = movies.size + series.size + live.size + categories.size
+            binding.resultsScroll.visibility = if (total > 0) View.VISIBLE else View.GONE
+            binding.tvEmpty.visibility = if (total == 0) View.VISIBLE else View.GONE
+            if (total == 0) binding.tvEmpty.text = "NO RESULTS FOUND"
+        } catch (e: Exception) {
+            if (!isActive) return
+            binding.resultsScroll.visibility = View.GONE
+            binding.tvEmpty.visibility = View.VISIBLE
+            binding.tvEmpty.text = "SEARCH FAILED: " + (e.message ?: "UNKNOWN ERROR")
+        } finally {
+            if (isActive) binding.progressBar.visibility = View.GONE
         }
     }
 
