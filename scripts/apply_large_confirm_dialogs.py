@@ -52,8 +52,20 @@ new = '''    private fun confirmExitApp() {
             .create()
 
         dialog.setOnShowListener {
-            dialog.findViewById<TextView>(androidx.appcompat.R.id.alertTitle)
-                ?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20f)
+            val title = dialog.findViewById<TextView>(androidx.appcompat.R.id.alertTitle)
+            if (title != null) {
+                title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20f)
+            } else {
+                fun applyTitle(view: View) {
+                    if (view is TextView && view.text?.toString() == "Do You Want To Exit The App") {
+                        view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20f)
+                    }
+                    if (view is ViewGroup) {
+                        for (i in 0 until view.childCount) applyTitle(view.getChildAt(i))
+                    }
+                }
+                dialog.window?.decorView?.let { applyTitle(it) }
+            }
             dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
                 ?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
             dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE)
