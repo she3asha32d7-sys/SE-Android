@@ -1,1 +1,1 @@
-Trigger V100.0.25 build after exact keyboard payload reconstruction.
+Trigger V100.0.25 build after exact payload character restoration.
