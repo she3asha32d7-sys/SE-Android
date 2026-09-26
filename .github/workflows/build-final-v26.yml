@@ -1,13 +1,35 @@
-name: Final build test
-
+name: Final V100.0.26 build
 on:
   push:
-    branches:
-      - v100.0.26
-
+    branches: [v100.0.26]
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
-      - name: Test
-        run: echo "WORKFLOW_OK"
+      - uses: actions/checkout@v4
+      - name: Verify
+        run: |
+          chmod +x gradlew
+          grep -q 'versionCode 1000026' app/build.gradle
+          grep -q 'versionName "100.0.26"' app/build.gradle
+          ! grep -R "SEKeyboardController" app/src/main/java
+      - name: Build
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+      - name: Package
+        run: |
+          mkdir -p out source
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-V100.0.26.apk
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source' ./ source/
+          (cd source && zip -qr ../out/SE-Android-V100.0.51-source.zip .)
+          unzip -t out/SE-Android-V100.0.51-source.zip >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SE-Android-V100.0.26-apk-final
+          path: out/SE-Android-V100.0.26.apk
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SE-Android-V100.0.51-source-final
+          path: out/SE-Android-V100.0.51-source.zip
+          retention-days: 7
