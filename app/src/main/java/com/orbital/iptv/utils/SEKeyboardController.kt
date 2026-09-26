@@ -14,8 +14,8 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.PopupWindow
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.orbital.iptv.R
@@ -23,8 +23,12 @@ import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 
 /**
- * SE's in-app keyboard. It deliberately does not register an Android IME:
- * the keyboard is rendered inside SE and writes directly to the focused field.
+ * SE's in-app keyboard.
+ *
+ * It is deliberately not an Android IME: the keyboard is rendered inside the SAME application
+ * window and writes directly to the focused EditText. Keeping it in-window is important for
+ * Android/TV devices where a separate PopupWindow may be composited or positioned differently
+ * from the activity/dialog content.
  */
 object SEKeyboardController {
     private const val KEY_HEIGHT_DP = 42
@@ -32,52 +36,59 @@ object SEKeyboardController {
     private const val PANEL_PADDING_DP = 8
 
     private val installedRoots = WeakHashMap<View, Boolean>()
+    private val boundFields = WeakHashMap<EditText, Boolean>()
     private var activeTarget: WeakReference<EditText>? = null
-    private var activePopup: PopupWindow? = null
+    private var activeOverlay: FrameLayout? = null
     private var shift = false
     private var symbols = false
 
     fun install(activity: Activity) {
-        activity.window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-        installRoot(activity.window.decorView)
+        activity.window.setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+        )
+        val root = activity.window.decorView
+
+        // Application ActivityLifecycleCallbacks can run before Activity.onCreate()/setContentView().
+        // Post the scan so fields inflated by the Activity are also bound.
+        root.post { installRoot(root) }
     }
 
     fun installDialog(dialog: Dialog) {
         dialog.setOnShowListener {
-            dialog.window?.decorView?.let { installRoot(it) }
+            dialog.window?.decorView?.let { root ->
+                installRoot(root)
+                root.post { bindEditTexts(root) }
+            }
         }
     }
 
     fun prepare(editText: EditText): EditText {
-        editText.showSoftInputOnFocus = false
-        editText.setOnTouchListener { v, _ ->
-            (v as? EditText)?.let { showFor(it) }
-            false
-        }
-        editText.setOnFocusChangeListener { v, hasFocus ->
-            if (hasFocus) (v as? EditText)?.let { showFor(it) }
-            else if (activeTarget?.get() === v) hide()
-        }
+        bindEditText(editText)
         return editText
     }
 
     fun showFor(editText: EditText) {
+        bindEditText(editText)
         editText.showSoftInputOnFocus = false
         hideSystemIme(editText)
         activeTarget = WeakReference(editText)
+
         val root = editText.rootView
-        if (root == null || root.width <= 0 || root.height <= 0) {
+        if (!root.isAttachedToWindow || root.width <= 0 || root.height <= 0) {
             editText.post { showFor(editText) }
             return
         }
+
         shift = false
         symbols = isNumericField(editText)
-        showKeyboardPopup(editText, root)
+        showKeyboardOverlay(editText, root)
     }
 
     fun hide() {
-        activePopup?.dismiss()
-        activePopup = null
+        activeOverlay?.let { overlay ->
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+        }
+        activeOverlay = null
         activeTarget = null
     }
 
@@ -87,39 +98,68 @@ object SEKeyboardController {
     }
 
     private fun installRoot(root: View) {
-        if (installedRoots.containsKey(root)) return
-        installedRoots[root] = true
-
-        fun disableIme(view: View) {
-            if (view is EditText) {
-                view.showSoftInputOnFocus = false
-                view.setOnTouchListener { v, _ ->
-                    (v as? EditText)?.let { showFor(it) }
-                    false
+        if (installedRoots.put(root, true) == null) {
+            root.viewTreeObserver.addOnGlobalFocusChangeListener(
+                object : ViewTreeObserver.OnGlobalFocusChangeListener {
+                    override fun onGlobalFocusChanged(oldFocus: View?, newFocus: View?) {
+                        if (newFocus is EditText) {
+                            bindEditText(newFocus)
+                            newFocus.showSoftInputOnFocus = false
+                            newFocus.post { showFor(newFocus) }
+                        } else if (oldFocus is EditText && activeTarget?.get() === oldFocus) {
+                            hide()
+                        }
+                    }
                 }
-            }
+            )
+        }
+
+        // Always scan, even if the root was registered earlier. This is what fixes Activities
+        // whose decorView existed before setContentView() inflated their EditTexts.
+        bindEditTexts(root)
+    }
+
+    private fun bindEditTexts(root: View) {
+        fun walk(view: View) {
+            if (view is EditText) bindEditText(view)
             if (view is ViewGroup) {
-                for (i in 0 until view.childCount) disableIme(view.getChildAt(i))
+                for (i in 0 until view.childCount) walk(view.getChildAt(i))
             }
         }
-        disableIme(root)
+        walk(root)
+    }
 
-        root.viewTreeObserver.addOnGlobalFocusChangeListener(object : ViewTreeObserver.OnGlobalFocusChangeListener {
-            override fun onGlobalFocusChanged(oldFocus: View?, newFocus: View?) {
-                if (newFocus is EditText) {
-                    newFocus.showSoftInputOnFocus = false
-                    newFocus.post { showFor(newFocus) }
-                } else if (oldFocus is EditText) {
-                    hide()
-                }
+    private fun bindEditText(editText: EditText) {
+        if (boundFields.put(editText, true) != null) return
+
+        editText.showSoftInputOnFocus = false
+        editText.setOnTouchListener { v, _ ->
+            (v as? EditText)?.let { target ->
+                target.requestFocus()
+                showFor(target)
             }
-        })
+            false
+        }
+        editText.setOnFocusChangeListener { v, hasFocus ->
+            if (hasFocus) {
+                (v as? EditText)?.let { target ->
+                    target.post { showFor(target) }
+                }
+            } else if (activeTarget?.get() === v) {
+                hide()
+            }
+        }
     }
 
     private fun buildKeyboard(context: Context): View {
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, PANEL_PADDING_DP), dp(context, PANEL_PADDING_DP), dp(context, PANEL_PADDING_DP), dp(context, PANEL_PADDING_DP))
+            setPadding(
+                dp(context, PANEL_PADDING_DP),
+                dp(context, PANEL_PADDING_DP),
+                dp(context, PANEL_PADDING_DP),
+                dp(context, PANEL_PADDING_DP)
+            )
             background = GradientDrawable().apply {
                 cornerRadius = dp(context, 14).toFloat()
                 setColor(ContextCompat.getColor(context, R.color.se_panel))
@@ -128,8 +168,11 @@ object SEKeyboardController {
         }
 
         if (symbols || isUrlField()) {
-            addRow(panel, if (symbols) listOf("1","2","3","4","5","6","7","8","9","0")
-                         else listOf("@",".","/",":","-","_","+","=","#","&"))
+            addRow(
+                panel,
+                if (symbols) listOf("1","2","3","4","5","6","7","8","9","0")
+                else listOf("@",".","/",":","-","_","+","=","#","&")
+            )
             if (symbols) {
                 addRow(panel, listOf("@","#","$","%","&","*","-","_","+","="))
                 addRow(panel, listOf("(",")","[","]","{","}",";",",","?","!"))
@@ -156,7 +199,10 @@ object SEKeyboardController {
 
     private fun addBottomRow(panel: LinearLayout) {
         val row = LinearLayout(panel.context).apply { orientation = LinearLayout.HORIZONTAL }
-        addKey(row, if (symbols) "ABC" else "123#", 1.0f) { symbols = !symbols; refreshKeyboard() }
+        addKey(row, if (symbols) "ABC" else "123#", 1.0f) {
+            symbols = !symbols
+            refreshKeyboard()
+        }
         addKey(row, "SPACE", 2.5f) { insertText(" ") }
         addKey(row, "PASTE", 1.3f) { paste() }
         addKey(row, "CLEAR", 1.2f) { activeTarget?.get()?.setText("") }
@@ -178,15 +224,21 @@ object SEKeyboardController {
             }
             addKey(row, displayKey(key), weight) {
                 when (key) {
-                    "⇧" -> { shift = !shift; refreshKeyboard() }
+                    "⇧" -> {
+                        shift = !shift
+                        refreshKeyboard()
+                    }
                     "⌫" -> backspace()
                     else -> insertText(key)
                 }
             }
         }
-        panel.addView(row, LinearLayout.LayoutParams(-1, dp(panel.context, KEY_HEIGHT_DP)).apply {
-            topMargin = dp(panel.context, KEY_GAP_DP)
-        })
+        panel.addView(
+            row,
+            LinearLayout.LayoutParams(-1, dp(panel.context, KEY_HEIGHT_DP)).apply {
+                topMargin = dp(panel.context, KEY_GAP_DP)
+            }
+        )
     }
 
     private fun addKey(row: LinearLayout, label: String, weight: Float, onClick: () -> Unit) {
@@ -205,39 +257,67 @@ object SEKeyboardController {
             }
             setOnClickListener { onClick() }
         }
-        row.addView(tv, LinearLayout.LayoutParams(0, -1, weight).apply {
-            leftMargin = dp(context, KEY_GAP_DP / 2)
-            rightMargin = dp(context, KEY_GAP_DP / 2)
-        })
+        row.addView(
+            tv,
+            LinearLayout.LayoutParams(0, -1, weight).apply {
+                leftMargin = dp(context, KEY_GAP_DP / 2)
+                rightMargin = dp(context, KEY_GAP_DP / 2)
+            }
+        )
     }
 
     private fun refreshKeyboard() {
         val target = activeTarget?.get() ?: return
         val root = target.rootView
-        if (root.width <= 0 || root.height <= 0) return
-        showKeyboardPopup(target, root)
+        if (!root.isAttachedToWindow || root.width <= 0 || root.height <= 0) return
+        showKeyboardOverlay(target, root)
     }
 
-    private fun showKeyboardPopup(editText: EditText, root: View) {
-        activePopup?.dismiss()
-        val keyboard = buildKeyboard(editText.context)
-        activePopup = PopupWindow(
-            keyboard,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            false
-        ).apply {
-            isFocusable = false
-            isTouchable = true
-            isOutsideTouchable = false
-            isClippingEnabled = false
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-            elevation = dp(editText.context, 16).toFloat()
-            setOnDismissListener { activePopup = null }
+    private fun showKeyboardOverlay(editText: EditText, root: View) {
+        val content = root.findViewById<ViewGroup>(android.R.id.content)
+            ?: (root as? ViewGroup)
+            ?: return
+
+        activeOverlay?.let { old ->
+            (old.parent as? ViewGroup)?.removeView(old)
         }
+
+        val overlay = FrameLayout(editText.context).apply {
+            clipChildren = false
+            clipToPadding = false
+            elevation = dp(editText.context, 20).toFloat()
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = false
+            isFocusable = false
+        }
+
+        val keyboard = buildKeyboard(editText.context)
+        keyboard.elevation = dp(editText.context, 20).toFloat()
+        overlay.addView(
+            keyboard,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.BOTTOM
+            }
+        )
+
+        content.addView(
+            overlay,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        overlay.bringToFront()
+        activeOverlay = overlay
+
         keyboard.post {
-            activePopup?.showAtLocation(root, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 0, 0)
-            bringFocusedFieldIntoView(editText)
+            if (activeOverlay === overlay) {
+                overlay.bringToFront()
+                bringFocusedFieldIntoView(editText)
+            }
         }
     }
 
@@ -275,14 +355,20 @@ object SEKeyboardController {
     private fun paste() {
         val target = activeTarget?.get() ?: return
         val clipboard = target.context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-        val clip = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(target.context)?.toString() ?: return
+        val clip = clipboard?.primaryClip
+            ?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)
+            ?.coerceToText(target.context)
+            ?.toString()
+            ?: return
         insertText(clip)
     }
 
     private fun performAction() {
         val target = activeTarget?.get() ?: return
         hideSystemIme(target)
-        val isDone = (target.imeOptions and EditorActionMask.ACTION_DONE) != 0 || target.imeOptions == 0
+        val isDone =
+            (target.imeOptions and EditorActionMask.ACTION_DONE) != 0 || target.imeOptions == 0
         if (isDone) {
             target.onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
             hide()
@@ -294,7 +380,8 @@ object SEKeyboardController {
     }
 
     private fun hideSystemIme(view: View) {
-        val imm = view.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager ?: return
+        val imm = view.context.getSystemService(Context.INPUT_METHOD_SERVICE)
+            as? InputMethodManager ?: return
         imm.hideSoftInputFromWindow(view.windowToken, 0)
     }
 
