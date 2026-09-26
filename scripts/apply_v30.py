@@ -5,14 +5,11 @@ ROOT = Path(".")
 p = ROOT / "app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt"
 s = p.read_text()
 
-# V29 starts with a hardware attempt and retries in software. V30 removes that loop
-# and starts directly in software mode, while keeping the same MediaPlayer/layout.
 assert "private var hardwareAttempt = true" in s
 assert "private var softwareRetryUsed = false" in s
 s = s.replace("    private var hardwareAttempt = true\n", "    private var softwareDecoder = true\n", 1)
 s = s.replace("    private var softwareRetryUsed = false\n", "", 1)
 
-# Replace the V29 error/retry handler with a terminal error handler.
 old_err = '''                        MediaPlayer.Event.EncounteredError -> {
                             buffering = false
                             log("EncounteredError; hardwareAttempt=" + hardwareAttempt + ", softwareRetryUsed=" + softwareRetryUsed)
@@ -35,7 +32,6 @@ new_err = '''                        MediaPlayer.Event.EncounteredError -> {
 assert old_err in s
 s = s.replace(old_err, new_err, 1)
 
-# Prepare directly in software mode.
 old_prepare = '''        hardwareAttempt = true
         softwareRetryUsed = false
         loadMedia(url, currentStartPosition, useHardware = true)
@@ -48,7 +44,6 @@ new_prepare = '''        // V30 starts VLC in software-decoding mode. This avoid
 assert old_prepare in s
 s = s.replace(old_prepare, new_prepare, 1)
 
-# Disable direct MediaCodec/OMX rendering in software mode.
 old_soft = '''            } else {
                 setHWDecoderEnabled(false, false)
                 addOption(":avcodec-hw=none")
@@ -64,21 +59,10 @@ new_soft = '''            } else {
 assert old_soft in s
 s = s.replace(old_soft, new_soft, 1)
 
-# V30 separates prepare() from play(); EnginePlayerActivity owns the play call.
-pattern = re.compile(
-    r'''        // Delay play very slightly so VLC has completed its media assignment and vout binding\.
-.*?        \}, 80L\)
-
-    \}
-
-    private fun retryWithSoftwareDecoder\(\) \{
-.*?    \}
-
-''',
-    re.S,
-)
-m = pattern.search(s)
-assert m, "V29 delayed-play/retry block not found"
+start = s.find("        // Delay play very slightly so VLC has completed its media assignment and vout binding.")
+assert start >= 0, "V29 delayed-play block not found"
+end = s.find("    private fun applyPendingSeek", start)
+assert end >= 0, "applyPendingSeek anchor not found"
 replacement = '''        // Do not call play() from prepare(). EnginePlayerActivity calls play() after
         // prepare(), and V29 was effectively issuing two play() calls. Keeping media
         // preparation and playback as separate operations also prevents a race with
@@ -88,9 +72,8 @@ replacement = '''        // Do not call play() from prepare(). EnginePlayerActiv
     }
 
 '''
-s = s[:m.start()] + replacement + s[m.end():]
+s = s[:start] + replacement + s[end:]
 
-# Keep play() explicit and guard against a released engine.
 old_play = '''    override fun play() { try { mediaPlayer?.play() } catch (t: Throwable) { errorCallback?.invoke(t) } }
 '''
 new_play = '''    override fun play() {
