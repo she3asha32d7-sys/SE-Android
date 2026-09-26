@@ -1,5 +1,5 @@
 name: Final SEAndroid v100.0.24 Build
-# Build for v100.0.24: Arabic language support, keyboard settings, one-shot Shift and Caps Lock.
+# Build for v100.0.24 from the verified V100.0.23 source artifact.
 
 on:
   push:
@@ -14,19 +14,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore base
+      - name: Restore verified V100.0.23 source
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          mkdir -p /tmp/v17 /tmp/base
-          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10834906043/zip" -o /tmp/v17.zip
-          unzip -q /tmp/v17.zip -d /tmp/v17
-          SRC=$(find /tmp/v17 -type f -name 'SEAndroid_v100.0.17-source.zip' | head -1)
+          mkdir -p /tmp/v23 /tmp/base
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10899928546/zip" -o /tmp/v23.zip
+          unzip -q /tmp/v23.zip -d /tmp/v23
+          SRC=$(find /tmp/v23 -type f -name 'SEAndroid_v100.0.23-source.zip' | head -1)
           test -n "$SRC"
           unzip -q "$SRC" -d /tmp/base
           rsync -a --ignore-existing /tmp/base/ ./
           chmod +x gradlew
+          test -f app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
 
       - name: Apply SE Player download control
         run: python3 scripts/apply_player_download.py
@@ -61,18 +62,25 @@ jobs:
           rm -f app/src/main/res/drawable/se_logo_full.png app/src/main/res/drawable/se_launcher.png app/src/main/res/drawable/se_launcher_foreground.xml
           cp build_payload/app_logo.webp app/src/main/res/drawable/app_logo.webp
           cp build_payload/xtream_logo.webp app/src/main/res/drawable/xtream_logo.webp
+
           grep -q 'heartView.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt
           grep -q 'heartView.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
           grep -q 'android.widget.ScrollView' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
-          grep -q 'activeOverlay' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
-          grep -q 'ShiftMode.CAPS_LOCK' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+
+          grep -q 'enum class ShiftMode' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'ONE_SHOT' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'CAPS_LOCK' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
           grep -q 'العربية' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'ThemePreset' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'addCustomLanguage' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'HapticFeedbackConstants.KEYBOARD_TAP' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
+
       - name: Assemble
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
 
