@@ -26,11 +26,13 @@ jobs:
           chmod +x gradlew
 
       - name: Restore exact v51 build tree
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           : > /tmp/v51_overlay.tar.xz
-          for f in build_payload/v51_overlay_part*.b64; do
-            base64 -d "$f" >> /tmp/v51_overlay.tar.xz
+          for sha in 071c30d92d756dac123b8a64ded388a3297cd2d8 26c7a9aa049e824b7a9a6f7241330dc4978db62d; do
+            curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"               "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/${sha}"               | jq -r .content | tr -d '\n' | base64 -d >> /tmp/v51_overlay.tar.xz
           done
           printf '%s  %s\n' '4233346198cade37720e35112f4304567477c9bfafdcf55b4cd85d9834edbce7' '/tmp/v51_overlay.tar.xz' | sha256sum -c -
           tar -xJf /tmp/v51_overlay.tar.xz -C .
@@ -68,5 +70,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: SE-Android-v100.0.51-source-reconstructed
-          path: out/SE-Android-V100.0.51-source-reconstructed.zip
+          path: out/SE-Android-v100.0.51-source-reconstructed.zip
           retention-days: 30
