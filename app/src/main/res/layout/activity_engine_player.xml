@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root_engine_player"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:keepScreenOn="true">
+
+    <FrameLayout
+        android:id="@+id/engine_player_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <LinearLayout
+        android:id="@+id/engine_controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:background="#D9000000"
+        android:padding="10dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_engine_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_engine_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="VLC"
+                android:textColor="#00E5FF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_engine_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="CONNECTING..."
+            android:textColor="#FFCC00"
+            android:textSize="11sp"
+            android:paddingTop="4dp"
+            android:paddingBottom="6dp" />
+
+        <SeekBar
+            android:id="@+id/engine_seek"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="1000" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView android:id="@+id/btn_engine_back" android:layout_width="wrap_content" android:layout_height="44dp" android:minWidth="76dp" android:gravity="center" android:focusable="true" android:clickable="true" android:text="BACK" android:textColor="#FFFFFF" android:textStyle="bold" />
+            <TextView android:id="@+id/btn_engine_prev" android:layout_width="wrap_content" android:layout_height="44dp" android:minWidth="76dp" android:gravity="center" android:focusable="true" android:clickable="true" android:text="−10" android:textColor="#FFFFFF" android:textStyle="bold" />
+            <TextView android:id="@+id/btn_engine_play" android:layout_width="wrap_content" android:layout_height="44dp" android:minWidth="86dp" android:gravity="center" android:focusable="true" android:clickable="true" android:text="PLAY" android:textColor="#FFFFFF" android:textStyle="bold" />
+            <TextView android:id="@+id/btn_engine_next" android:layout_width="wrap_content" android:layout_height="44dp" android:minWidth="76dp" android:gravity="center" android:focusable="true" android:clickable="true" android:text="+10" android:textColor="#FFFFFF" android:textStyle="bold" />
+            <TextView android:id="@+id/btn_engine_speed" android:layout_width="wrap_content" android:layout_height="44dp" android:minWidth="76dp" android:gravity="center" android:focusable="true" android:clickable="true" android:text="1x" android:textColor="#FFFFFF" android:textStyle="bold" />
+            <TextView android:id="@+id/btn_engine_record" android:layout_width="wrap_content" android:layout_height="44dp" android:minWidth="90dp" android:gravity="center" android:focusable="true" android:clickable="true" android:text="● REC" android:textColor="#FF5555" android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>
