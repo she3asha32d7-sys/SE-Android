@@ -1,0 +1,1 @@
+Build V100.0.27 from the verified V100.0.26 source. APK is not to be stored in the Library.
