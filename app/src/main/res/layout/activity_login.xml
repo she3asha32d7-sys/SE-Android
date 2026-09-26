@@ -146,22 +146,44 @@
                     android:fontFamily="sans-serif-condensed"
                     android:textStyle="bold" />
 
-                <EditText
-                    android:id="@+id/et_password"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="40dp"
-                    android:background="@color/sky_input_bg"
-                    android:textColor="@color/sky_white"
-                    android:textSize="13sp"
-                    android:fontFamily="monospace"
-                    android:hint="password"
-                    android:textColorHint="#88AAAAAA"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:inputType="textPassword"
+                    android:orientation="horizontal"
                     android:layout_marginTop="4dp"
-                    android:layout_marginBottom="20dp"
-                    android:imeOptions="actionDone" />
+                    android:layout_marginBottom="20dp">
+
+                    <EditText
+                        android:id="@+id/et_password"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:background="@color/sky_input_bg"
+                        android:textColor="@color/sky_white"
+                        android:textSize="13sp"
+                        android:fontFamily="monospace"
+                        android:hint="password"
+                        android:textColorHint="#88AAAAAA"
+                        android:paddingStart="10dp"
+                        android:paddingEnd="10dp"
+                        android:inputType="textPassword"
+                        android:imeOptions="actionDone" />
+
+                    <TextView
+                        android:id="@+id/btn_show_password"
+                        android:layout_width="118dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="6dp"
+                        android:gravity="center"
+                        android:text="SHOW PASSWORD"
+                        android:textColor="@color/sky_cyan"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:fontFamily="sans-serif-condensed"
+                        android:background="@color/sky_mid_blue"
+                        android:focusable="true"
+                        android:clickable="true" />
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/tv_error"
