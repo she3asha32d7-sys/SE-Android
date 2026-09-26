@@ -9,7 +9,7 @@ if old_move not in s:
     if 'adjustBrightness(' not in s and 'adjustVolume(' not in s:
         raise SystemExit("gesture code already absent; refusing unrelated rewrite")
     raise SystemExit("expected player volume/brightness gesture block not found")
-s = s.replace(old_move, '''            # Vertical touch movement is intentionally ignored. Brightness/volume are not changed by screen-side gestures.
+s = s.replace(old_move, '''            // Vertical touch movement is intentionally ignored. Brightness/volume are not changed by screen-side gestures.
 ''', 1)
 
 old_helpers = '''    private fun adjustVolume(delta:Float){val am=getSystemService(AUDIO_SERVICE) as AudioManager; val cur=am.getStreamVolume(AudioManager.STREAM_MUSIC); val max=am.getStreamMaxVolume(AudioManager.STREAM_MUSIC); am.setStreamVolume(AudioManager.STREAM_MUSIC,(cur+(delta*max)).toInt().coerceIn(0,max),0); Toast.makeText(this,"VOLUME ${am.getStreamVolume(AudioManager.STREAM_MUSIC)*100/max}%",Toast.LENGTH_SHORT).show()}
