@@ -32,7 +32,7 @@ KEYBOARD.write_text(content, encoding="utf-8")
 # 1) List Users: remove the cyan active-card fill; active status text remains readable.
 p = ROOT / "app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt"
 s = p.read_text(encoding="utf-8")
-s2 = s.replace("if (active) palette.highlight else palette.bgMid", "palette.bgMid")
+s2 = s.replace("if (active) palette.highlight else palette.bgMid", "palette.bgMid").replace("if (active) Color.BLACK else Color.WHITE", "Color.WHITE")
 if s2 == s:
     raise SystemExit("ListUsers active-card background pattern not found")
 p.write_text(s2, encoding="utf-8")
