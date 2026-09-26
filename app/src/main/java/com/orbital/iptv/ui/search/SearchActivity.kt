@@ -213,7 +213,7 @@ class SearchActivity : AppCompatActivity() {
             val live = liveJob.await()
             val categories = categoriesJob.await()
 
-            if (!currentCoroutineContext().isActive || query != binding.etSearch.text?.toString()?.trim()) return
+            if (!currentCoroutineContext().isActive || query != binding.etSearch.text?.toString()?.trim()) return@coroutineScope
 
             movieAdapter.submitList(movies.map { SearchAdapter.Item.Movie(it) })
             seriesAdapter.submitList(series.map { SearchAdapter.Item.Series(it) })
