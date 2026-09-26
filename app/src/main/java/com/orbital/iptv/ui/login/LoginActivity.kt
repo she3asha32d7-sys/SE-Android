@@ -70,12 +70,14 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun setupKeyboardOnFocus() {
-        listOf(binding.etProfileName, binding.etServerUrl, binding.etUsername, binding.etPassword).forEach { et ->
-            et.showSoftInputOnFocus = false
-        }
+        // Bind every Xtream field directly to the in-app keyboard. Do not rely only on
+        // the application-level focus observer because OrbitalApp installs the observer before
+        // this Activity inflates its layout.
+        listOf(binding.etProfileName, binding.etServerUrl, binding.etUsername, binding.etPassword)
+            .forEach { SEKeyboardController.prepare(it) }
 
-        // The original screen opened the Android/TV IME. SE now keeps text entry
-        // completely inside the app with SEKeyboardController.
+        // The original screen opened the Android/TV IME. SE keeps text entry completely inside
+        // the app with the custom keyboard, so the system IME stays disabled.
         SEKeyboardController.install(this)
 
         binding.etProfileName.setOnEditorActionListener { _, actionId, _ ->
