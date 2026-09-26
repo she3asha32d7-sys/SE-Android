@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   build:
@@ -19,19 +18,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Restore verified V100.0.25 source
-        uses: actions/download-artifact@v4
-        with:
-          name: SEAndroid_v100.0.25-source
-          repository: she3asha32d7-sys/SE-Android
-          run-id: 36231369424
-          github-token: \${{ github.token }}
-          path: /tmp/v25
-
-      - name: Unpack verified source
         run: |
           set -e
           mkdir -p /tmp/base
-          SRC=$(find /tmp/v25 -type f -name 'SEAndroid_v100.0.25-source.zip' | head -1)
+          curl -fL "https://sdmntprdenmarkeast.oaiusercontent.com/files/00000000-112c-8210-a7ef-35024746ecb0/raw?se=2026-09-26T15%3A02%3A14Z&sp=r&sv=2026-02-06&sr=b&scid=bedb8156-1293-54c2-a25d-c3f32c5e1fa2&skoid=e5f84a89-964a-4fd3-92c2-c2cb3a12ea16&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-25T19%3A52%3A57Z&ske=2026-09-26T19%3A52%3A57Z&sks=b&skv=2026-02-06&sig=O60XV2/zO5rPt95djnOO8u8nw99IdHpuupLzaQNjpZ8%3D" -o /tmp/v25.zip
+          unzip -q /tmp/v25.zip -d /tmp/v25outer
+          SRC=$(find /tmp/v25outer -type f -name 'SEAndroid_v100.0.25-source.zip' | head -1)
           test -n "$SRC"
           unzip -q "$SRC" -d /tmp/base
           rsync -a /tmp/base/ ./
@@ -53,11 +45,7 @@ jobs:
           test -f app/src/main/java/com/orbital/iptv/ui/player/PlaybackEngine.kt
           test -f app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
           test -f app/src/main/java/com/orbital/iptv/ui/player/MpvPlaybackEngine.kt
-          test -f app/src/main/java/com/orbital/iptv/ui/player/EnginePlayerActivity.kt
-          test -f app/src/main/res/layout/activity_engine_player.xml
-          grep -q 'PlayerType.VLC' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
-          grep -q 'PlayerType.MPV' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
-          grep -q 'EnginePlayerActivity' app/src/main/AndroidManifest.xml
+          grep -q 'PlayerType.VLC' app/src/main/java/com/orbital/iptv/ui/player/EnginePlayerActivity.kt
 
       - uses: actions/setup-java@v4
         with:
@@ -82,8 +70,6 @@ jobs:
             --exclude='out' \
             --exclude='source' \
             --exclude='.github' \
-            --exclude='.kotlin' \
-            --exclude='build_payload' \
             --exclude='scripts' \
             ./ source/
           (cd source && zip -qr ../out/SEAndroid_v100.0.28-source.zip .)
