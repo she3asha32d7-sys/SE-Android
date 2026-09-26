@@ -74,6 +74,9 @@ new = '''    private fun confirmExitApp() {
         dialog.show()
     }
 '''
-replace_once(str(home), old, new)
+if old in s:
+    home.write_text(s.replace(old, new, 1))
+else:
+    print("Home exit-dialog pattern already patched or differs in this base; keeping current source.")
 
 print("Large confirm-dialog typography applied")
