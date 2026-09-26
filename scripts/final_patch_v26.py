@@ -4,23 +4,25 @@ R=Path('.')
 java=R/'app/src/main/java'
 for p in java.rglob('*.kt'):
     s=p.read_text(encoding='utf-8')
-    s=s.replace('import com.orbital.iptv.utils.SEKeyboardController\\n','')
-    s=s.replace('import com.orbital.iptv.utils.SEKeyboardController\\r\\n','')
-    s=s.replace('com.orbital.iptv.utils.SEKeyboardController.prepare(', '')
-    s=s.replace('SEKeyboardController.prepare(', '')
+    # Unwrap SEKeyboardController.prepare(...) while preserving the EditText expression.
+    s=re.sub(r'SEKeyboardController\\.prepare\\((android\\.widget\\.EditText\\(this\\)\\.apply\\s*\\{.*?\\n\\s*\\})\\)', r'\\1', s, flags=re.S)
+    s=re.sub(r'SEKeyboardController\\.prepare\\((EditText\\(this\\)\\.apply\\s*\\{.*?\\})\\)', r'\\1', s, flags=re.S)
+    s=s.replace('SEKeyboardController.prepare(binding.etSearch)', 'binding.etSearch')
+    s=s.replace('SEKeyboardController.prepare(it)', 'it')
+    s=s.replace('com.orbital.iptv.utils.SEKeyboardController.install(this)', '')
     s=s.replace('SEKeyboardController.install(this)', '')
-    s=re.sub(r'\\s*com\\.orbital\\.iptv\\.utils\\.SEKeyboardController\\.showFocused\\([^\\n]*\\)', '', s)
-    s=re.sub(r'\\s*SEKeyboardController\\.showFocused\\([^\\n]*\\)', '', s)
-    s=re.sub(r'\\s*com\\.orbital\\.iptv\\.utils\\.SEKeyboardController\\.showFor\\([^\\n]*\\)', '', s)
-    s=re.sub(r'\\s*SEKeyboardController\\.showFor\\([^\\n]*\\)', '', s)
-    s=re.sub(r'\\s*SEKeyboardController\\.install\\([^\\n]*\\)', '', s)
+    s=s.replace('com.orbital.iptv.utils.SEKeyboardController.install(a)', '')
+    s=s.replace('SEKeyboardController.install(a)', '')
+    # Remove standalone custom-keyboard focus hooks/imports.
+    lines=[]
+    for line in s.splitlines():
+        if 'SEKeyboardController' in line:
+            continue
+        lines.append(line)
+    s='\n'.join(lines)+'\n'
     s=s.replace('et.showSoftInputOnFocus = false','et.showSoftInputOnFocus = true')
-    s='\n'.join(line for line in s.splitlines() if 'SEKeyboardController' not in line)
-    s=s.replace('com.orbital.iptv.utils.SEKeyboardController.showFocused','')
-    s=s.replace('SEKeyboardController.showFocused','')
-    s=s.replace('com.orbital.iptv.utils.SEKeyboardController.showFor','')
-    s=s.replace('SEKeyboardController.showFor','')
     p.write_text(s,encoding='utf-8')
+
 ctl=java/'com/orbital/iptv/utils/SEKeyboardController.kt'
 if ctl.exists(): ctl.unlink()
 for p in [R/'scripts/apply_keyboard_v24.py', *R.glob('scripts/keyboard_v24_payload_*.b64'), *R.glob('scripts/v25_keyboard_part_*.b64')]:
