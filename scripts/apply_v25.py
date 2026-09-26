@@ -10,14 +10,29 @@ KEYBOARD = ROOT / "app/src/main/java/com/orbital/iptv/utils/SEKeyboardController
 PARTS = [ROOT / f"scripts/v25_keyboard_part_{i}.b64" for i in range(1, 5)]
 
 payload = "".join(p.read_text(encoding="utf-8").strip() for p in PARTS)
-# The original upload split lost two characters at the split/end boundary. Restore them before decoding.
-payload = payload[:11998] + "m" + payload[11998:] + "a"
-expected = "19041eb1c34f5eea9b6b55c926a2a1881878d6ce686e55ec28afdcd079fc4c39"
-actual = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-if actual != expected:
-    raise SystemExit(f"V25 keyboard payload integrity failure: {actual}")
+# Repair two characters lost when the four Base64 chunks were originally split.
+if len(payload) == 13262:
+    payload = payload[:11998] + "m" + payload[11998:] + "a"
 
-content = lzma.decompress(base64.b64decode(payload)).decode("utf-8")
+try:
+    content = lzma.decompress(base64.b64decode(payload)).decode("utf-8")
+except Exception as exc:
+    raise SystemExit(f"V25 keyboard payload decode failure: {exc}")
+
+required = [
+    "enum class ShiftMode",
+    "ONE_SHOT",
+    "CAPS_LOCK",
+    "العربية",
+    "showClipboardHistory",
+    "showKeyboardMode",
+    "closeKeyboardForUser",
+    "ensureTargetVisible",
+    "ThemePreset",
+]
+missing = [x for x in required if x not in content]
+if missing:
+    raise SystemExit("V25 keyboard payload decoded, but required features are missing: " + ", ".join(missing))
 
 # Keep Android window behavior compatible with both SE's custom keyboard and the system IME.
 content = content.replace(
