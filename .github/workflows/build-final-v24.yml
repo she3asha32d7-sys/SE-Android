@@ -1,5 +1,5 @@
 name: Final SEAndroid v100.0.24 Build
-# Build for v100.0.24 from the verified V100.0.23 source artifact.
+# Build V100.0.24 from the verified V100.0.23 source artifact, then replace only the keyboard controller.
 
 on:
   push:
@@ -29,26 +29,6 @@ jobs:
           chmod +x gradlew
           test -f app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
 
-      - name: Apply SE Player download control
-        run: python3 scripts/apply_player_download.py
-      - name: Apply List Users profile fix
-        run: python3 scripts/apply_list_users_profile_fix.py
-      - name: Apply Auto Rotate setting
-        run: python3 scripts/apply_auto_rotate.py
-      - name: Apply larger exit and settings confirmation dialogs
-        run: python3 scripts/apply_large_confirm_dialogs.py
-      - name: Apply Movies and Series category counts
-        run: python3 scripts/apply_vod_series_category_counts.py
-      - name: Apply Records header cleanup
-        run: python3 scripts/apply_records_header_cleanup.py
-      - name: Apply player screen-side gesture cleanup
-        run: python3 scripts/apply_player_gesture_cleanup.py
-      - name: Apply focus-aware player action scrolling
-        run: python3 scripts/apply_player_action_scroll.py
-      - name: Apply Search manifest wiring
-        run: python3 scripts/apply_search_manifest.py
-      - name: Apply Home Search category deep-link
-        run: python3 scripts/apply_home_search_category.py
       - name: Apply SE Keyboard v24
         run: python3 scripts/apply_keyboard_v24.py
 
@@ -89,7 +69,7 @@ jobs:
           set -e
           mkdir -p out source
           cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.24.apk
-          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source' --exclude='build_payload' ./ source/
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source' --exclude='build_payload' --exclude='scripts/keyboard_v24_payload_*.b64' --exclude='BUILD_V100_0_24_TRIGGER.txt' ./ source/
           (cd source && zip -qr ../out/SEAndroid_v100.0.24-source.zip .)
 
       - uses: actions/upload-artifact@v4
