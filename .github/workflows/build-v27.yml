@@ -12,33 +12,66 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Set V100.0.27
+
+      - name: Restore exact V100.0.25 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p /tmp/v25 /tmp/base
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10902706686/zip"             -o /tmp/v25.zip
+          unzip -q /tmp/v25.zip -d /tmp/v25
+          SRC=$(find /tmp/v25 -type f -name 'SEAndroid_v100.0.25-source.zip' | head -1)
+          test -n "$SRC"
+          unzip -q "$SRC" -d /tmp/base
+          rsync -a /tmp/base/ ./
+          chmod +x gradlew
+          test -f gradlew
+          test -f app/src/main/java/com/orbital/iptv/ui/login/LoginActivity.kt
+
+      - name: Apply V100.0.26 changes
+        run: python3 scripts/apply_v26.py
+
+      - name: Prepare V100.0.27
         run: |
           set -e
           perl -0pi -e 's/versionCode\s+\d+/versionCode 1000027/' app/build.gradle
           perl -0pi -e 's/versionName\s+"[^"]+"/versionName "100.0.27"/' app/build.gradle
           printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.27"' "include ':app'" > settings.gradle
+
           grep -q 'versionCode 1000027' app/build.gradle
           grep -q 'versionName "100.0.27"' app/build.gradle
+          test ! -e app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          ! grep -R "SEKeyboardController" -n app/src/main/java
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+
       - name: Assemble Debug APK
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
       - name: Package
         run: |
           set -e
           mkdir -p out source
           cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.27.apk
-          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source' ./ source/
+          rsync -a             --exclude='.git'             --exclude='.gradle'             --exclude='.idea'             --exclude='app/build'             --exclude='out'             --exclude='source'             --exclude='.github'             --exclude='.kotlin'             --exclude='build_payload'             --exclude='scripts/apply_keyboard_v24.py'             --exclude='scripts/apply_v25.py'             --exclude='scripts/apply_v26.py'             --exclude='scripts/keyboard_v24_payload_*.b64'             --exclude='scripts/v25_keyboard_part_*.b64'             --exclude='BUILD_V100_0_25_TRIGGER.txt'             --exclude='BUILD_V100_0_27_TRIGGER.txt'             --exclude='scripts'             ./ source/
+          # Keep only the scripts that were present in the verified V100.0.26 source.
+          mkdir -p source/scripts
+          for f in scripts/apply_auto_rotate.py scripts/apply_home_search_category.py scripts/apply_large_confirm_dialogs.py scripts/apply_list_users_profile_fix.py scripts/apply_player_action_scroll.py scripts/apply_player_download.py scripts/apply_player_gesture_cleanup.py scripts/apply_records_header_cleanup.py scripts/apply_search_manifest.py scripts/apply_v17.py scripts/apply_v18.py scripts/apply_vod_series_category_counts.py se_v100.10_to_v100.11.patch.xz.b64 se_v100.11_to_v100.12.patch.xz.b64 se_v100.12_to_v100.13.patch.xz.b64 se_v9_to_v10_source.patch.xz.b64; do
+            [ -e "$f" ] && cp "$f" "source/$f"
+          done
           (cd source && zip -qr ../out/SEAndroid_v100.0.27-source.zip .)
+
       - uses: actions/upload-artifact@v4
         with:
           name: SEAndroid_v100.0.27-apk
           path: out/SEAndroid_v100.0.27.apk
           retention-days: 30
+
       - uses: actions/upload-artifact@v4
         with:
           name: SEAndroid_v100.0.27-source
