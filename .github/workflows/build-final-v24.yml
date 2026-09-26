@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - v100.0.24
+  workflow_dispatch:
 
 jobs:
   build:
@@ -29,34 +30,24 @@ jobs:
 
       - name: Apply SE Player download control
         run: python3 scripts/apply_player_download.py
-
       - name: Apply List Users profile fix
         run: python3 scripts/apply_list_users_profile_fix.py
-
       - name: Apply Auto Rotate setting
         run: python3 scripts/apply_auto_rotate.py
-
       - name: Apply larger exit and settings confirmation dialogs
         run: python3 scripts/apply_large_confirm_dialogs.py
-
       - name: Apply Movies and Series category counts
         run: python3 scripts/apply_vod_series_category_counts.py
-
       - name: Apply Records header cleanup
         run: python3 scripts/apply_records_header_cleanup.py
-
       - name: Apply player screen-side gesture cleanup
         run: python3 scripts/apply_player_gesture_cleanup.py
-
       - name: Apply focus-aware player action scrolling
         run: python3 scripts/apply_player_action_scroll.py
-
       - name: Apply Search manifest wiring
         run: python3 scripts/apply_search_manifest.py
-
       - name: Apply Home Search category deep-link
         run: python3 scripts/apply_home_search_category.py
-
       - name: Apply SE Keyboard v24
         run: python3 scripts/apply_keyboard_v24.py
 
@@ -81,9 +72,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: gradle/actions/setup-gradle@v4
-
       - name: Assemble
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
 
@@ -100,7 +89,6 @@ jobs:
           name: SEAndroid_v100.0.24-apk
           path: out/SEAndroid_v100.0.24.apk
           retention-days: 30
-
       - uses: actions/upload-artifact@v4
         with:
           name: SEAndroid_v100.0.24-source
