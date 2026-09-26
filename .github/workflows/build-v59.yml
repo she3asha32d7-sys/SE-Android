@@ -61,6 +61,53 @@ jobs:
           set -euo pipefail
           sed -i '/android:showSoftInputOnFocus="true"/d'             app/src/main/res/layout/activity_login.xml             app/src/main/res/layout/activity_emby_login.xml             app/src/main/res/layout/activity_plex_login.xml
 
+      - name: Apply V59 Kotlin compile fixes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          login = Path("app/src/main/java/com/orbital/iptv/ui/login/LoginActivity.kt")
+          s = login.read_text()
+          s = s.replace(
+              "private fun ensureFocusedFieldVisible(scrollView: View, marginPx: Int)",
+              "private fun ensureFocusedFieldVisible(scrollView: android.widget.ScrollView, marginPx: Int)"
+          )
+          login.write_text(s)
+
+          player = Path("app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt")
+          s = player.read_text()
+          s = s.replace(
+              "        private const val MAX_AUDIO_SINK_ERRORS = 8\n",
+              "        private const val MAX_AUDIO_SINK_ERRORS = 8\n"
+              "        private const val REQUEST_RECORD_AUDIO = 7402\n"
+              "        private const val REQUEST_MEDIA_PROJECTION = 7403\n"
+          )
+          old = """    private companion object RecorderRequests {
+        const val REQUEST_RECORD_AUDIO = 7402
+        const val REQUEST_MEDIA_PROJECTION = 7403
+    }
+"""
+          if old not in s:
+              raise SystemExit("RecorderRequests companion block not found")
+          s = s.replace(old, "")
+          player.write_text(s)
+
+          worker = Path("app/src/main/java/com/orbital/iptv/utils/DownloadWorker.kt")
+          s = worker.read_text()
+          s = s.replace(
+              "import kotlinx.coroutines.CancellationException\n",
+              "import kotlinx.coroutines.CancellationException\n"
+              "import kotlinx.coroutines.currentCoroutineContext\n"
+              "import kotlinx.coroutines.ensureActive\n"
+          )
+          s = s.replace("                        ensureActive()\n", "                        currentCoroutineContext().ensureActive()\n")
+          worker.write_text(s)
+          PY
+          grep -n "REQUEST_RECORD_AUDIO\|REQUEST_MEDIA_PROJECTION" app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt | head
+          grep -n "currentCoroutineContext" app/src/main/java/com/orbital/iptv/utils/DownloadWorker.kt
+          grep -n "ensureFocusedFieldVisible(scrollView" app/src/main/java/com/orbital/iptv/ui/login/LoginActivity.kt | tail -1
+
       - name: Restore executable Gradle wrapper
         run: chmod +x gradlew
 
