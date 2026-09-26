@@ -27,6 +27,9 @@ jobs:
       - name: Apply SE Player download control
         run: python3 scripts/apply_player_download.py
 
+      - name: Apply List Users profile fix
+        run: python3 scripts/apply_list_users_profile_fix.py
+
       - name: Apply Records header cleanup
         run: python3 scripts/apply_records_header_cleanup.py
 
