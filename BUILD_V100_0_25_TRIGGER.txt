@@ -1,1 +1,1 @@
-Trigger V100.0.25 build after repairing keyboard payload boundary.
+Trigger V100.0.25 build after keyboard payload decode verification fix.
