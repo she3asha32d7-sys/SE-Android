@@ -482,7 +482,10 @@ class TvModeActivity : AppCompatActivity() {
         }
 
         binding.btnHudMenu.setOnClickListener {
-            startActivity(Intent(this, HomeActivity::class.java))
+            startActivity(Intent(this, HomeActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                putExtra(HomeActivity.EXTRA_SECTION, "HOME")
+            })
         }
         timerReset(binding.btnHudMenu)
 
@@ -2040,7 +2043,10 @@ class TvModeActivity : AppCompatActivity() {
         PrefsManager.setTvModeEnabled(this, enabled)
         if (!enabled) {
             Toast.makeText(this, "TV MODE OFF", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(this, HomeActivity::class.java))
+            startActivity(Intent(this, HomeActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                putExtra(HomeActivity.EXTRA_SECTION, "HOME")
+            })
             finish()
         }
     }
