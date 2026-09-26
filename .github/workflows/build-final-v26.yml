@@ -8,23 +8,34 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Download V25 source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf work artifact.zip artifact
+          mkdir -p work artifact
+          curl -L --fail -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/she3asha32d7-sys/SE-Android/actions/artifacts/10902706686/zip"             -o artifact.zip
+          unzip -q artifact.zip -d artifact
+          unzip -q artifact/SEAndroid_v100.0.25-source.zip -d work
+          cp scripts/final_patch_v26.py work/scripts/final_patch_v26.py
       - name: Apply final V26 source patch
+        working-directory: work
         run: |
           python3 scripts/final_patch_v26.py
           grep -q 'versionCode 1000026' app/build.gradle
           grep -q 'versionName "100.0.26"' app/build.gradle
           ! grep -R "SEKeyboardController" app/src/main/java
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
+          test -f settings.gradle
+          test -f build.gradle
+          test -f app/src/main/AndroidManifest.xml
       - name: Build
-        run: gradle clean assembleDebug --no-daemon --stacktrace
+        working-directory: work
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
       - name: Package
         run: |
-          mkdir -p out source
-          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-V100.0.26.apk
-          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source' ./ source/
+          mkdir -p out
+          cp work/app/build/outputs/apk/debug/app-debug.apk out/SE-Android-V100.0.26.apk
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='artifact' --exclude='work' ./work/ source/
           (cd source && zip -qr ../out/SE-Android-V100.0.51-source.zip .)
           unzip -t out/SE-Android-V100.0.51-source.zip >/dev/null
       - uses: actions/upload-artifact@v4
