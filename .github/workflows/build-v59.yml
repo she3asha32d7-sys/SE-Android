@@ -56,6 +56,9 @@ jobs:
           done < DELETE.txt
           rm -f DELETE.txt
 
+      - name: Restore executable Gradle wrapper
+        run: chmod +x gradlew
+
       - name: Verify reconstructed V59 source
         run: |
           set -euo pipefail
