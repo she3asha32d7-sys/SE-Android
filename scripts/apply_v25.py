@@ -10,9 +10,15 @@ KEYBOARD = ROOT / "app/src/main/java/com/orbital/iptv/utils/SEKeyboardController
 PARTS = [ROOT / f"scripts/v25_keyboard_part_{i}.b64" for i in range(1, 5)]
 
 payload = "".join(p.read_text(encoding="utf-8").strip() for p in PARTS)
-# Repair two characters lost when the four Base64 chunks were originally split.
+# Repair the two exact characters dropped from the uploaded chunk files.
 if len(payload) == 13262:
-    payload = payload[:11998] + "m" + payload[11998:] + "a"
+    payload = payload[:6211] + "2" + payload[6211:]
+    payload = payload[:10520] + "j" + payload[10520:]
+
+expected = "19041eb1c34f5eea9b6b55c926a2a1881878d6ce686e55ec28afdcd079fc4c39"
+actual = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+if actual != expected:
+    raise SystemExit(f"V25 keyboard payload integrity failure: {actual}")
 
 try:
     content = lzma.decompress(base64.b64decode(payload)).decode("utf-8")
