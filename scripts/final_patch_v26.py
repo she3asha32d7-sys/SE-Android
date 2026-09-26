@@ -15,6 +15,7 @@ for p in java.rglob('*.kt'):
     s=re.sub(r'\\s*SEKeyboardController\\.showFor\\([^\\n]*\\)', '', s)
     s=re.sub(r'\\s*SEKeyboardController\\.install\\([^\\n]*\\)', '', s)
     s=s.replace('et.showSoftInputOnFocus = false','et.showSoftInputOnFocus = true')
+    s='\\n'.join(line for line in s.splitlines() if 'SEKeyboardController' not in line)
     s=s.replace('com.orbital.iptv.utils.SEKeyboardController.showFocused','')
     s=s.replace('SEKeyboardController.showFocused','')
     s=s.replace('com.orbital.iptv.utils.SEKeyboardController.showFor','')
