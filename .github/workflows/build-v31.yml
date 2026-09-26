@@ -1,4 +1,4 @@
-# Final V100.0.31 build trigger after patch-script correction.
+# Final V100.0.31 build: V29 verified source + V30 fix + V31 surface fix.
 name: SEAndroid v100.0.31 VLC Surface Fix Build
 
 on:
@@ -16,25 +16,30 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Restore verified V100.0.30 source artifact
+
+      - name: Restore verified V100.0.29 source artifact
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          mkdir -p /tmp/v30outer /tmp/base
-          curl -fsSL -H "Authorization: Bearer \${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/\${GITHUB_REPOSITORY}/actions/artifacts/10913838063/zip" -o /tmp/v30.zip
-          unzip -q /tmp/v30.zip -d /tmp/v30outer
-          SRC=\$(find /tmp/v30outer -type f -name 'SEAndroid_v100.0.30-source.zip' | head -1)
-          test -n "\${SRC}"
-          unzip -q "\${SRC}" -d /tmp/base
+          mkdir -p /tmp/v29outer /tmp/base
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10909446836/zip" -o /tmp/v29.zip
+          unzip -q /tmp/v29.zip -d /tmp/v29outer
+          SRC=$(find /tmp/v29outer -type f -name 'SEAndroid_v100.0.29-source.zip' | head -1)
+          test -n "${SRC}"
+          unzip -q "${SRC}" -d /tmp/base
           rsync -a /tmp/base/ ./
           chmod +x gradlew
           test -f gradlew
           test -f app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
           test -f app/src/main/java/com/orbital/iptv/ui/player/EnginePlayerActivity.kt
+
+      - name: Apply V100.0.30 VLC fix
+        run: python3 -c "exec(open('scripts/apply_v30.py').read())"
+
       - name: Apply V100.0.31 VLC surface fix
         run: python3 scripts/apply_v31.py
+
       - name: Validate V100.0.31
         run: |
           set -e
@@ -46,13 +51,16 @@ jobs:
           grep -q 'layout.width > 0 && layout.height > 0' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
           grep -q 'attachViews(layout, null, false, true)' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
           ! grep -q 'container.addView(layout)' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
+
       - name: Assemble Debug APK
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
       - name: Package outputs
         run: |
           set -e
@@ -60,6 +68,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.31.apk
           rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source' --exclude='.github' --exclude='scripts' ./ source/
           (cd source && zip -qr ../out/SEAndroid_v100.0.31-source.zip .)
+
       - uses: actions/upload-artifact@v4
         with:
           name: SEAndroid_v100.0.31-apk
