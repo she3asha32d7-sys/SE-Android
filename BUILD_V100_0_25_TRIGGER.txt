@@ -1,1 +1,1 @@
-Trigger V100.0.25 build after verified keyboard payload checksum.
+Trigger V100.0.25 build after repairing keyboard payload boundary.
