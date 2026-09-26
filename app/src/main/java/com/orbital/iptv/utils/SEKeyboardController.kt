@@ -71,6 +71,13 @@ object SEKeyboardController {
         bindEditText(editText)
         editText.showSoftInputOnFocus = false
         hideSystemIme(editText)
+        // Multiple focus/touch/lifecycle callbacks can arrive for the same field.
+        // If this field already owns a visible keyboard overlay, keep it instead of rebuilding it.
+        if (activeTarget?.get() === editText && activeOverlay?.parent != null) {
+            activeOverlay?.bringToFront()
+            return
+        }
+
         activeTarget = WeakReference(editText)
 
         val root = editText.rootView
@@ -310,12 +317,21 @@ object SEKeyboardController {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
-        overlay.bringToFront()
-        activeOverlay = overlay
 
-        keyboard.post {
-            if (activeOverlay === overlay) {
+        // Force a real layout pass after insertion. This is important on Android TV where
+        // the content hierarchy may be attached before its final window dimensions exist.
+        overlay.visibility = View.VISIBLE
+        keyboard.visibility = View.VISIBLE
+        activeOverlay = overlay
+        overlay.bringToFront()
+        overlay.requestLayout()
+
+        content.post {
+            if (activeOverlay === overlay && overlay.parent != null) {
+                overlay.visibility = View.VISIBLE
                 overlay.bringToFront()
+                overlay.requestLayout()
+                keyboard.requestLayout()
                 bringFocusedFieldIntoView(editText)
             }
         }
