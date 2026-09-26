@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/orbital_dark_blue">
+
+    <include
+        android:id="@+id/main_sidebar"
+        android:layout_width="match_parent"
+        android:layout_height="92dp"
+        layout="@layout/layout_main_sidebar"/>
+
+    <View
+        android:id="@+id/view_accent"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:background="@color/sky_cyan"/>
+
+    <LinearLayout
+        android:id="@+id/layout_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/header_movies"
+                    android:layout_width="match_parent"
+                    android:layout_height="34dp"
+                    android:gravity="start|center_vertical"
+                    android:paddingStart="16dp"
+                    android:text="MOVIES"
+                    android:textColor="@color/sky_yellow"
+                    android:background="@color/sky_mid_blue"
+                    android:visibility="gone"/>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rv_movies"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:visibility="gone"/>
+
+                <TextView
+                    android:id="@+id/header_series"
+                    android:layout_width="match_parent"
+                    android:layout_height="34dp"
+                    android:gravity="start|center_vertical"
+                    android:paddingStart="16dp"
+                    android:text="SERIES"
+                    android:textColor="@color/sky_yellow"
+                    android:background="@color/sky_mid_blue"
+                    android:visibility="gone"/>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rv_series"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:visibility="gone"/>
+
+                <TextView
+                    android:id="@+id/header_live"
+                    android:layout_width="match_parent"
+                    android:layout_height="34dp"
+                    android:gravity="start|center_vertical"
+                    android:paddingStart="16dp"
+                    android:text="LIVE TV"
+                    android:textColor="@color/sky_yellow"
+                    android:background="@color/sky_mid_blue"
+                    android:visibility="gone"/>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rv_live"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:visibility="gone"/>
+
+                <TextView
+                    android:id="@+id/header_categories"
+                    android:layout_width="match_parent"
+                    android:layout_height="34dp"
+                    android:gravity="start|center_vertical"
+                    android:paddingStart="16dp"
+                    android:text="CATEGORIES"
+                    android:textColor="@color/sky_yellow"
+                    android:background="@color/sky_mid_blue"
+                    android:visibility="gone"/>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rv_categories"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:visibility="gone"/>
+
+                <TextView
+                    android:id="@+id/tv_empty"
+                    android:layout_width="match_parent"
+                    android:layout_height="260dp"
+                    android:gravity="center"
+                    android:text="NO FAVOURITES YET&#10;&#10;ADD MOVIES, SERIES, LIVE CHANNELS OR CATEGORIES TO YOUR FAVOURITES"
+                    android:textColor="#668899"
+                    android:textSize="13sp"
+                    android:visibility="gone"/>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+
+        <TextView
+            android:id="@+id/tv_count"
+            android:layout_width="match_parent"
+            android:layout_height="24dp"
+            android:gravity="end|center_vertical"
+            android:paddingEnd="8dp"
+            android:textColor="@color/sky_cyan"
+            android:textSize="9sp"/>
+    </LinearLayout>
+</LinearLayout>
