@@ -26,10 +26,13 @@ if ctl.exists(): ctl.unlink()
 for p in [R/'scripts/apply_keyboard_v24.py', *R.glob('scripts/keyboard_v24_payload_*.b64'), *R.glob('scripts/v25_keyboard_part_*.b64')]:
     if p.exists(): p.unlink()
 p=R/'app/build.gradle'
-s=p.read_text(encoding='utf-8')
-s=re.sub(r'versionCode[ \\t]+\\d+', 'versionCode 1000026', s, count=1)
-s=re.sub(r'versionName[ \\t]+"[^"]+"', 'versionName "100.0.26"', s, count=1)
-p.write_text(s,encoding='utf-8')
+lines=p.read_text(encoding='utf-8').splitlines()
+for i,line in enumerate(lines):
+    if line.strip().startswith('versionCode '):
+        lines[i]='        versionCode 1000026'
+    if line.strip().startswith('versionName '):
+        lines[i]='        versionName "100.0.26"'
+p.write_text('\n'.join(lines)+'\n',encoding='utf-8')
 remaining=[]
 for p in java.rglob('*.kt'):
     for i,line in enumerate(p.read_text(encoding='utf-8',errors='ignore').splitlines(),1):
