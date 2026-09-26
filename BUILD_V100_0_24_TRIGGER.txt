@@ -1,1 +1,1 @@
-Trigger final V100.0.24 build after simplifying restore/apply flow.
+Trigger final V100.0.24 build after fixing verification checks.
