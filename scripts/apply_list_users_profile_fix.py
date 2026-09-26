@@ -108,11 +108,14 @@ replace_once(
 )
 
 # Adding a user must not silently make it active. Editing preserves the old active state.
-replace_once(
-    LOGIN,
-    'import com.orbital.iptv.ui.tv.TvModeActivity\\n',
-    'import com.orbital.iptv.ui.tv.TvModeActivity\\nimport com.orbital.iptv.ui.users.ListUsersActivity\\n',
-)
+# Add the List Users import without relying on exact escaped-newline formatting.
+login_text = LOGIN.read_text()
+users_import = "import com.orbital.iptv.ui.users.ListUsersActivity"
+if users_import not in login_text:
+    tv_import = "import com.orbital.iptv.ui.tv.TvModeActivity"
+    if tv_import not in login_text:
+        raise SystemExit("TvModeActivity import not found in LoginActivity.kt")
+    LOGIN.write_text(login_text.replace(tv_import, tv_import + "\n" + users_import, 1))
 
 old_auth = '''                onSuccess = {
                     val editId = intent.getStringExtra("edit_profile_id")
