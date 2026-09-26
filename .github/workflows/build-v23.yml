@@ -33,6 +33,9 @@ jobs:
       - name: Apply SE Player download control
         run: python3 scripts/apply_player_download.py
 
+      - name: Apply focus-aware player action scrolling
+        run: python3 scripts/apply_player_action_scroll.py
+
       - name: Prepare v100.0.23
         run: |
           set -e
