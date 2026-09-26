@@ -3,35 +3,41 @@ import re
 
 ROOT = Path(".")
 
-# Make the engine host a real VLCVideoLayout from XML instead of creating/attaching
-# a new VLCVideoLayout immediately after adding it to the hierarchy.
+# 1) Put the VLCVideoLayout in the Activity XML from the start.
 layout = ROOT / "app/src/main/res/layout/activity_engine_player.xml"
 s = layout.read_text()
-old = '''    <FrameLayout
+old_layout = '''    <FrameLayout
         android:id="@+id/engine_player_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 '''
-new = '''    <org.videolan.libvlc.util.VLCVideoLayout
+new_layout = '''    <org.videolan.libvlc.util.VLCVideoLayout
         android:id="@+id/engine_player_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#000000" />
 '''
-assert old in s
-s = s.replace(old, new, 1)
+if old_layout in s:
+    s = s.replace(old_layout, new_layout, 1)
+elif "org.videolan.libvlc.util.VLCVideoLayout" not in s:
+    raise SystemExit("engine_player_container layout anchor not found")
 layout.write_text(s)
 
-# Replace the V30 VLC engine with a surface-safe implementation.
+# 2) Make VLC attach only after the layout is measured and use TextureView.
 vlc = ROOT / "app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt"
 s = vlc.read_text()
-
-s = s.replace("import android.widget.FrameLayout\n", "", 1)
-s = s.replace("    private var currentContainer: ViewGroup? = null\n", "    private var currentContainer: ViewGroup? = null\n    private var viewsAttached = false\n", 1)
+if "private var viewsAttached = false" not in s:
+    s = s.replace(
+        "    private var currentContainer: ViewGroup? = null\n",
+        "    private var currentContainer: ViewGroup? = null\n    private var viewsAttached = false\n",
+        1
+    )
 
 start = s.find("    override fun attach(container: ViewGroup) {")
 end = s.find("    override fun prepare(url: String, startPositionMs: Long) {", start)
-assert start >= 0 and end > start
+if start < 0 or end < 0:
+    raise SystemExit("attach/prepare anchors not found")
+
 attach_block = '''    override fun attach(container: ViewGroup) {
         currentContainer = container
         val layout = container as? VLCVideoLayout
@@ -41,14 +47,15 @@ attach_block = '''    override fun attach(container: ViewGroup) {
     }
 
     private fun attachWhenReady(layout: VLCVideoLayout, retry: Int) {
-        if (released || mediaPlayer == null) return
-        if (viewsAttached) return
+        if (released || mediaPlayer == null || viewsAttached) return
 
         val ready = layout.isShown && layout.width > 0 && layout.height > 0
         if (!ready) {
             if (retry >= 40) {
-                val error = IllegalStateException("VLCVideoLayout was not ready")
-                log("attachViews timeout: width=" + layout.width + ", height=" + layout.height)
+                val error = IllegalStateException(
+                    "VLCVideoLayout was not ready: " + layout.width + "x" + layout.height
+                )
+                log("attachViews timeout: " + layout.width + "x" + layout.height)
                 errorCallback?.invoke(error)
                 return
             }
@@ -57,8 +64,8 @@ attach_block = '''    override fun attach(container: ViewGroup) {
         }
 
         try {
-            // TextureView avoids the independent SurfaceView compositor path that was
-            // producing the visible on/off flicker on the target device.
+            // TextureView avoids the independent SurfaceView compositor path that
+            // was producing visible on/off flicker on the target device.
             mediaPlayer?.attachViews(layout, null, false, true)
             mediaPlayer?.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT)
             viewsAttached = true
@@ -74,8 +81,10 @@ attach_block = '''    override fun attach(container: ViewGroup) {
     }
 
     private fun detachViews() {
-        if (mediaPlayer != null && viewsAttached) {
-            try { mediaPlayer?.detachViews() } catch (t: Throwable) { log("detachViews: " + t.message) }
+        if (viewsAttached) {
+            try { mediaPlayer?.detachViews() } catch (t: Throwable) {
+                log("detachViews: " + t.message)
+            }
         }
         viewsAttached = false
         videoLayout = null
@@ -84,35 +93,31 @@ attach_block = '''    override fun attach(container: ViewGroup) {
 '''
 s = s[:start] + attach_block + s[end:]
 
-# Ensure release resets view state and does not try to detach twice through the old path.
-s = s.replace("        try { mediaPlayer?.detachViews() } catch (_: Throwable) {}\n", "", 1)
-marker = "        try { mediaPlayer?.release() } catch (_: Throwable) {}\n"
-assert marker in s
-s = s.replace(marker, "        detachViews()\n" + marker, 1)
-s = s.replace("        detachViews()\n        currentContainer = null\n", "        currentContainer = null\n", 1)
-
-# The final release currently calls detachViews after mediaPlayer is nulled in the old code.
-# Normalize that section explicitly.
-old_tail = '''        try { mediaPlayer?.release() } catch (_: Throwable) {}
-        try { libVlc?.release() } catch (_: Throwable) {}
-        mediaPlayer = null
-        libVlc = null
+# 3) Replace release() completely and keep cleanup ordering safe.
+start = s.find("    override fun release() {")
+if start < 0:
+    raise SystemExit("release anchor not found")
+end = s.rfind("\n}")
+assert end > start
+release_block = '''    override fun release() {
+        released = true
+        handler.removeCallbacksAndMessages(null)
         detachViews()
-        currentContainer = null
-'''
-new_tail = '''        detachViews()
+        try { mediaPlayer?.stop() } catch (_: Throwable) {}
+        try { mediaPlayer?.setEventListener(null) } catch (_: Throwable) {}
         try { mediaPlayer?.release() } catch (_: Throwable) {}
         try { libVlc?.release() } catch (_: Throwable) {}
         mediaPlayer = null
         libVlc = null
         currentContainer = null
+        currentUrl = null
+        pendingStartPosition = -1L
+    }
 '''
-assert old_tail in s
-s = s.replace(old_tail, new_tail, 1)
-
+s = s[:start] + release_block + s[end:]
 vlc.write_text(s)
 
-# Bump app version.
+# 4) Version bump.
 g = ROOT / "app/build.gradle"
 gs = g.read_text()
 gs = re.sub(r'versionCode\s+\d+', 'versionCode 1000031', gs, count=1)
