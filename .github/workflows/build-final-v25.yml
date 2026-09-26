@@ -1,0 +1,78 @@
+name: Final SEAndroid v100.0.25 Build
+
+on:
+  push:
+    branches:
+      - v100.0.25
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore exact V100.0.24 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p /tmp/v24 /tmp/base
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10902006164/zip" -o /tmp/v24.zip
+          unzip -q /tmp/v24.zip -d /tmp/v24
+          SRC=$(find /tmp/v24 -type f -name 'SEAndroid_v100.0.24-source.zip' | head -1)
+          test -n "$SRC"
+          unzip -q "$SRC" -d /tmp/base
+          rsync -a /tmp/base/ ./
+          chmod +x gradlew
+          test -f app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+
+      - name: Apply V100.0.25 changes
+        run: python3 scripts/apply_v25.py
+
+      - name: Prepare V100.0.25
+        run: |
+          set -e
+          perl -0pi -e 's/versionCode\s+\d+/versionCode 1000025/' app/build.gradle
+          perl -0pi -e 's/versionName\s+"[^"]+"/versionName "100.0.25"/' app/build.gradle
+          printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.25"' "include ':app'" > settings.gradle
+          grep -q 'versionCode 1000025' app/build.gradle
+          grep -q 'versionName "100.0.25"' app/build.gradle
+          grep -q 'MAX_CLIP_HISTORY = 20' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'ShiftMode.CAPS_LOCK' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'closeKeyboardForUser' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'showClipboardHistory' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'showKeyboardMode' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'ensureTargetVisible' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          grep -q 'about_table' app/src/main/res/layout/activity_settings.xml
+          grep -q 'palette.bgMid' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble Debug APK
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Package
+        run: |
+          set -e
+          mkdir -p out source
+          cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.25.apk
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source' --exclude='build_payload' --exclude='scripts/v25_keyboard_part_*.b64' --exclude='BUILD_V100_0_25_TRIGGER.txt' ./ source/
+          (cd source && zip -qr ../out/SEAndroid_v100.0.25-source.zip .)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.25-apk
+          path: out/SEAndroid_v100.0.25.apk
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.25-source
+          path: out/SEAndroid_v100.0.25-source.zip
+          retention-days: 30
