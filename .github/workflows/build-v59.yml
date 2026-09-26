@@ -35,7 +35,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -fsSL             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/830056c3497a731433bb81da0c171d379b629f4a"             | jq -r .content | tr -d '\n' | base64 -d > /tmp/v59-carrier.gz
+          curl -fsSL             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/830056c3497a731433bb81da0c171d379b629f4a"             | jq -r .content | base64 -d | tr -d '\n' | base64 -d > /tmp/v59-carrier.gz
           gzip -dc /tmp/v59-carrier.gz | tar -xf - -C .
           test -s DELETE.txt
           while IFS= read -r p; do
@@ -48,8 +48,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -fsSL             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/e7b8320dab7fb316441c3cb1eaba12f903842804"             | jq -r .content | tr -d '\n' > /tmp/v59-fix.xz.b64
-          base64 -d /tmp/v59-fix.xz.b64 > /tmp/v59-fix.xz
+          curl -fsSL             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/e7b8320dab7fb316441c3cb1eaba12f903842804"             | jq -r .content | base64 -d | tr -d '\n' | base64 -d > /tmp/v59-fix.xz
           tar -xJf /tmp/v59-fix.xz --strip-components=1 -C .
           test -s DELETE.txt
           while IFS= read -r p; do
