@@ -11,6 +11,7 @@ import com.bumptech.glide.Glide
 import com.orbital.iptv.R
 import com.orbital.iptv.data.model.*
 import com.orbital.iptv.utils.FavouritesManager
+import com.orbital.iptv.utils.PrefsManager
 import com.orbital.iptv.utils.ThemeManager
 
 class SearchAdapter(
@@ -171,8 +172,19 @@ class SearchAdapter(
             }
             syncFav()
             fav.setOnClickListener {
-                if (FavouritesManager.containsLive(root.context, channel.streamId)) FavouritesManager.removeLive(root.context, channel.streamId)
-                else FavouritesManager.addLiveChannel(root.context, channel.name, channel.streamId, "", channel.streamIcon)
+                if (FavouritesManager.containsLive(root.context, channel.streamId)) {
+                    FavouritesManager.removeLive(root.context, channel.streamId)
+                } else {
+                    val profile = PrefsManager.getActiveProfile(root.context)
+                    val url = profile?.let {
+                        com.orbital.iptv.data.api.ApiClient.buildStreamUrl(
+                            it.serverUrl, it.username, it.password, channel.streamId
+                        )
+                    } ?: ""
+                    FavouritesManager.addLiveChannel(
+                        root.context, channel.name, channel.streamId, url, channel.streamIcon
+                    )
+                }
                 syncFav()
             }
             applyFocus(name)
