@@ -1,1 +1,1 @@
-Trigger final V100.0.24 build after fixing verification checks.
+Trigger final V100.0.24 build after exact V23 source restore fix.
