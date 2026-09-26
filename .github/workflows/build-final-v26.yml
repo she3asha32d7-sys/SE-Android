@@ -8,9 +8,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Verify
+      - name: Apply final V26 source patch
         run: |
-          chmod +x gradlew
+          python3 scripts/final_patch_v26.py
           grep -q 'versionCode 1000026' app/build.gradle
           grep -q 'versionName "100.0.26"' app/build.gradle
           ! grep -R "SEKeyboardController" app/src/main/java
