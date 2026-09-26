@@ -1,0 +1,1 @@
+Trigger V100.0.25 final build for keyboard controls, clipboard history, UI fixes, and password visibility handling.
