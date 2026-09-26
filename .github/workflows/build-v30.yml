@@ -1,3 +1,4 @@
+# V100.0.30 uses the verified V29 GitHub artifact as its build base.
 name: SEAndroid v100.0.30 Build
 
 on:
