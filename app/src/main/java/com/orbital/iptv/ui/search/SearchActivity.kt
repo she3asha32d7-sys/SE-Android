@@ -22,6 +22,7 @@ import com.orbital.iptv.utils.SEKeyboardController
 import com.orbital.iptv.utils.ThemeManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -209,7 +210,7 @@ class SearchActivity : AppCompatActivity() {
             val live = liveJob.await()
             val categories = categoriesJob.await()
 
-            if (!isActive || query != binding.etSearch.text?.toString()?.trim()) return
+            if (!currentCoroutineContext().isActive || query != binding.etSearch.text?.toString()?.trim()) return
 
             movieAdapter.submitList(movies.map { SearchAdapter.Item.Movie(it) })
             seriesAdapter.submitList(series.map { SearchAdapter.Item.Series(it) })
@@ -230,12 +231,12 @@ class SearchActivity : AppCompatActivity() {
             binding.tvEmpty.visibility = if (total == 0) View.VISIBLE else View.GONE
             if (total == 0) binding.tvEmpty.text = "NO RESULTS FOUND"
         } catch (e: Exception) {
-            if (!isActive) return
+            if (!currentCoroutineContext().isActive) return
             binding.resultsScroll.visibility = View.GONE
             binding.tvEmpty.visibility = View.VISIBLE
             binding.tvEmpty.text = "SEARCH FAILED: " + (e.message ?: "UNKNOWN ERROR")
         } finally {
-            if (isActive) binding.progressBar.visibility = View.GONE
+            if (currentCoroutineContext().isActive) binding.progressBar.visibility = View.GONE
         }
     }
 
