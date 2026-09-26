@@ -36,6 +36,9 @@ jobs:
       - name: Apply List Users profile fix
         run: python3 scripts/apply_list_users_profile_fix.py
 
+      - name: Apply Auto Rotate setting
+        run: python3 scripts/apply_auto_rotate.py
+
       - name: Apply Records header cleanup
         run: python3 scripts/apply_records_header_cleanup.py
 
