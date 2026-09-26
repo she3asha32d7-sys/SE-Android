@@ -11,27 +11,264 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Download exact source artifact
+      - name: Download V100.0.26 source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          curl -fL 'https://sdmntpritalynorth.oaiusercontent.com/files/00000000-0048-8246-bf94-3956bf0e2a08/raw?se=2026-09-26T17%3A19%3A49Z&sp=r&sv=2026-02-06&sr=b&scid=3b22a3e1-b834-5d73-b05c-1b79e1638358&skoid=e5f84a89-964a-4fd3-92c2-c2cb3a12ea16&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-26T07%3A09%3A56Z&ske=2026-09-27T07%3A09%3A56Z&sks=b&skv=2026-02-06&sig=rpbxD1PYHNbGzS4UaIUiXZIWgWzM6Ue9TSz8J3jGfGI%3D' -o /tmp/source.zip
-          rm -rf src
-          mkdir src
-          unzip -q /tmp/source.zip -d src
-          test -f src/gradlew
-          chmod +x src/gradlew
-          grep -q 'versionCode 1000026' src/app/build.gradle
-          grep -q 'versionName "100.0.26"' src/app/build.gradle
-          test ! -f src/app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
+          mkdir -p /tmp/art /tmp/base
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10910810856/zip" -o /tmp/art.zip
+          unzip -q /tmp/art.zip -d /tmp/art
+          SRC=$(find /tmp/art -type f -name 'SEAndroid_v100.0.26-source.zip' | head -1)
+          test -n "$SRC"
+          unzip -q "$SRC" -d /tmp/base
+          cd /tmp/base
+          chmod +x gradlew
+      - name: Apply V100.0.51 final source fixes
+        working-directory: /tmp/base
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          R=Path('.')
+          java=R/'app/src/main/java'
+          # Remove the custom SE keyboard implementation and every source reference.
+          for p in java.rglob('*.kt'):
+              s=p.read_text(encoding='utf-8')
+              s=s.replace('import com.orbital.iptv.utils.SEKeyboardController\n','')
+              s=s.replace('import com.orbital.iptv.utils.SEKeyboardController\r\n','')
+              s=s.replace('SEKeyboardController.install(this)\n','')
+              s=s.replace('SEKeyboardController.install(a)\n','')
+              s=s.replace('                SEKeyboardController.install(a)\n','')
+              s=re.sub(r'\n\s*dlg\.window\?\.decorView\?\.post\s*\{\s*com\.orbital\.iptv\.utils\.SEKeyboardController\.showFocused\([^\n]*\)\s*\}\s*','\n',s)
+              s=re.sub(r'\n\s*dlg\.window\?\.decorView\?\.let\s*\{\s*root\s*->\s*(?:com\.orbital\.iptv\.utils\.)?SEKeyboardController\.showFocused\(root\)\s*\}\s*','\n',s)
+              s=re.sub(r'\s*if\s*\(focused\s+is\s+EditText\)\s+SEKeyboardController\.showFor\(focused\)\s*','\n',s)
+              s=s.replace('et.showSoftInputOnFocus = false','et.showSoftInputOnFocus = true')
+              s=re.sub(r'(?s)\s*SEKeyboardController\.prepare\([^\n]*\)','',s)
+              p.write_text(s,encoding='utf-8')
+          ctl=java/'com/orbital/iptv/utils/SEKeyboardController.kt'
+          if ctl.exists(): ctl.unlink()
+          for p in [R/'scripts/apply_keyboard_v24.py', *R.glob('scripts/keyboard_v24_payload_*.b64'), *R.glob('scripts/v25_keyboard_part_*.b64')]:
+              if p.exists(): p.unlink()
+          # Native system IME for Login and Search.
+          p=java/'com/orbital/iptv/ui/login/LoginActivity.kt'; s=p.read_text(encoding='utf-8')
+          if 'InputMethodManager' not in s:
+              s=s.replace('import android.view.inputmethod.EditorInfo\n','import android.view.inputmethod.EditorInfo\nimport android.view.inputmethod.InputMethodManager\n')
+          s=re.sub(r'(?s)    override fun dispatchKeyEvent\(event: KeyEvent\): Boolean \{.*?\n    \}\n\n    private fun setupClickListeners', '''    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+              if (event.action == KeyEvent.ACTION_DOWN &&
+                  (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)) {
+                  val focused = currentFocus
+                  if (focused is EditText) {
+                      focused.requestFocus()
+                      focused.post {
+                          val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+                          imm.showSoftInput(focused, InputMethodManager.SHOW_IMPLICIT)
+                      }
+                  }
+              }
+              return super.dispatchKeyEvent(event)
+          }
+
+          private fun setupClickListeners''',s,count=1)
+          p.write_text(s,encoding='utf-8')
+          p=java/'com/orbital/iptv/ui/search/SearchActivity.kt'; s=p.read_text(encoding='utf-8')
+          if 'InputMethodManager' not in s:
+              s=s.replace('import android.view.View\n','import android.view.View\nimport android.view.inputmethod.InputMethodManager\n')
+          s=s.replace('SEKeyboardController.install(this)','').replace('SEKeyboardController.prepare(binding.etSearch)','')
+          needle='binding.etSearch.requestFocus()'
+          if needle in s and 'showSoftInput(binding.etSearch' not in s:
+              s=s.replace(needle,needle+'''\n        binding.etSearch.post {
+              val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+              imm.showSoftInput(binding.etSearch, InputMethodManager.SHOW_IMPLICIT)
+          }''',1)
+          p.write_text(s,encoding='utf-8')
+          p=java/'com/orbital/iptv/OrbitalApp.kt'; s=p.read_text(encoding='utf-8')
+          s=s.replace('import com.orbital.iptv.utils.SEKeyboardController\n','')
+          s=re.sub(r'\s*SEKeyboardController\.install\(a\)\s*','\n',s)
+          p.write_text(s,encoding='utf-8')
+          # Home mini preview: no play overlay; auto-play immediately and hard-stop on pause/destroy.
+          p=R/'app/src/main/res/layout/activity_home.xml'; s=p.read_text(encoding='utf-8')
+          if 'xmlns:app=' not in s.split('\n',1)[0]:
+              s=s.replace('<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"','<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"',1)
+          s=s.replace('android:background="#000000" />\n                    <TextView android:text="PREVIEW"','android:background="#000000"\n                        app:use_controller="false"\n                        app:show_buffering="when_playing" />\n                    <TextView android:text="PREVIEW"',1)
+          p.write_text(s,encoding='utf-8')
+          p=java/'com/orbital/iptv/ui/home/HomeActivity.kt'; s=p.read_text(encoding='utf-8')
+          old='''    override fun onPause() {
+          super.onPause()
+          ReminderBus.unregister()
+      }'''
+          new='''    override fun onPause() {
+          super.onPause()
+          ReminderBus.unregister()
+          miniPlayer?.let { p ->
+              p.playWhenReady = false
+              p.pause()
+              p.stop()
+              p.clearMediaItems()
+          }
+          binding.miniPlayer.player = miniPlayer
+          lastPreviewStreamId = -1
+      }
+
+      override fun onDestroy() {
+          binding.miniPlayer.player = null
+          miniPlayer?.release()
+          miniPlayer = null
+          super.onDestroy()
+      }'''
+          if old in s: s=s.replace(old,new,1)
+          old='''        val url=viewModel.buildStreamUrl(stream.streamId)
+          if (binding.miniPlayer.player==null) return
+          binding.miniPlayer.player?.setMediaItem(MediaItem.fromUri(url)); binding.miniPlayer.player?.prepare(); binding.miniPlayer.player?.play()'''
+          new='''        val url=viewModel.buildStreamUrl(stream.streamId)
+          val preview = binding.miniPlayer.player ?: miniPlayer ?: return
+          binding.miniPlayer.player = preview
+          binding.miniPlayer.useController = false
+          preview.playWhenReady = true
+          preview.setMediaItem(MediaItem.fromUri(url))
+          preview.prepare()
+          preview.play()'''
+          if old in s: s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          # Large player: hard stop on real Activity exit and resume/reprepare when returning.
+          p=java/'com/orbital/iptv/ui/player/PlayerActivity.kt'; s=p.read_text(encoding='utf-8')
+          if 'private var playbackStoppedForLifecycle' not in s:
+              s=s.replace('    private val repository = XtreamRepository()','    private val repository = XtreamRepository()\n    private var playbackStoppedForLifecycle = false\n    private var lifecycleResumePositionMs = 0L',1)
+          s=s.replace('b.btnGencBack.setOnClickListener { finish() }','b.btnGencBack.setOnClickListener { stopPlaybackBeforeExit(); finish() }')
+          s=s.replace('binding.btnBack.setOnClickListener { finish() }','binding.btnBack.setOnClickListener { stopPlaybackBeforeExit(); finish() }')
+          marker='    // ── Lifecycle ─────────────────────────────────────────────────────────────'
+          helper='''    private fun stopPlaybackBeforeExit() {
+          if (!::player.isInitialized) return
+          try {
+              player.playWhenReady = false
+              player.pause()
+              player.stop()
+              player.clearMediaItems()
+          } catch (_: Exception) {}
+      }
+
+      private fun stopPlaybackForLifecycle() {
+          if (!::player.isInitialized) return
+          try {
+              if (!isLive) lifecycleResumePositionMs = player.currentPosition.coerceAtLeast(0L)
+              player.playWhenReady = false
+              player.pause()
+              player.stop()
+              player.clearMediaItems()
+          } catch (_: Exception) {}
+          playbackStoppedForLifecycle = true
+      }
+
+      // ── Lifecycle ─────────────────────────────────────────────────────────────'''
+          if marker in s and 'private fun stopPlaybackForLifecycle()' not in s: s=s.replace(marker,helper,1)
+          old='''    override fun onStop() {
+          super.onStop()
+          saveResumePosition()
+          if (embyItemId.isNotEmpty() && !episodeCompleted) reportEmbyStop()
+          if (plexRatingKey.isNotEmpty() && !episodeCompleted) reportPlexStop()
+          if (isLive) {'''
+          new='''    override fun onStop() {
+          super.onStop()
+          saveResumePosition()
+          if (embyItemId.isNotEmpty() && !episodeCompleted) reportEmbyStop()
+          if (plexRatingKey.isNotEmpty() && !episodeCompleted) reportPlexStop()
+          if (!isInPictureInPictureMode && !enteringPip) stopPlaybackForLifecycle()
+          if (isLive) {'''
+          if old in s: s=s.replace(old,new,1)
+          old='''        if (::player.isInitialized && !hasError) player.playWhenReady = true'''
+          new='''        if (playbackStoppedForLifecycle && !isFinishing && !isInPictureInPictureMode) {
+              if (!isLive && lifecycleResumePositionMs > 0L) resumeMs = lifecycleResumePositionMs
+              playbackStoppedForLifecycle = false
+              playMedia()
+          } else if (::player.isInitialized && !hasError && !isInPictureInPictureMode) player.playWhenReady = true'''
+          if old in s: s=s.replace(old,new,1)
+          old='''    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+          super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+          if (isInPictureInPictureMode) {'''
+          new='''    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+          super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+          if (!isInPictureInPictureMode && !isFinishing && ::player.isInitialized) {
+              player.playWhenReady = false
+              player.pause()
+          }
+          if (isInPictureInPictureMode) {'''
+          if old in s: s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          # TV mode: stop all players when leaving and when PiP closes.
+          p=java/'com/orbital/iptv/ui/tv/TvModeActivity.kt'; s=p.read_text(encoding='utf-8')
+          s=s.replace('if (hudVisible) { hideHudOverlay(); return true }\n                    showExitDialog(); return true','if (hudVisible) { hideHudOverlay(); return true }\n                    stopPlaybackBeforeExit()\n                    showExitDialog(); return true',1)
+          s=s.replace('.setPositiveButton("EXIT") { _, _ -> finishAffinity() }','.setPositiveButton("EXIT") { _, _ -> stopPlaybackBeforeExit(); finishAffinity() }',1)
+          s=s.replace('binding.btnHudMenu.setOnClickListener {\n            startActivity(','binding.btnHudMenu.setOnClickListener {\n            stopPlaybackBeforeExit()\n            startActivity(',1)
+          s=s.replace('Toast.makeText(this, "TV MODE OFF", Toast.LENGTH_SHORT).show()\n            startActivity(','Toast.makeText(this, "TV MODE OFF", Toast.LENGTH_SHORT).show()\n            stopPlaybackBeforeExit()\n            startActivity(',1)
+          marker='    // ── Lifecycle ─────────────────────────────────────────────────────────────'
+          helper='''    private fun stopPlaybackBeforeExit() {
+          try {
+              player?.playWhenReady = false
+              player?.pause()
+              player?.stop()
+              player?.clearMediaItems()
+              localPlayer?.let {
+                  it.playWhenReady = false
+                  it.pause()
+                  it.stop()
+                  it.clearMediaItems()
+              }
+          } catch (_: Exception) {}
+      }
+
+      // ── Lifecycle ─────────────────────────────────────────────────────────────'''
+          if marker in s and 'private fun stopPlaybackBeforeExit()' not in s: s=s.replace(marker,helper,1)
+          old='''    override fun onPause() {
+          super.onPause()
+          if (!enteringPip && !isInPictureInPictureMode) player?.pause()
+          GoalFlashManager.onGoal = null'''
+          new='''    override fun onPause() {
+          super.onPause()
+          if (!enteringPip && !isInPictureInPictureMode) stopPlaybackBeforeExit()
+          GoalFlashManager.onGoal = null'''
+          if old in s: s=s.replace(old,new,1)
+          old='''    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+          super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+          if (isInPictureInPictureMode) {'''
+          new='''    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+          super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+          if (!isInPictureInPictureMode && !isFinishing) stopPlaybackBeforeExit()
+          if (isInPictureInPictureMode) {'''
+          if old in s: s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          # Keep build scripts from re-injecting the deleted keyboard.
+          p=R/'scripts/apply_v25.py'
+          if p.exists():
+              x=p.read_text(encoding='utf-8')
+              x=x.replace('print("Keyboard:", KEYBOARD)\n','').replace('print("Keyboard:", KEYBOARD)\r\n','')
+              p.write_text(x,encoding='utf-8')
+          # Remove stale workflow checks that require the deleted keyboard.
+          for name in ['build-final-v23.yml','build-final-v24.yml','build-final-v25.yml','build-v23.yml','inspect-v25-keyboard.yml']:
+              p=R/'.github/workflows'/name
+              if p.exists(): p.unlink()
+          # Remove stale trigger files and keyboard payloads.
+          for p in [R/'BUILD_V100_0_25_TRIGGER.txt',R/'build_v23_trigger.txt',R/'v18_build_trigger.txt',R/'v18_build_trigger_final.txt',R/'fix_plex_v100.0.10.patch']:
+              if p.exists(): p.unlink()
+          for p in R.glob('*.b64'):
+              if 'keyboard' in p.name.lower(): p.unlink()
+          manifest=R/'SE_BUILD_MANIFEST.txt'
+          manifest.write_text('''SE IPTV PLAYER — Pre-build source revision V100.0.26\n\nDelivery filename sequence: V100.0.50 -> V100.0.51\nAPK build: requested and performed by GitHub Actions\nLibrary upload: NOT PERFORMED\n\nFixes: custom SE keyboard removed; native Android/mobile keyboard only; Live mini preview auto-start without play overlay; mini preview hard-stop on background/exit; large Player and TV Mode hard-stop on real exit; PiP close pauses playback; existing HLS/MPEG-TS switch retained.\n''',encoding='utf-8')
+          refs=[]
+          for p in [*java.rglob('*.kt')]:
+              if 'SEKeyboardController' in p.read_text(encoding='utf-8',errors='ignore'): refs.append(str(p))
+          assert not refs, refs
+          assert not ctl.exists()
+          print('FINAL_SOURCE_PATCH_OK')
+          PY
       - name: Assemble APK
-        working-directory: src
+        working-directory: /tmp/base
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
       - name: Package outputs
         run: |
           set -e
           mkdir -p out source
-          cp src/app/build/outputs/apk/debug/app-debug.apk out/SE-Android-V100.0.26.apk
-          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' src/ source/
+          cp /tmp/base/app/build/outputs/apk/debug/app-debug.apk out/SE-Android-V100.0.26.apk
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source' /tmp/base/ source/
           (cd source && zip -qr ../out/SE-Android-V100.0.51-source.zip .)
           unzip -t out/SE-Android-V100.0.51-source.zip >/dev/null
       - uses: actions/upload-artifact@v4
