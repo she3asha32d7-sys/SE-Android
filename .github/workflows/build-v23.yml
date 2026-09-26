@@ -46,14 +46,13 @@ jobs:
         run: python3 scripts/apply_player_gesture_cleanup.py
 
       - name: Apply focus-aware player action scrolling
+        run: python3 scripts/apply_player_action_scroll.py
 
       - name: Apply Search manifest wiring
         run: python3 scripts/apply_search_manifest.py
 
       - name: Apply Home Search category deep-link
         run: python3 scripts/apply_home_search_category.py
-
-        run: python3 scripts/apply_player_action_scroll.py
 
       - name: Prepare v100.0.23
         run: |
