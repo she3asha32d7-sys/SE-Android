@@ -39,6 +39,8 @@ jobs:
           printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.26"' "include ':app'" > settings.gradle
           grep -q 'versionCode 1000026' app/build.gradle
           grep -q 'versionName "100.0.26"' app/build.gradle
+          sed -i 's/V100\.0\.25/V100.0.26/g' app/src/main/res/layout/activity_settings.xml
+          grep -q 'V100.0.26' app/src/main/res/layout/activity_settings.xml
           grep -q 'MAX_CLIP_HISTORY = 20' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
           grep -q 'ShiftMode.CAPS_LOCK' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
           grep -q 'closeKeyboardForUser' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
