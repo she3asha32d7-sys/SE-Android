@@ -3,34 +3,32 @@ import re
 
 ROOT = Path(".")
 
-# Version + engine dependencies.
+# Version + native engine dependencies.
 p = ROOT / "app/build.gradle"
 s = p.read_text()
 s = re.sub(r'versionCode\s+\d+', 'versionCode 1000028', s, count=1)
 s = re.sub(r'versionName\s+"[^"]+"', 'versionName "100.0.28"', s, count=1)
-dep = "    implementation 'org.videolan.android:libvlc-all:3.5.1'\n    implementation 'dev.jdtech.mpv:libmpv:1.0.0'\n"
 if "org.videolan.android:libvlc-all:3.5.1" not in s:
-    s = s.replace("    implementation 'androidx.work:work-runtime-ktx:2.9.0'\n",
-                  "    implementation 'androidx.work:work-runtime-ktx:2.9.0'\n\n    // Additional built-in playback engines, implemented natively in SE.\n" + dep)
+    s = s.replace(
+        "    implementation 'androidx.work:work-runtime-ktx:2.9.0'\n",
+        "    implementation 'androidx.work:work-runtime-ktx:2.9.0'\n"
+        "    implementation 'org.videolan.android:libvlc-all:3.5.1'\n"
+        "    implementation 'dev.jdtech.mpv:libmpv:1.0.0'\n"
+    )
 p.write_text(s)
 
-# Persist the selected built-in engine while keeping old stored values compatible.
+# Player selector persistence.
 p = ROOT / "app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt"
 s = p.read_text()
 s = s.replace(
     "enum class PlayerType { EXOPLAYER, GENC_MEDIA3, EXTERNAL }",
     "enum class PlayerType { EXOPLAYER, GENC_MEDIA3, VLC, MPV, EXTERNAL }"
 )
-old = '''    /** Genç Media3 is the only built-in player UI in v100.0.14.
-     * Keep the legacy enum/API so old call sites and stored preferences migrate safely.
-     */
-    fun setPlayerType(context: Context, type: PlayerType) {
-        prefs(context).edit().putString(KEY_PLAYER_TYPE, PlayerType.GENC_MEDIA3.name).apply()
-    }
-
-    fun getPlayerType(context: Context): PlayerType = PlayerType.GENC_MEDIA3
-'''
-new = '''    /** Stores the selected built-in playback engine. */
+start = s.find("    /** Genç Media3 is the only built-in player UI in v100.0.14.")
+end = s.find("    fun clearCredentials", start)
+if start < 0 or end < 0:
+    raise SystemExit("PrefsManager player block not found")
+s = s[:start] + '''    /** Stores the selected built-in playback engine. */
     fun setPlayerType(context: Context, type: PlayerType) {
         prefs(context).edit().putString(KEY_PLAYER_TYPE, type.name).apply()
     }
@@ -41,24 +39,11 @@ new = '''    /** Stores the selected built-in playback engine. */
                 ?: PlayerType.GENC_MEDIA3.name
         )
     }.getOrDefault(PlayerType.GENC_MEDIA3)
-'''
-if old in s:
-    s = s.replace(old, new)
-else:
-    # Fallback for the exact v27 source comments.
-    s = re.sub(
-        r'fun setPlayerType\(context: Context, type: PlayerType\) \{.*?\
-    \}\
-\
-    fun getPlayerType\(context: Context\): PlayerType = PlayerType\.GENC_MEDIA3',
-        new.rstrip(),
-        s,
-        flags=re.S,
-        count=1
-    )
+
+''' + s[end:]
 p.write_text(s)
 
-# Route VLC/MPV selections to the multi-engine host before constructing the SE/Media3 UI.
+# Route VLC/MPV selections to the multi-engine host.
 p = ROOT / "app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt"
 s = p.read_text()
 needle = '''    override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,7 +70,7 @@ if needle not in s:
 s = s.replace(needle, replacement, 1)
 p.write_text(s)
 
-# Add the engine selector to Settings.
+# Settings selector.
 p = ROOT / "app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt"
 s = p.read_text()
 s = s.replace(
@@ -138,19 +123,23 @@ if marker not in s:
 s = s.replace(marker, helper + marker, 1)
 p.write_text(s)
 
+# Settings layout row.
 p = ROOT / "app/src/main/res/layout/activity_settings.xml"
 s = p.read_text()
-anchor = '<TextView android:id="@+id/tv_player_settings_header"'
-idx = s.find(anchor)
-if idx < 0:
-    raise SystemExit("settings layout anchor not found")
-line_end = s.find(">\n", idx)
 if 'android:id="@+id/btn_player_engine"' not in s:
-    s = s[:line_end+2] + '                <Button android:id="@+id/btn_player_engine" android:text="PLAYER ENGINE: SE / MEDIA3" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="8dp"/>\n' + s[line_end+2:]
+    marker = '<TextView android:id="@+id/tv_player_settings_header"'
+    idx = s.find(marker)
+    if idx < 0:
+        raise SystemExit("settings header not found")
+    line_end = s.find(">\n", idx)
+    if line_end < 0:
+        raise SystemExit("settings header line end not found")
+    row = '                <Button android:id="@+id/btn_player_engine" android:text="PLAYER ENGINE: SE / MEDIA3" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="8dp"/>\n'
+    s = s[:line_end+2] + row + s[line_end+2:]
 s = s.replace("V100.0.25", "V100.0.28")
 p.write_text(s)
 
-# Manifest declaration.
+# Manifest.
 p = ROOT / "app/src/main/AndroidManifest.xml"
 s = p.read_text()
 if ".ui.player.EnginePlayerActivity" not in s:
@@ -158,7 +147,7 @@ if ".ui.player.EnginePlayerActivity" not in s:
             android:name=".ui.player.PlayerActivity"
 '''
     if marker not in s:
-        raise SystemExit("manifest PlayerActivity anchor not found")
+        raise SystemExit("manifest PlayerActivity marker not found")
     insert = '''        <activity
             android:name=".ui.player.EnginePlayerActivity"
             android:exported="false"
@@ -173,5 +162,6 @@ p.write_text(s)
 p = ROOT / "SE_BUILD_MANIFEST.txt"
 if p.exists():
     s = p.read_text().replace("V100.0.27", "V100.0.28")
-    s += "\nMulti-engine playback: SE/Media3 (default), LibVLC 3.5.1, libmpv 1.0.0. Exactly one selected engine is active per playback session.\n"
+    if "Multi-engine playback:" not in s:
+        s += "\nMulti-engine playback: SE/Media3 (default), LibVLC 3.5.1, libmpv 1.0.0. Exactly one selected engine is active per playback session.\n"
     p.write_text(s)
