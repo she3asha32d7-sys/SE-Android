@@ -117,6 +117,7 @@ class SearchActivity : AppCompatActivity() {
     }
 
     private fun setupSearchBar() {
+        SEKeyboardController.install(this)
         SEKeyboardController.prepare(binding.etSearch)
         binding.etSearch.nextFocusRightId = binding.btnSearch.id
         binding.btnSearch.nextFocusLeftId = binding.etSearch.id
