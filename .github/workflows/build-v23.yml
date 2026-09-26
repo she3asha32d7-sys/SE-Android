@@ -30,6 +30,9 @@ jobs:
           test -f gradlew
           chmod +x gradlew
 
+      - name: Apply SE Player download control
+        run: python3 scripts/apply_player_download.py
+
       - name: Prepare v100.0.23
         run: |
           set -e
