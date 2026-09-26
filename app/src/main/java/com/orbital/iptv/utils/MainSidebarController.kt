@@ -14,9 +14,10 @@ import com.orbital.iptv.ui.vod.VodActivity
 import com.orbital.iptv.recording.RecordingsActivity
 import com.orbital.iptv.ui.downloads.DownloadsActivity
 import com.orbital.iptv.ui.settings.SettingsActivity
+import com.orbital.iptv.ui.search.SearchActivity
 
 object MainSidebarController {
-    enum class Section { HOME, LIVE_TV, MOVIES, SERIES, FAVOURITES, DOWNLOADS, RECORDS, SETTINGS, LIST_USERS }
+    enum class Section { HOME, LIVE_TV, MOVIES, SERIES, SEARCH, FAVOURITES, DOWNLOADS, RECORDS, SETTINGS, LIST_USERS }
 
     fun setup(
         activity: AppCompatActivity,
@@ -31,6 +32,7 @@ object MainSidebarController {
             Section.LIVE_TV to R.id.nav_live_tv,
             Section.MOVIES to R.id.nav_movies,
             Section.SERIES to R.id.nav_series,
+            Section.SEARCH to R.id.nav_search,
             Section.FAVOURITES to R.id.nav_favourites,
             Section.DOWNLOADS to R.id.nav_downloads,
             Section.RECORDS to R.id.nav_records,
@@ -55,20 +57,48 @@ object MainSidebarController {
                 )
             }
             view.setOnClickListener {
-                if (section == selected) return@setOnClickListener
+                if (section == selected) {
+                    SearchActivity.clearForMainNavigation()
+                    return@setOnClickListener
+                }
                 when (section) {
-                    Section.HOME -> if (onHome != null) onHome() else goHome(activity, "HOME")
-                    Section.LIVE_TV -> if (onLiveTv != null) onLiveTv() else goHome(activity, "LIVE")
-                    Section.MOVIES -> go(activity, VodActivity::class.java)
-                    Section.SERIES -> go(activity, SeriesActivity::class.java)
-                    Section.FAVOURITES -> go(activity, FavouritesActivity::class.java)
-                    Section.DOWNLOADS -> go(activity, DownloadsActivity::class.java)
-                    Section.RECORDS -> go(activity, RecordingsActivity::class.java)
-                    Section.SETTINGS -> if (onSettings != null) onSettings() else {
+                    Section.HOME -> { SearchActivity.clearForMainNavigation(); if (onHome != null) onHome() else goHome(activity, "HOME") }
+                    Section.LIVE_TV -> { SearchActivity.clearForMainNavigation(); if (onLiveTv != null) onLiveTv() else goHome(activity, "LIVE") }
+                    Section.MOVIES -> {
+                        SearchActivity.clearForMainNavigation()
+                        go(activity, VodActivity::class.java)
+                    }
+                    Section.SERIES -> {
+                        SearchActivity.clearForMainNavigation()
+                        go(activity, SeriesActivity::class.java)
+                    }
+                    Section.SEARCH -> {
+                        SearchActivity.clearForMainNavigation()
+                        go(activity, SearchActivity::class.java)
+                    }
+                    Section.FAVOURITES -> {
+                        SearchActivity.clearForMainNavigation()
+                        go(activity, FavouritesActivity::class.java)
+                    }
+                    Section.DOWNLOADS -> {
+                        SearchActivity.clearForMainNavigation()
+                        go(activity, DownloadsActivity::class.java)
+                    }
+                    Section.RECORDS -> {
+                        SearchActivity.clearForMainNavigation()
+                        go(activity, RecordingsActivity::class.java)
+                    }
+                    Section.SETTINGS -> {
+                        SearchActivity.clearForMainNavigation()
+                        if (onSettings != null) onSettings() else {
                         activity.startActivity(Intent(activity, SettingsActivity::class.java))
                         noAnimation(activity)
+                        }
                     }
-                    Section.LIST_USERS -> go(activity, com.orbital.iptv.ui.users.ListUsersActivity::class.java)
+                    Section.LIST_USERS -> {
+                        SearchActivity.clearForMainNavigation()
+                        go(activity, com.orbital.iptv.ui.users.ListUsersActivity::class.java)
+                    }
                 }
             }
         }

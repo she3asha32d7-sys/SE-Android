@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/orbital_dark_blue">
+
+    <include
+        android:id="@+id/main_sidebar"
+        android:layout_width="match_parent"
+        android:layout_height="92dp"
+        layout="@layout/layout_main_sidebar" />
+
+    <View
+        android:id="@+id/view_accent"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:background="@color/sky_cyan" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:background="@color/sky_header_blue">
+
+        <EditText
+            android:id="@+id/et_search"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_input_field"
+            android:hint="SEARCH MOVIES, SERIES, LIVE TV OR CATEGORIES"
+            android:textColor="@color/sky_white"
+            android:textColorHint="#668899"
+            android:textSize="13sp"
+            android:singleLine="true"
+            android:imeOptions="actionDone"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:inputType="text" />
+
+        <TextView
+            android:id="@+id/btn_search"
+            android:layout_width="112dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="8dp"
+            android:gravity="center"
+            android:text="SEARCH"
+            android:textColor="@color/sky_white"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:background="@color/sky_mid_blue"
+            android:focusable="true"
+            android:clickable="true" />
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/progress_bar"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_gravity="center_horizontal"
+        android:visibility="gone"
+        android:indeterminateTint="@color/sky_cyan" />
+
+    <TextView
+        android:id="@+id/tv_empty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="ENTER A SEARCH TERM"
+        android:textColor="#668899"
+        android:textSize="13sp" />
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/results_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:visibility="gone"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="18dp">
+
+            <TextView
+                android:id="@+id/header_movies"
+                android:layout_width="match_parent"
+                android:layout_height="34dp"
+                android:gravity="start|center_vertical"
+                android:paddingStart="16dp"
+                android:text="MOVIES"
+                android:textColor="@color/sky_yellow"
+                android:background="@color/sky_mid_blue" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_movies"
+                android:layout_width="match_parent"
+                android:layout_height="320dp"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never" />
+
+            <TextView
+                android:id="@+id/header_series"
+                android:layout_width="match_parent"
+                android:layout_height="34dp"
+                android:gravity="start|center_vertical"
+                android:paddingStart="16dp"
+                android:text="SERIES"
+                android:textColor="@color/sky_yellow"
+                android:background="@color/sky_mid_blue" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_series"
+                android:layout_width="match_parent"
+                android:layout_height="320dp"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never" />
+
+            <TextView
+                android:id="@+id/header_live"
+                android:layout_width="match_parent"
+                android:layout_height="34dp"
+                android:gravity="start|center_vertical"
+                android:paddingStart="16dp"
+                android:text="LIVE TV"
+                android:textColor="@color/sky_yellow"
+                android:background="@color/sky_mid_blue" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_live"
+                android:layout_width="match_parent"
+                android:layout_height="184dp"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never" />
+
+            <TextView
+                android:id="@+id/header_categories"
+                android:layout_width="match_parent"
+                android:layout_height="34dp"
+                android:gravity="start|center_vertical"
+                android:paddingStart="16dp"
+                android:text="LIVE TV CATEGORIES"
+                android:textColor="@color/sky_yellow"
+                android:background="@color/sky_mid_blue" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_categories"
+                android:layout_width="match_parent"
+                android:layout_height="184dp"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</LinearLayout>
