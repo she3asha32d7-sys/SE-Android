@@ -24,5 +24,12 @@ s=p.read_text(encoding='utf-8')
 s=re.sub(r'versionCode\\s+\\d+', 'versionCode 1000026', s, count=1)
 s=re.sub(r'versionName\\s+"[^"]+"', 'versionName "100.0.26"', s, count=1)
 p.write_text(s,encoding='utf-8')
-assert not any('SEKeyboardController' in p.read_text(encoding='utf-8',errors='ignore') for p in java.rglob('*.kt'))
+remaining=[]
+for p in java.rglob('*.kt'):
+    for i,line in enumerate(p.read_text(encoding='utf-8',errors='ignore').splitlines(),1):
+        if 'SEKeyboardController' in line:
+            remaining.append(f"{p}:{i}:{line}")
+if remaining:
+    print("\n".join(remaining))
+    raise SystemExit("custom keyboard references remain")
 print('FINAL_PATCH_OK')
