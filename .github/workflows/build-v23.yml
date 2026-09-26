@@ -42,6 +42,9 @@ jobs:
       - name: Apply larger exit and settings confirmation dialogs
         run: python3 scripts/apply_large_confirm_dialogs.py
 
+      - name: Apply Movies and Series category counts
+        run: python3 scripts/apply_vod_series_category_counts.py
+
       - name: Apply Records header cleanup
         run: python3 scripts/apply_records_header_cleanup.py
 
