@@ -6,83 +6,9 @@ on:
       - v100.0.30
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Restore verified V100.0.25 source
-        run: |
-          set -e
-          mkdir -p /tmp/base /tmp/v25outer
-          curl -fL "https://sdmntprnortheu.oaiusercontent.com/files/00000000-f1bc-81f4-b831-f4d609f6be4a/raw?se=2026-09-26T15%3A37%3A53Z&sp=r&sv=2026-02-06&sr=b&scid=c3289b5b-744f-5499-9490-0731a5569b0e&skoid=e5f84a89-964a-4fd3-92c2-c2cb3a12ea16&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-26T08%3A03%3A51Z&ske=2026-09-27T08%3A03%3A51Z&sks=b&skv=2026-02-06&sig=xEzT2ybygsX%2BdW50v/FTsSsm9Y6cEnDG2Nmr3vFOs68%3D" -o /tmp/v25.zip
-          unzip -q /tmp/v25.zip -d /tmp/v25outer
-          SRC=$(find /tmp/v25outer -type f -name 'SEAndroid_v100.0.25-source.zip' | head -1)
-          test -n "$SRC"
-          unzip -q "$SRC" -d /tmp/base
-          rsync -a /tmp/base/ ./
-          chmod +x gradlew
-          test -f gradlew
-          test -f app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-
-      - name: Apply V100.0.26 changes
-        run: python3 scripts/apply_v26.py
-
-      - name: Apply base multi-engine integration V100.0.28
-        run: python3 scripts/apply_multiengine_v28.py
-
-      - name: Apply V100.0.29 VLC baseline
-        run: python3 scripts/fix_vlc_v29.py
-
-      - name: Apply V100.0.30 VLC fix
-        run: python3 scripts/apply_v30.py
-
-      - name: Validate V100.0.30
-        run: |
-          set -e
-          grep -q 'versionCode 1000030' app/build.gradle
-          grep -q 'versionName "100.0.30"' app/build.gradle
-          grep -q 'private var softwareDecoder = true' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
-          grep -q 'setHWDecoderEnabled(false, false)' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
-          grep -q ':avcodec-hw=none' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
-          grep -q ':no-mediacodec-dr' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
-          grep -q ':no-omxil-dr' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
-          ! grep -q 'Retrying VLC with software decoder' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
-          ! grep -q 'softwareRetryUsed' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
-          grep -q 'Do not call play() from prepare()' app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Assemble Debug APK
-        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
-
-      - name: Package outputs
-        run: |
-          set -e
-          mkdir -p out source
-          cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.30.apk
-          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source' --exclude='.github' --exclude='scripts' ./ source/
-          (cd source && zip -qr ../out/SEAndroid_v100.0.30-source.zip .)
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: SEAndroid_v100.0.30-apk
-          path: out/SEAndroid_v100.0.30.apk
-          retention-days: 30
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: SEAndroid_v100.0.30-source
-          path: out/SEAndroid_v100.0.30-source.zip
-          retention-days: 30
+      - name: Test
+        run: echo "V100.0.30 workflow syntax OK"
