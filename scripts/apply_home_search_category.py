@@ -2,6 +2,7 @@ from pathlib import Path
 
 path = Path("app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt")
 s = path.read_text()
+
 old = '''    companion object {
         const val EXTRA_SECTION = "section"
     }
@@ -15,13 +16,15 @@ if "EXTRA_LIVE_CATEGORY_ID" not in s:
     if old not in s: raise SystemExit("Home companion block not found")
     s = s.replace(old, new, 1)
 
-old = '''        when (intent.getStringExtra(EXTRA_SECTION)?.uppercase(Locale.ROOT)) {
+old = '''        setIntent(intent)
+        when (intent.getStringExtra(EXTRA_SECTION)?.uppercase(Locale.ROOT)) {
             "LIVE" -> showSection("LIVE")
             "HOME" -> showSection("HOME")
             else -> showSection("HOME")
         }
 '''
 new = '''        pendingLiveCategoryId = intent.getStringExtra(EXTRA_LIVE_CATEGORY_ID)
+        setIntent(intent)
         when (intent.getStringExtra(EXTRA_SECTION)?.uppercase(Locale.ROOT)) {
             "LIVE" -> showSection("LIVE")
             "HOME" -> showSection("HOME")
