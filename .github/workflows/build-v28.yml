@@ -20,7 +20,7 @@ jobs:
         run: |
           set -e
           mkdir -p /tmp/base
-          curl -fL "https://sdmntprpolandcentral.oaiusercontent.com/files/00000000-9bf0-820a-ba09-bc2b859170cc/raw?se=2026-09-26T15%3A04%3A45Z&sp=r&sv=2026-02-06&sr=b&scid=29cd3615-3fa2-5e3c-b147-31eac55849af&skoid=e5f84a89-964a-4fd3-92c2-c2cb3a12ea16&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-27T05%3A57%3A48Z&sks=b&skv=2026-02-06&sig=KhAOCbtMB%2By2dAmCH58HqVORCkoR2N4JviCpvrVbY/w%3D" -o /tmp/v25.zip
+          curl -fL "https://sdmntprnortheu.oaiusercontent.com/files/00000000-f7b0-81f4-8ac9-de265bb4bbd5/raw?se=2026-09-26T15%3A07%3A21Z&sp=r&sv=2026-02-06&sr=b&scid=4b161e13-9b65-59b2-96d8-73db7ba4e764&skoid=e5f84a89-964a-4fd3-92c2-c2cb3a12ea16&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-26T05%3A57%3A45Z&ske=2026-09-27T05%3A57%3A45Z&sks=b&skv=2026-02-06&sig=uD9knRuvYo8o8lQb0L75kWyry0obGNtn44gp1towHHQ%3D" -o /tmp/v25.zip
           unzip -q /tmp/v25.zip -d /tmp/v25outer
           SRC=$(find /tmp/v25outer -type f -name 'SEAndroid_v100.0.25-source.zip' | head -1)
           test -n "$SRC"
