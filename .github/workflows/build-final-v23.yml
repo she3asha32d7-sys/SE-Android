@@ -24,6 +24,9 @@ jobs:
           unzip -q "$SRC" -d /tmp/base
           rsync -a --ignore-existing /tmp/base/ ./
           chmod +x gradlew
+      - name: Apply SE Player download control
+        run: python3 scripts/apply_player_download.py
+
       - name: Prepare 23
         run: |
           set -e
