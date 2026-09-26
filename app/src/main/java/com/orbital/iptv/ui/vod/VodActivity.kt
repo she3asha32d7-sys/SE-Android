@@ -49,6 +49,7 @@ class VodActivity : AppCompatActivity() {
     private var showingFavourites = false
     private var showingAll = true
     private var showingSearch = false
+    private var showingLastAdded = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,6 +111,7 @@ class VodActivity : AppCompatActivity() {
                     showingAll -> adapter.submitList(allMovies)
                     showingFavourites -> showFavouritesMovies()
                     showingContinue -> showContinueWatching()
+                    showingLastAdded -> adapter.submitList(allMovies.sortedByDescending { recentSortKey(it.added) }.take(30))
                 }
             } else {
                 ContentCache.downloadAndSaveMovies(
@@ -121,6 +123,7 @@ class VodActivity : AppCompatActivity() {
                         showingAll -> adapter.submitList(allMovies)
                         showingFavourites -> showFavouritesMovies()
                         showingContinue -> showContinueWatching()
+                        showingLastAdded -> adapter.submitList(allMovies.sortedByDescending { recentSortKey(it.added) }.take(30))
                     }
                 }
             }
@@ -171,15 +174,26 @@ class VodActivity : AppCompatActivity() {
         }
 
         addRow("▶  CONTINUE WATCHING", showingContinue) {
-            showingSearch = false; showingFavourites = false; showingContinue = true; showingAll = false
+            showingSearch = false; showingFavourites = false; showingContinue = true; showingLastAdded = false; showingAll = false
             showContinueWatching()
             buildCategoryMenu(categories, selected)
         }
 
-        var offset = 4
+        addRow("LAST ADDED", showingLastAdded) {
+            showingSearch = false; showingFavourites = false; showingContinue = false; showingLastAdded = true; showingAll = false
+            scope.launch {
+                val list = ensureAllMovies()
+                    .sortedByDescending { recentSortKey(it.added) }
+                    .take(30)
+                adapter.submitList(list)
+            }
+            buildCategoryMenu(categories, selected)
+        }
+
+        var offset = 5
         val visibleCategories = categories.filter { !it.categoryName.equals("MOVIES", true) }
         visibleCategories.forEachIndexed { i, cat ->
-            val isSelected = !showingContinue && !showingFavourites && !showingSearch && !showingAll && cat.categoryId == selected?.categoryId
+            val isSelected = !showingContinue && !showingFavourites && !showingSearch && !showingLastAdded && !showingAll && cat.categoryId == selected?.categoryId
             val idx = i + offset
             val normalBg = if (idx % 2 == 0) p.bgMid else p.bgPrimary
             val row = LinearLayout(this).apply {
@@ -228,7 +242,7 @@ class VodActivity : AppCompatActivity() {
             nameView.setOnFocusChangeListener { _, hasFocus -> syncBackground(hasFocus) }
             heartView.setOnFocusChangeListener { _, hasFocus -> syncBackground(hasFocus) }
             nameView.setOnClickListener {
-                showingContinue = false; showingFavourites = false; showingSearch = false; showingAll = false
+                showingContinue = false; showingFavourites = false; showingSearch = false; showingLastAdded = false; showingAll = false
                 viewModel.selectCategory(cat)
             }
             heartView.setOnClickListener {
@@ -257,7 +271,7 @@ class VodActivity : AppCompatActivity() {
             .setPositiveButton("SEARCH") { _, _ ->
                 val query = input.text.toString().trim()
                 if (query.isBlank()) return@setPositiveButton
-                showingSearch = true; showingAll = false; showingFavourites = false; showingContinue = false
+                showingSearch = true; showingAll = false; showingFavourites = false; showingContinue = false; showingLastAdded = false
                 scope.launch {
                     val list = ensureAllMovies()
                     adapter.submitList(list.filter { it.name.contains(query, ignoreCase = true) })
