@@ -51,10 +51,10 @@ s = s[:start] + '''    /** Stores the selected built-in playback engine. */
 
     fun getPlayerType(context: Context): PlayerType = runCatching {
         PlayerType.valueOf(
-            prefs(context).getString(KEY_PLAYER_TYPE, PlayerType.GENC_MEDIA3.name)
-                ?: PlayerType.GENC_MEDIA3.name
+            prefs(context).getString(KEY_PLAYER_TYPE, com.orbital.iptv.utils.PlayerType.GENC_MEDIA3.name)
+                ?: com.orbital.iptv.utils.PlayerType.GENC_MEDIA3.name
         )
-    }.getOrDefault(PlayerType.GENC_MEDIA3)
+    }.getOrDefault(com.orbital.iptv.utils.PlayerType.GENC_MEDIA3)
 
 ''' + s[end:]
 p.write_text(s)
@@ -68,7 +68,7 @@ needle = '''    override fun onCreate(savedInstanceState: Bundle?) {
 replacement = '''    override fun onCreate(savedInstanceState: Bundle?) {
         if (!intent.getBooleanExtra("MULTI_ENGINE_HANDOFF", false)) {
             when (PrefsManager.getPlayerType(this)) {
-                PlayerType.VLC, PlayerType.MPV -> {
+                com.orbital.iptv.utils.PlayerType.VLC, com.orbital.iptv.utils.PlayerType.MPV -> {
                     startActivity(Intent(this, EnginePlayerActivity::class.java).apply {
                         putExtras(intent)
                         putExtra("MULTI_ENGINE_HANDOFF", true)
@@ -98,18 +98,18 @@ else:
     raise SystemExit("Settings player label anchor not found")
 
 marker = '    private fun qualityLabel(v: PrefsManager.DefaultQuality) = when (v) {'
-helper = '''    private fun playerEngineLabel(type: PlayerType): String = when (type) {
-        PlayerType.VLC -> "VLC"
-        PlayerType.MPV -> "MPV + FFmpeg"
-        PlayerType.EXTERNAL -> "External Player"
-        PlayerType.EXOPLAYER, PlayerType.GENC_MEDIA3 -> "SE / Media3"
+helper = '''    private fun playerEngineLabel(type: com.orbital.iptv.utils.PlayerType): String = when (type) {
+        com.orbital.iptv.utils.PlayerType.VLC -> "VLC"
+        com.orbital.iptv.utils.PlayerType.MPV -> "MPV + FFmpeg"
+        com.orbital.iptv.utils.PlayerType.EXTERNAL -> "External Player"
+        com.orbital.iptv.utils.PlayerType.EXOPLAYER, com.orbital.iptv.utils.PlayerType.GENC_MEDIA3 -> "SE / Media3"
     }
 
     private fun showPlayerEngineDialog() {
         val values = arrayOf(
-            PlayerType.GENC_MEDIA3,
-            PlayerType.VLC,
-            PlayerType.MPV
+            com.orbital.iptv.utils.PlayerType.GENC_MEDIA3,
+            com.orbital.iptv.utils.PlayerType.VLC,
+            com.orbital.iptv.utils.PlayerType.MPV
         )
         val labels = values.map(::playerEngineLabel).toTypedArray()
         val selected = values.indexOf(PrefsManager.getPlayerType(this)).takeIf { it >= 0 } ?: 0
