@@ -1,3 +1,4 @@
+# Trigger the V100.0.31 surface-fix build.
 name: SEAndroid v100.0.31 VLC Surface Fix Build
 
 on:
@@ -19,15 +20,16 @@ jobs:
 
       - name: Restore verified V100.0.30 source artifact
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: \${{ github.token }}
         run: |
           set -e
           mkdir -p /tmp/v30outer /tmp/base
-          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10913838063/zip" -o /tmp/v30.zip
+          curl -fsSL -H "Authorization: Bearer \${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/\${GITHUB_REPOSITORY}/actions/artifacts/10913838063/zip" -o /tmp/v30.zip
           unzip -q /tmp/v30.zip -d /tmp/v30outer
-          SRC=$(find /tmp/v30outer -type f -name 'SEAndroid_v100.0.30-source.zip' | head -1)
-          test -n "${SRC}"
-          unzip -q "${SRC}" -d /tmp/base
+          SRC=\$(find /tmp/v30outer -type f -name 'SEAndroid_v100.0.30-source.zip' | head -1)
+          test -n "\${SRC}"
+          unzip -q "\${SRC}" -d /tmp/base
           rsync -a /tmp/base/ ./
           chmod +x gradlew
           test -f gradlew
