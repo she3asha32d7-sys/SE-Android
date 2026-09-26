@@ -1,0 +1,96 @@
+name: SEAndroid v100.0.28 Build
+
+on:
+  push:
+    branches:
+      - v100.0.28
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified V100.0.25 source
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -e
+          mkdir -p /tmp/v25 /tmp/base
+          curl -fsSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/10902706686/zip" \
+            -o /tmp/v25.zip
+          unzip -q /tmp/v25.zip -d /tmp/v25
+          SRC=$(find /tmp/v25 -type f -name 'SEAndroid_v100.0.25-source.zip' | head -1)
+          test -n "$SRC"
+          unzip -q "$SRC" -d /tmp/base
+          rsync -a /tmp/base/ ./
+          chmod +x gradlew
+          test -f gradlew
+          test -f app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+
+      - name: Apply V100.0.26 changes
+        run: python3 scripts/apply_v26.py
+
+      - name: Apply V100.0.28 multi-engine integration
+        run: python3 scripts/apply_multiengine_v28.py
+
+      - name: Validate multi-engine source
+        run: |
+          set -e
+          grep -q 'org.videolan.android:libvlc-all:3.5.1' app/build.gradle
+          grep -q 'dev.jdtech.mpv:libmpv:1.0.0' app/build.gradle
+          test -f app/src/main/java/com/orbital/iptv/ui/player/PlaybackEngine.kt
+          test -f app/src/main/java/com/orbital/iptv/ui/player/VlcPlaybackEngine.kt
+          test -f app/src/main/java/com/orbital/iptv/ui/player/MpvPlaybackEngine.kt
+          test -f app/src/main/java/com/orbital/iptv/ui/player/EnginePlayerActivity.kt
+          test -f app/src/main/res/layout/activity_engine_player.xml
+          grep -q 'PlayerType.VLC' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
+          grep -q 'PlayerType.MPV' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
+          grep -q 'EnginePlayerActivity' app/src/main/AndroidManifest.xml
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble Debug APK
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Package
+        run: |
+          set -e
+          mkdir -p out source
+          cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.28.apk
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source' \
+            --exclude='.github' \
+            --exclude='.kotlin' \
+            --exclude='build_payload' \
+            --exclude='scripts' \
+            ./ source/
+          (cd source && zip -qr ../out/SEAndroid_v100.0.28-source.zip .)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.28-apk
+          path: out/SEAndroid_v100.0.28.apk
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid_v100.0.28-source
+          path: out/SEAndroid_v100.0.28-source.zip
+          retention-days: 30
