@@ -56,6 +56,11 @@ jobs:
           done < DELETE.txt
           rm -f DELETE.txt
 
+      - name: Normalize Android XML for compile
+        run: |
+          set -euo pipefail
+          sed -i '/android:showSoftInputOnFocus="true"/d'             app/src/main/res/layout/activity_login.xml             app/src/main/res/layout/activity_emby_login.xml             app/src/main/res/layout/activity_plex_login.xml
+
       - name: Restore executable Gradle wrapper
         run: chmod +x gradlew
 
