@@ -27,8 +27,8 @@ for p in [R/'scripts/apply_keyboard_v24.py', *R.glob('scripts/keyboard_v24_paylo
     if p.exists(): p.unlink()
 p=R/'app/build.gradle'
 s=p.read_text(encoding='utf-8')
-s=re.sub(r'versionCode\\s+\\d+', 'versionCode 1000026', s, count=1)
-s=re.sub(r'versionName\\s+"[^"]+"', 'versionName "100.0.26"', s, count=1)
+s=re.sub(r'versionCode[ \\t]+\\d+', 'versionCode 1000026', s, count=1)
+s=re.sub(r'versionName[ \\t]+"[^"]+"', 'versionName "100.0.26"', s, count=1)
 p.write_text(s,encoding='utf-8')
 remaining=[]
 for p in java.rglob('*.kt'):
