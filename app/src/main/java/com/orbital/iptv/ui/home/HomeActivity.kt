@@ -84,6 +84,7 @@ class HomeActivity : AppCompatActivity() {
     private var epgLoadingJob: Job? = null
     private var miniPlayer: ExoPlayer? = null
     private var liveSearchActive = false
+    private var currentSection: Section = Section.HOME
 
 
 
@@ -137,8 +138,7 @@ class HomeActivity : AppCompatActivity() {
         ApiClient.liveFormat = PrefsManager.getLiveFormat(this)
         viewModel = ViewModelProvider(this)[HomeViewModel::class.java]
         setupLiveChannels()
-        setupTabButtons()
-        showSection(intent.getStringExtra(EXTRA_SECTION) ?: "LIVE")
+        showSection(intent.getStringExtra(EXTRA_SECTION) ?: "HOME")
         applyTheme()
         observeViewModel()
         loadData()
@@ -183,6 +183,16 @@ class HomeActivity : AppCompatActivity() {
         })
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        when (intent.getStringExtra(EXTRA_SECTION)?.uppercase(Locale.ROOT)) {
+            "LIVE" -> showSection("LIVE")
+            "HOME" -> showSection("HOME")
+            else -> showSection("HOME")
+        }
+    }
+
     private fun confirmExitApp() {
         androidx.appcompat.app.AlertDialog.Builder(this, com.orbital.iptv.utils.ThemeManager.dialogStyle())
             .setTitle("Do You Want To Exit The App")
@@ -191,20 +201,22 @@ class HomeActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun setupTabButtons() {
-        MainSidebarController.setup(this,binding.root,Section.LIVE_TV,onSettings={startActivity(Intent(this,SettingsActivity::class.java))},onHome={showSection("HOME")},onLiveTv={showSection("LIVE")})
-        binding.root.findViewById<View>(R.id.nav_live_tv)?.requestFocus()
-    }
-
     fun showSection(mode:String) {
-        val home = mode.equals("HOME",true)
-        binding.root.findViewById<View>(R.id.main_sidebar_container)?.visibility=View.VISIBLE
-        binding.root.findViewById<View>(R.id.dashboard_container)?.visibility=if(home) View.VISIBLE else View.GONE
-        binding.root.findViewById<View>(R.id.layout_live_categories)?.visibility=if(home) View.GONE else View.VISIBLE
-        binding.root.findViewById<View>(R.id.layout_live_content)?.visibility=if(home) View.GONE else View.VISIBLE
-        val selected=if(home) Section.HOME else Section.LIVE_TV
-        MainSidebarController.setup(this,binding.root,selected,onSettings={startActivity(Intent(this,SettingsActivity::class.java))},onHome={showSection("HOME")},onLiveTv={showSection("LIVE")})
-        if(home) buildHomeDashboard()
+        currentSection = if (mode.equals("HOME", true)) Section.HOME else Section.LIVE_TV
+        val home = currentSection == Section.HOME
+        binding.root.findViewById<View>(R.id.main_sidebar_container)?.visibility = View.VISIBLE
+        binding.root.findViewById<View>(R.id.dashboard_container)?.visibility = if (home) View.VISIBLE else View.GONE
+        binding.root.findViewById<View>(R.id.layout_live_categories)?.visibility = if (home) View.GONE else View.VISIBLE
+        binding.root.findViewById<View>(R.id.layout_live_content)?.visibility = if (home) View.GONE else View.VISIBLE
+        MainSidebarController.setup(
+            this,
+            binding.root,
+            currentSection,
+            onSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
+            onHome = { showSection("HOME") },
+            onLiveTv = { showSection("LIVE") }
+        )
+        if (home) buildHomeDashboard()
     }
 
     private var homeMetadataJob: Job? = null
@@ -931,7 +943,14 @@ class HomeActivity : AppCompatActivity() {
         binding.root.findViewById<View>(R.id.main_sidebar_container)?.setBackgroundColor(p.bgHeader)
         binding.root.findViewById<View>(R.id.view_vertical_divider)?.setBackgroundColor(p.accent)
         binding.root.findViewById<View>(R.id.view_live_accent)?.setBackgroundColor(p.accent)
-                MainSidebarController.setup(this, binding.root, Section.LIVE_TV, onSettings = { startActivity(Intent(this, SettingsActivity::class.java)) })
+        MainSidebarController.setup(
+            this,
+            binding.root,
+            currentSection,
+            onSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
+            onHome = { showSection("HOME") },
+            onLiveTv = { showSection("LIVE") }
+        )
         binding.bottomStatusBar?.setBackgroundColor(p.bgPrimary)
         binding.tvStatusHint?.setTextColor(0xFF888888.toInt())
     }
