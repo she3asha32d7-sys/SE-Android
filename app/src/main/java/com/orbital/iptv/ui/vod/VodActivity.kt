@@ -92,7 +92,7 @@ class VodActivity : AppCompatActivity() {
                 binding.tvError.visibility = View.VISIBLE
             } ?: run { binding.tvError.visibility = View.GONE }
 
-            if (!showingContinue && !showingFavourites && !showingSearch && !showingAll) {
+            if (!showingContinue && !showingFavourites && !showingSearch && !showingLastAdded && !showingAll) {
                 adapter.submitList(state.movies)
             }
             if (state.categories.isNotEmpty()) {
@@ -162,13 +162,13 @@ class VodActivity : AppCompatActivity() {
 
         addRow("SEARCH", showingSearch) { showMovieSearchDialog() }
         addRow("ALL", showingAll) {
-            showingSearch = false; showingFavourites = false; showingContinue = false; showingAll = true
+            showingSearch = false; showingFavourites = false; showingContinue = false; showingLastAdded = false; showingAll = true
             showAllMovies()
             buildCategoryMenu(categories, selected)
         }
 
         addRow("★  FAVOURITE", showingFavourites) {
-            showingSearch = false; showingFavourites = true; showingContinue = false; showingAll = false
+            showingSearch = false; showingFavourites = true; showingContinue = false; showingLastAdded = false; showingAll = false
             showFavouritesMovies()
             buildCategoryMenu(categories, selected)
         }
