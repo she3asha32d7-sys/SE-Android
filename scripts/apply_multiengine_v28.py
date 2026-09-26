@@ -9,6 +9,7 @@ s = p.read_text()
 s = re.sub(r'versionCode\s+\d+', 'versionCode 1000028', s, count=1)
 s = re.sub(r'versionName\s+"[^"]+"', 'versionName "100.0.28"', s, count=1)
 s = re.sub(r'\bcompileSdk\s+\d+', 'compileSdk 36', s, count=1)
+s = re.sub(r'\bminSdk\s+\d+', 'minSdk 26', s, count=1)
 if "org.videolan.android:libvlc-all:3.5.1" not in s:
     s = s.replace(
         "    implementation 'androidx.work:work-runtime-ktx:2.9.0'\n",
