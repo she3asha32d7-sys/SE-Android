@@ -49,6 +49,13 @@ content = content.replace(
     "private fun isUrlField(): Boolean = (activeTarget?.get()?.inputType ?: 0 and InputType.TYPE_TEXT_VARIATION_URI) != 0",
     "private fun isUrlField(): Boolean = ((activeTarget?.get()?.inputType ?: 0) and InputType.TYPE_TEXT_VARIATION_URI) != 0"
 )
+content = content.replace(
+    "private fun paste() = showClipboardHistory(activeTarget?.get()?.context ?: return)",
+    """private fun paste() {
+        val context = activeTarget?.get()?.context ?: return
+        showClipboardHistory(context)
+    }"""
+)
 
 KEYBOARD.write_text(content, encoding="utf-8")
 
@@ -71,12 +78,7 @@ replacement = '''    private fun confirmExit(activity: Activity) {
             .setNegativeButton("No", null)
             .create()
         dialog.setOnShowListener {
-            dialog.window?.decorView?.findViewsWithText(
-                mutableListOf(),
-                "Do You Want To Exit The App",
-                View.FIND_VIEWS_WITH_TEXT
-            )?.firstOrNull { it is TextView }
-                ?.let { (it as TextView).textSize = 20f }
+            dialog.findViewById<TextView>(android.R.id.alertTitle)?.textSize = 20f
             dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.textSize = 18f
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.textSize = 18f
         }
