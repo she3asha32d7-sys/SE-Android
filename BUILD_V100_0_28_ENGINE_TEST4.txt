@@ -1,0 +1,1 @@
+Trigger after minSdk 26 fix for libmpv 1.0.0.
