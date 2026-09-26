@@ -23,6 +23,7 @@ import com.orbital.iptv.utils.ThemeManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -180,7 +181,8 @@ class SearchActivity : AppCompatActivity() {
             val username = profile.username
             val password = profile.password
 
-            val moviesJob = async {
+            coroutineScope {
+                val moviesJob = async {
                 if (ContentCache.getMovies(this@SearchActivity, serverUrl) == null) {
                     ContentCache.downloadAndSaveMovies(this@SearchActivity, serverUrl, username, password)
                 }
@@ -231,6 +233,7 @@ class SearchActivity : AppCompatActivity() {
             binding.resultsScroll.visibility = if (total > 0) View.VISIBLE else View.GONE
             binding.tvEmpty.visibility = if (total == 0) View.VISIBLE else View.GONE
             if (total == 0) binding.tvEmpty.text = "NO RESULTS FOUND"
+            }
         } catch (e: Exception) {
             if (!currentCoroutineContext().isActive) return
             binding.resultsScroll.visibility = View.GONE
