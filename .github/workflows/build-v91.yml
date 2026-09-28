@@ -94,31 +94,112 @@ jobs:
           test -f app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           echo "Patch applied successfully."
 
-      - name: Apply Kotlin build-fix (source v100.0.91 compile correction)
+      - name: Apply Kotlin build-fixes
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+
+          # Main sidebar: Kotlin function reference cannot carry a type argument.
           p = Path("app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt")
           s = p.read_text()
-          old = [
-              "?.let(root::findViewById<TextView>) ?: return",
-              "?.let(root::findViewById<TextView>) ?: return",
-          ]
-          new = "?.let { root.findViewById<TextView>(it) } ?: return"
-          if s.count(old[0]) != 2:
-              raise SystemExit(f"Expected 2 MainSidebarController compile-fix sites, found {s.count(old[0])}")
-          s = s.replace(old[0], new)
+          s = s.replace("?.let(root::findViewById<TextView>) ?: return", "?.let { root.findViewById<TextView>(it) } ?: return")
           p.write_text(s)
+
+          # Downloads screen: missing import and Uri/String mismatch.
+          p = Path("app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt")
+          s = p.read_text()
+          if "import com.orbital.iptv.utils.DownloadFileOperations" not in s:
+              s = s.replace("import com.orbital.iptv.utils.DownloadItem", "import com.orbital.iptv.utils.DownloadFileOperations\nimport com.orbital.iptv.utils.DownloadItem")
+          p.write_text(s)
+
+          p = Path("app/src/main/java/com/orbital/iptv/utils/DownloadFileOperations.kt")
+          s = p.read_text().replace("delete(context, sourceUri)", "delete(context, source.uri)")
+          p.write_text(s)
+
+          # Direct recording is the active recorder in v91; remove stale screen-recorder calls.
+          p = Path("app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt")
+          s = p.read_text()
+          s = s.replace("stopPlayerRecording(exitAfter = true)", "stopDirectPlayerRecording()")
+
+          # Player interface does not expose the ExoPlayer seek-increment setters.
+          s = s.replace("            player.setSeekBackIncrementMs(seekStepMs)\n            player.setSeekForwardIncrementMs(seekStepMs)",
+                        "            localPlayer.setSeekBackIncrementMs(seekStepMs)\n            localPlayer.setSeekForwardIncrementMs(seekStepMs)")
+
+          # Move class-level constants into companion object.
+          constants = """        private const val SEEK_SIDE_TAP_DELAY_MS = 320L
+        private const val SEEK_SIDE_LONG_PRESS_MS = 500L
+        private const val SEEK_SIDE_REPEAT_MS = 180L
+        private const val SPEED_PLAYING_REVERSE_TICK_MS = 100L
+        private const val SIDE_GESTURE_START_DISTANCE_DP = 22
+        private const val SIDE_GESTURE_BRIGHTNESS_STEP_DP = 14
+        private const val SIDE_GESTURE_VOLUME_STEP_DP = 18
+        private const val GESTURE_HUD_HIDE_MS = 1200L
+"""
+          if "private const val SEEK_SIDE_TAP_DELAY_MS = 320L" not in s[:s.find("private lateinit var binding")]:
+              s = s.replace("        private val COLOR_LIVE      = 0xFFFF2222.toInt()\n",
+                            "        private val COLOR_LIVE      = 0xFFFF2222.toInt()\n\n"+constants)
+          block = """    private const val SEEK_SIDE_TAP_DELAY_MS = 320L
+    private const val SEEK_SIDE_LONG_PRESS_MS = 500L
+    private const val SEEK_SIDE_REPEAT_MS = 180L
+    private const val SPEED_PLAYING_REVERSE_TICK_MS = 100L
+    private const val SIDE_GESTURE_START_DISTANCE_DP = 22
+    private const val SIDE_GESTURE_BRIGHTNESS_STEP_DP = 14
+    private const val SIDE_GESTURE_VOLUME_STEP_DP = 18
+    private const val GESTURE_HUD_HIDE_MS = 1200L
+"""
+          s = s.replace(block, "")
+          
+          # Add widthOfPlayer helper and use a palette field that exists in v91.
+          if "private fun widthOfPlayer()" not in s:
+              anchor = "    private fun isInSideSeekZone(x: Float, y: Float): Boolean {"
+              s = s.replace(anchor, "    private fun widthOfPlayer(): Float = binding.root.width.toFloat().coerceAtLeast(1f)\n\n"+anchor)
+          s = s.replace("setTextColor(ThemeManager.palette().textPrimary)", "setTextColor(0xFFFFFFFF.toInt())")
+          p.write_text(s)
+
+          # RecordingService: use the coroutine-context activity state and the correct FileOutputStream append API.
+          p = Path("app/src/main/java/com/orbital/iptv/recording/RecordingService.kt")
+          s = p.read_text()
+          s = s.replace("while (isActive)", "while (currentCoroutineContext().isActive)")
+          s = s.replace("if (!isActive)", "if (!currentCoroutineContext().isActive)")
+          s = s.replace("java.io.BufferedOutputStream(file.outputStream(append), 128 * 1024)",
+                        "java.io.BufferedOutputStream(java.io.FileOutputStream(file, append), 128 * 1024)")
+          p.write_text(s)
+
+          # Final sanity checks for the exact fixes.
+          checks = {
+              "app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt": [
+                  "private fun widthOfPlayer(): Float",
+                  "private const val SEEK_SIDE_TAP_DELAY_MS = 320L",
+                  "localPlayer.setSeekBackIncrementMs(seekStepMs)"
+              ],
+              "app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt": [
+                  "DownloadFileOperations"
+              ],
+              "app/src/main/java/com/orbital/iptv/recording/RecordingService.kt": [
+                  "currentCoroutineContext().isActive"
+              ]
+          }
+          for fn, needles in checks.items():
+              txt = Path(fn).read_text()
+              for n in needles:
+                  assert n in txt, f"Missing expected fix in {fn}: {n}"
+          print("All Kotlin build-fixes applied.")
           PY
-          grep -n "let { root.findViewById<TextView>(it) }" app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
 
       - name: Collect APK and reconstructed source
         working-directory: ${{ env.ROOT }}
@@ -128,7 +209,7 @@ jobs:
           mkdir -p /tmp/v91-out/apk /tmp/v91-out/source
           find app/build/outputs/apk -type f -name '*.apk' -print -exec cp {} /tmp/v91-out/apk/ \;
           test -n "$(find /tmp/v91-out/apk -type f -name '*.apk' -print -quit)"
-          zip -qr /tmp/v91-out/source/SEAndroid-v100.0.92-source.zip . \
+          zip -qr /tmp/v91-out/source/SEAndroid-v100.0.91-source-buildfixed.zip . \
             -x '.gradle/*' '*/build/*' 'app/build/*' '*.iml'
           ls -lh /tmp/v91-out/apk
           ls -lh /tmp/v91-out/source/SEAndroid-v100.0.91-source.zip
@@ -136,7 +217,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: v100.0.92-buildfixed-apk
+          name: v100.0.91-buildfixed-apk
           path: /tmp/v91-out/apk/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -144,7 +225,7 @@ jobs:
       - name: Upload source artifact
         uses: actions/upload-artifact@v4
         with:
-          name: v100.0.92-buildfixed-source
+          name: v100.0.91-buildfixed-source
           path: /tmp/v91-out/source/SEAndroid-v100.0.91-source.zip
           if-no-files-found: error
           retention-days: 14
