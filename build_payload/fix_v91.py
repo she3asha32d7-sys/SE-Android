@@ -36,8 +36,12 @@ replace_exact(
 # RecordingService: correct coroutine activity check and FileOutputStream append API.
 p = Path("app/src/main/java/com/orbital/iptv/recording/RecordingService.kt")
 s = p.read_text()
-for old in ("while (isActive)", "if (!isActive)"):
-    s = s.replace(old, old.replace("isActive", "currentCoroutineContext().isActive"))
+for old, new in (
+    ("while (isActive)", "while (currentCoroutineContext().isActive)"),
+    ("if (!isActive)", "if (!currentCoroutineContext().isActive)"),
+    ("if (!isActive &&", "if (!currentCoroutineContext().isActive &&"),
+):
+    s = s.replace(old, new)
 s = s.replace(
     "java.io.BufferedOutputStream(file.outputStream(append), 128 * 1024)",
     "java.io.BufferedOutputStream(java.io.FileOutputStream(file, append), 128 * 1024)"
