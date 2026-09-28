@@ -1,4 +1,4 @@
-name: Build SE Android v100.0.91
+name: SEAndroid v100.0.91 Build
 
 on:
   push:
@@ -6,47 +6,34 @@ on:
       - v100.0.91
   workflow_dispatch:
 
-permissions:
-  contents: read
-  actions: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
-      - name: Checkout payload branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download successful v59 reconstructed source artifact
+      - name: Restore V100.0.59 reconstructed source
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -fL \
+          mkdir -p /tmp/v59 /tmp/v91
+          curl -fsSL \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/she3asha32d7-sys/SE-Android/actions/artifacts/10917068476/zip" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10917068476/zip" \
             -o /tmp/v59-artifact.zip
-          mkdir -p /tmp/v59-artifact
-          unzip -q /tmp/v59-artifact.zip -d /tmp/v59-artifact
-          SRC_ZIP="$(find /tmp/v59-artifact -type f -name 'SEAndroid-v100.0.59-source-reconstructed.zip' -print -quit)"
-          if [ -z "${SRC_ZIP}" ]; then
-            SRC_ZIP="$(find /tmp/v59-artifact -type f -name '*.zip' -print -quit)"
-          fi
-          test -n "${SRC_ZIP}"
-          mkdir -p /tmp/v91-work
-          unzip -q "${SRC_ZIP}" -d /tmp/v91-work
-          ROOT="$(find /tmp/v91-work -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit | xargs -r dirname)"
-          if [ -z "${ROOT}" ]; then
-            echo "Could not locate reconstructed v59 Gradle project" >&2
-            find /tmp/v91-work -maxdepth 3 -type f | head -100
-            exit 1
-          fi
+          unzip -q /tmp/v59-artifact.zip -d /tmp/v59
+          SRC=$(find /tmp/v59 -type f -name 'SEAndroid-v100.0.59-source-reconstructed.zip' -print -quit)
+          test -n "${SRC}"
+          unzip -q "${SRC}" -d /tmp/v91
+          ROOT=$(find /tmp/v91 -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit | xargs -r dirname)
+          test -n "${ROOT}"
           echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
-          echo "Using source root: ${ROOT}"
 
-      - name: Reassemble and verify v100.0.91 patch payload
+      - name: Reassemble and verify v100.0.91 patch
         run: |
           set -euo pipefail
           rm -f /tmp/v91_payload.b64 /tmp/v91.diff
@@ -71,18 +58,18 @@ jobs:
           done
           python3 - <<'PY'
           from pathlib import Path
-          import base64, gzip, hashlib
-          full64 = Path("/tmp/v91_payload.b64").read_text()
-          decoded = base64.b64decode(full64)
-          got = hashlib.sha256(decoded).hexdigest()
+          import base64
+          import gzip
+          import hashlib
+
+          data = base64.b64decode(Path("/tmp/v91_payload.b64").read_text())
           expected = "a27975ac1ba1bfaa3facd3b160985cab3f30d2de1b910d2131acdc8a3e477a79"
-          print("payload base64 chars:", len(full64))
-          print("decoded gzip bytes:", len(decoded))
-          print("decoded gzip sha256:", got)
-          if got != expected:
-              raise SystemExit("v100.0.91 patch payload SHA-256 mismatch")
-          Path("/tmp/v91.diff").write_bytes(gzip.decompress(decoded))
-          print("uncompressed diff bytes:", Path("/tmp/v91.diff").stat().st_size)
+          actual = hashlib.sha256(data).hexdigest()
+          print("payload sha256:", actual)
+          if actual != expected:
+              raise SystemExit("payload SHA-256 mismatch")
+          Path("/tmp/v91.diff").write_bytes(gzip.decompress(data))
+          print("diff bytes:", Path("/tmp/v91.diff").stat().st_size)
           PY
 
       - name: Apply v100.0.91 source patch
@@ -92,101 +79,13 @@ jobs:
           patch -p1 < /tmp/v91.diff
           chmod +x gradlew
           test -f app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          echo "Patch applied successfully."
 
-      - name: Apply Kotlin build-fixes
+      - name: Apply v100.0.91 compile fixes
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          # Main sidebar: Kotlin function reference cannot carry a type argument.
-          p = Path("app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt")
-          s = p.read_text()
-          s = s.replace("?.let(root::findViewById<TextView>) ?: return", "?.let { root.findViewById<TextView>(it) } ?: return")
-          p.write_text(s)
-
-          # Downloads screen: missing import and Uri/String mismatch.
-          p = Path("app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt")
-          s = p.read_text()
-          if "import com.orbital.iptv.utils.DownloadFileOperations" not in s:
-              s = s.replace("import com.orbital.iptv.utils.DownloadItem", "import com.orbital.iptv.utils.DownloadFileOperations\nimport com.orbital.iptv.utils.DownloadItem")
-          p.write_text(s)
-
-          p = Path("app/src/main/java/com/orbital/iptv/utils/DownloadFileOperations.kt")
-          s = p.read_text().replace("delete(context, sourceUri)", "delete(context, source.uri)")
-          p.write_text(s)
-
-          # Direct recording is the active recorder in v91; remove stale screen-recorder calls.
-          p = Path("app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt")
-          s = p.read_text()
-          s = s.replace("stopPlayerRecording(exitAfter = true)", "stopDirectPlayerRecording()")
-
-          # Player interface does not expose the ExoPlayer seek-increment setters.
-          s = s.replace("            player.setSeekBackIncrementMs(seekStepMs)\n            player.setSeekForwardIncrementMs(seekStepMs)",
-                        "            localPlayer.setSeekBackIncrementMs(seekStepMs)\n            localPlayer.setSeekForwardIncrementMs(seekStepMs)")
-
-          # Move class-level constants into companion object.
-          constants = """        private const val SEEK_SIDE_TAP_DELAY_MS = 320L
-        private const val SEEK_SIDE_LONG_PRESS_MS = 500L
-        private const val SEEK_SIDE_REPEAT_MS = 180L
-        private const val SPEED_PLAYING_REVERSE_TICK_MS = 100L
-        private const val SIDE_GESTURE_START_DISTANCE_DP = 22
-        private const val SIDE_GESTURE_BRIGHTNESS_STEP_DP = 14
-        private const val SIDE_GESTURE_VOLUME_STEP_DP = 18
-        private const val GESTURE_HUD_HIDE_MS = 1200L
-"""
-          if "private const val SEEK_SIDE_TAP_DELAY_MS = 320L" not in s[:s.find("private lateinit var binding")]:
-              s = s.replace("        private val COLOR_LIVE      = 0xFFFF2222.toInt()\n",
-                            "        private val COLOR_LIVE      = 0xFFFF2222.toInt()\n\n"+constants)
-          block = """    private const val SEEK_SIDE_TAP_DELAY_MS = 320L
-    private const val SEEK_SIDE_LONG_PRESS_MS = 500L
-    private const val SEEK_SIDE_REPEAT_MS = 180L
-    private const val SPEED_PLAYING_REVERSE_TICK_MS = 100L
-    private const val SIDE_GESTURE_START_DISTANCE_DP = 22
-    private const val SIDE_GESTURE_BRIGHTNESS_STEP_DP = 14
-    private const val SIDE_GESTURE_VOLUME_STEP_DP = 18
-    private const val GESTURE_HUD_HIDE_MS = 1200L
-"""
-          s = s.replace(block, "")
-          
-          # Add widthOfPlayer helper and use a palette field that exists in v91.
-          if "private fun widthOfPlayer()" not in s:
-              anchor = "    private fun isInSideSeekZone(x: Float, y: Float): Boolean {"
-              s = s.replace(anchor, "    private fun widthOfPlayer(): Float = binding.root.width.toFloat().coerceAtLeast(1f)\n\n"+anchor)
-          s = s.replace("setTextColor(ThemeManager.palette().textPrimary)", "setTextColor(0xFFFFFFFF.toInt())")
-          p.write_text(s)
-
-          # RecordingService: use the coroutine-context activity state and the correct FileOutputStream append API.
-          p = Path("app/src/main/java/com/orbital/iptv/recording/RecordingService.kt")
-          s = p.read_text()
-          s = s.replace("while (isActive)", "while (currentCoroutineContext().isActive)")
-          s = s.replace("if (!isActive)", "if (!currentCoroutineContext().isActive)")
-          s = s.replace("java.io.BufferedOutputStream(file.outputStream(append), 128 * 1024)",
-                        "java.io.BufferedOutputStream(java.io.FileOutputStream(file, append), 128 * 1024)")
-          p.write_text(s)
-
-          # Final sanity checks for the exact fixes.
-          checks = {
-              "app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt": [
-                  "private fun widthOfPlayer(): Float",
-                  "private const val SEEK_SIDE_TAP_DELAY_MS = 320L",
-                  "localPlayer.setSeekBackIncrementMs(seekStepMs)"
-              ],
-              "app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt": [
-                  "DownloadFileOperations"
-              ],
-              "app/src/main/java/com/orbital/iptv/recording/RecordingService.kt": [
-                  "currentCoroutineContext().isActive"
-              ]
-          }
-          for fn, needles in checks.items():
-              txt = Path(fn).read_text()
-              for n in needles:
-                  assert n in txt, f"Missing expected fix in {fn}: {n}"
-          print("All Kotlin build-fixes applied.")
-          PY
+          python3 build_payload/fix_v91.py
+          python3 -m py_compile build_payload/fix_v91.py
 
       - uses: actions/setup-java@v4
         with:
@@ -201,31 +100,41 @@ jobs:
           set -euo pipefail
           ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-      - name: Collect APK and reconstructed source
+      - name: Verify APK
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
-          rm -rf /tmp/v91-out
-          mkdir -p /tmp/v91-out/apk /tmp/v91-out/source
-          find app/build/outputs/apk -type f -name '*.apk' -print -exec cp {} /tmp/v91-out/apk/ \;
-          test -n "$(find /tmp/v91-out/apk -type f -name '*.apk' -print -quit)"
-          zip -qr /tmp/v91-out/source/SEAndroid-v100.0.91-source-buildfixed.zip . \
-            -x '.gradle/*' '*/build/*' 'app/build/*' '*.iml'
-          ls -lh /tmp/v91-out/apk
-          ls -lh /tmp/v91-out/source/SEAndroid-v100.0.91-source.zip
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -t app/build/outputs/apk/debug/app-debug.apk >/dev/null
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: v100.0.91-buildfixed-apk
-          path: /tmp/v91-out/apk/*.apk
-          if-no-files-found: error
-          retention-days: 14
+      - name: Package delivery
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          mkdir -p out source
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-V100.0.91-debug.apk
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='build_payload' \
+            --exclude='out' \
+            --exclude='source' \
+            --exclude='.github/workflows/build-v91.yml' \
+            ./ source/
+          (cd source && zip -qr ../out/SE-Android-v100.0.91-source.zip .)
+          ls -lh out/SE-Android-V100.0.91-debug.apk
+          ls -lh out/SE-Android-v100.0.91-source.zip
 
-      - name: Upload source artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: v100.0.91-buildfixed-source
-          path: /tmp/v91-out/source/SEAndroid-v100.0.91-source.zip
-          if-no-files-found: error
-          retention-days: 14
+          name: SEAndroid-v100.0.91-debug-apk
+          path: ${{ env.ROOT }}/out/SE-Android-V100.0.91-debug.apk
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.91-source
+          path: ${{ env.ROOT }}/out/SE-Android-v100.0.91-source.zip
+          retention-days: 30
