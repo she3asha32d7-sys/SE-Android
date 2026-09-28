@@ -1,0 +1,201 @@
+name: Build SE Android v100.0.91
+
+on:
+  push:
+    branches:
+      - v100.0.91
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout payload branch
+        uses: actions/checkout@v4
+
+      - name: Download successful v59 reconstructed source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/she3asha32d7-sys/SE-Android/actions/artifacts/10917068476/zip" \
+            -o /tmp/v59-artifact.zip
+          mkdir -p /tmp/v59-artifact
+          unzip -q /tmp/v59-artifact.zip -d /tmp/v59-artifact
+          SRC_ZIP="$(find /tmp/v59-artifact -type f -name 'SEAndroid-v100.0.59-source-reconstructed.zip' -print -quit)"
+          if [ -z "${SRC_ZIP}" ]; then
+            SRC_ZIP="$(find /tmp/v59-artifact -type f -name '*.zip' -print -quit)"
+          fi
+          test -n "${SRC_ZIP}"
+          mkdir -p /tmp/v91-work
+          unzip -q "${SRC_ZIP}" -d /tmp/v91-work
+          ROOT="$(find /tmp/v91-work -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit | xargs -r dirname)"
+          if [ -z "${ROOT}" ]; then
+            echo "Could not locate reconstructed v59 Gradle project" >&2
+            find /tmp/v91-work -maxdepth 3 -type f | head -100
+            exit 1
+          fi
+          echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
+          echo "Using source root: ${ROOT}"
+
+      - name: Reassemble v100.0.91 patch payload
+        run: |
+          set -euo pipefail
+          rm -f /tmp/v91.diff /tmp/v91_payload.b64
+          for n in 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15; do
+            cat "build_payload/v91_patch_p${n}.b64" >> /tmp/v91_payload.b64
+          done
+          cat build_payload/v91_patch_p16.b64 >> /tmp/v91_payload.b64
+          cat build_payload/v91_patch_p18.b64 >> /tmp/v91_payload.b64
+          cat build_payload/v91_patch_p20.b64 >> /tmp/v91_payload.b64
+          cat build_payload/v91_patch_p21.b64 >> /tmp/v91_payload.b64
+          cat build_payload/v91_patch_p22a.b64 >> /tmp/v91_payload.b64
+          cat build_payload/v91_patch_p22_second_candidate.b64 > /tmp/p22.second.candidate
+          cat build_payload/v91_patch_p23.b64 >> /tmp/v91_payload.b64
+          for p in build_payload/v91_patch_p24a0.b64 build_payload/v91_patch_p24a1.b64 build_payload/v91_patch_p24a2.b64 build_payload/v91_patch_p24a3.b64; do
+            cat "${p}" >> /tmp/v91_payload.b64
+          done
+          for n in 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+            printf -v nn '%02d' "${n}"
+            cat "build_payload/v91_patch_p${nn}.b64" >> /tmp/v91_payload.b64
+          done
+
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          import base64, gzip
+
+          target_blob = "52c2bcd28751bda025fe3c389f4d87956d51f397"
+          alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+          cand_path = Path("/tmp/p22.second.candidate")
+          s = cand_path.read_text()
+          def blob_sha(data: bytes) -> str:
+              h = hashlib.sha1()
+              h.update(b"blob " + str(len(data)).encode() + b"\0")
+              h.update(data)
+              return h.hexdigest()
+
+          b = s.encode()
+          if blob_sha(b) != target_blob:
+              fixed = None
+              # Try one-character substitution.
+              chars = list(s)
+              for i in range(len(chars)):
+                  old = chars[i]
+                  for c in alphabet.decode():
+                      if c == old:
+                          continue
+                      chars[i] = c
+                      bb = ''.join(chars).encode()
+                      if blob_sha(bb) == target_blob:
+                          fixed = ''.join(chars)
+                          break
+                  chars[i] = old
+                  if fixed is not None:
+                      break
+              # Try one-character deletion.
+              if fixed is None:
+                  for i in range(len(s)):
+                      bb = (s[:i] + s[i+1:]).encode()
+                      if blob_sha(bb) == target_blob:
+                          fixed = s[:i] + s[i+1:]
+                          break
+              # Try one-character insertion.
+              if fixed is None:
+                  for i in range(len(s) + 1):
+                      for c in alphabet.decode():
+                          bb = (s[:i] + c + s[i:]).encode()
+                          if blob_sha(bb) == target_blob:
+                              fixed = s[:i] + c + s[i:]
+                              break
+                      if fixed is not None:
+                          break
+              if fixed is None:
+                  raise SystemExit("Could not repair p22 second-half candidate to expected Git blob SHA")
+              s = fixed
+
+          Path("/tmp/p22.second.fixed").write_text(s)
+          raw64 = Path("/tmp/v91_payload.b64").read_text()
+          # p22 candidate was intentionally not appended above. Insert fixed p22 second half
+          # immediately before p23. Rebuild the full payload from ordered components.
+          out = []
+          for n in range(16):
+              out.append(Path(f"build_payload/v91_patch_p{n:02d}.b64").read_text())
+          out.append(Path("build_payload/v91_patch_p16.b64").read_text())
+          out.append(Path("build_payload/v91_patch_p18.b64").read_text())
+          out.append(Path("build_payload/v91_patch_p20.b64").read_text())
+          out.append(Path("build_payload/v91_patch_p21.b64").read_text())
+          out.append(Path("build_payload/v91_patch_p22a.b64").read_text())
+          out.append(s)
+          out.append(Path("build_payload/v91_patch_p23.b64").read_text())
+          for p in ["v91_patch_p24a0.b64","v91_patch_p24a1.b64","v91_patch_p24a2.b64","v91_patch_p24a3.b64"]:
+              out.append(Path("build_payload/"+p).read_text())
+          for n in range(25,41):
+              out.append(Path(f"build_payload/v91_patch_p{n:02d}.b64").read_text())
+          full64 = ''.join(out)
+          Path("/tmp/v91_payload.b64").write_text(full64)
+
+          expected = "a27975ac1ba1bfaa3facd3b160985cab3f30d2de1b910d2131acdc8a3e477a79"
+          decoded = base64.b64decode(full64)
+          got = hashlib.sha256(decoded).hexdigest()
+          print("payload base64 chars:", len(full64))
+          print("decoded gzip bytes:", len(decoded))
+          print("decoded gzip sha256:", got)
+          if got != expected:
+              raise SystemExit("v100.0.91 patch payload SHA-256 mismatch")
+          Path("/tmp/v91.diff").write_bytes(gzip.decompress(decoded))
+          print("uncompressed diff bytes:", Path("/tmp/v91.diff").stat().st_size)
+          PY
+
+      - name: Apply v100.0.91 source patch
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          patch -p1 < /tmp/v91.diff
+          chmod +x gradlew
+          test -f app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          echo "Patch applied successfully."
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Collect APK and reconstructed source
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v91-out
+          mkdir -p /tmp/v91-out/apk /tmp/v91-out/source
+          find app/build/outputs/apk -type f -name '*.apk' -print -exec cp {} /tmp/v91-out/apk/ \;
+          test -n "$(find /tmp/v91-out/apk -type f -name '*.apk' -print -quit)"
+          zip -qr /tmp/v91-out/source/SEAndroid-v100.0.91-source.zip . \
+            -x '.gradle/*' '*/build/*' 'app/build/*' '*.iml'
+          ls -lh /tmp/v91-out/apk
+          ls -lh /tmp/v91-out/source/SEAndroid-v100.0.91-source.zip
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v100.0.91-apk
+          path: /tmp/v91-out/apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v100.0.91-source
+          path: /tmp/v91-out/source/SEAndroid-v100.0.91-source.zip
+          if-no-files-found: error
+          retention-days: 14
