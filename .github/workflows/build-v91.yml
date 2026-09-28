@@ -46,10 +46,10 @@ jobs:
           echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
           echo "Using source root: ${ROOT}"
 
-      - name: Reassemble v100.0.91 patch payload
+      - name: Reassemble and verify v100.0.91 patch payload
         run: |
           set -euo pipefail
-          rm -f /tmp/v91.diff /tmp/v91_payload.b64
+          rm -f /tmp/v91_payload.b64 /tmp/v91.diff
           for n in 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15; do
             cat "build_payload/v91_patch_p${n}.b64" >> /tmp/v91_payload.b64
           done
@@ -57,8 +57,9 @@ jobs:
           cat build_payload/v91_patch_p18.b64 >> /tmp/v91_payload.b64
           cat build_payload/v91_patch_p20.b64 >> /tmp/v91_payload.b64
           cat build_payload/v91_patch_p21.b64 >> /tmp/v91_payload.b64
-          cat build_payload/v91_patch_p22a.b64 >> /tmp/v91_payload.b64
-          cat build_payload/v91_patch_p22_second_candidate.b64 > /tmp/p22.second.candidate
+          for p in build_payload/p22x0 build_payload/p22x1 build_payload/p22x2 build_payload/p22x3; do
+            cat "${p}" >> /tmp/v91_payload.b64
+          done
           cat build_payload/v91_patch_p23.b64 >> /tmp/v91_payload.b64
           for p in build_payload/v91_patch_p24a0.b64 build_payload/v91_patch_p24a1.b64 build_payload/v91_patch_p24a2.b64 build_payload/v91_patch_p24a3.b64; do
             cat "${p}" >> /tmp/v91_payload.b64
@@ -67,86 +68,13 @@ jobs:
             printf -v nn '%02d' "${n}"
             cat "build_payload/v91_patch_p${nn}.b64" >> /tmp/v91_payload.b64
           done
-
           python3 - <<'PY'
-          import hashlib
           from pathlib import Path
-          import base64, gzip
-
-          target_blob = "52c2bcd28751bda025fe3c389f4d87956d51f397"
-          alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-
-          cand_path = Path("/tmp/p22.second.candidate")
-          s = cand_path.read_text()
-          def blob_sha(data: bytes) -> str:
-              h = hashlib.sha1()
-              h.update(b"blob " + str(len(data)).encode() + b"\0")
-              h.update(data)
-              return h.hexdigest()
-
-          b = s.encode()
-          if blob_sha(b) != target_blob:
-              fixed = None
-              # Try one-character substitution.
-              chars = list(s)
-              for i in range(len(chars)):
-                  old = chars[i]
-                  for c in alphabet.decode():
-                      if c == old:
-                          continue
-                      chars[i] = c
-                      bb = ''.join(chars).encode()
-                      if blob_sha(bb) == target_blob:
-                          fixed = ''.join(chars)
-                          break
-                  chars[i] = old
-                  if fixed is not None:
-                      break
-              # Try one-character deletion.
-              if fixed is None:
-                  for i in range(len(s)):
-                      bb = (s[:i] + s[i+1:]).encode()
-                      if blob_sha(bb) == target_blob:
-                          fixed = s[:i] + s[i+1:]
-                          break
-              # Try one-character insertion.
-              if fixed is None:
-                  for i in range(len(s) + 1):
-                      for c in alphabet.decode():
-                          bb = (s[:i] + c + s[i:]).encode()
-                          if blob_sha(bb) == target_blob:
-                              fixed = s[:i] + c + s[i:]
-                              break
-                      if fixed is not None:
-                          break
-              if fixed is None:
-                  raise SystemExit("Could not repair p22 second-half candidate to expected Git blob SHA")
-              s = fixed
-
-          Path("/tmp/p22.second.fixed").write_text(s)
-          raw64 = Path("/tmp/v91_payload.b64").read_text()
-          # p22 candidate was intentionally not appended above. Insert fixed p22 second half
-          # immediately before p23. Rebuild the full payload from ordered components.
-          out = []
-          for n in range(16):
-              out.append(Path(f"build_payload/v91_patch_p{n:02d}.b64").read_text())
-          out.append(Path("build_payload/v91_patch_p16.b64").read_text())
-          out.append(Path("build_payload/v91_patch_p18.b64").read_text())
-          out.append(Path("build_payload/v91_patch_p20.b64").read_text())
-          out.append(Path("build_payload/v91_patch_p21.b64").read_text())
-          out.append(Path("build_payload/v91_patch_p22a.b64").read_text())
-          out.append(s)
-          out.append(Path("build_payload/v91_patch_p23.b64").read_text())
-          for p in ["v91_patch_p24a0.b64","v91_patch_p24a1.b64","v91_patch_p24a2.b64","v91_patch_p24a3.b64"]:
-              out.append(Path("build_payload/"+p).read_text())
-          for n in range(25,41):
-              out.append(Path(f"build_payload/v91_patch_p{n:02d}.b64").read_text())
-          full64 = ''.join(out)
-          Path("/tmp/v91_payload.b64").write_text(full64)
-
-          expected = "a27975ac1ba1bfaa3facd3b160985cab3f30d2de1b910d2131acdc8a3e477a79"
+          import base64, gzip, hashlib
+          full64 = Path("/tmp/v91_payload.b64").read_text()
           decoded = base64.b64decode(full64)
           got = hashlib.sha256(decoded).hexdigest()
+          expected = "a27975ac1ba1bfaa3facd3b160985cab3f30d2de1b910d2131acdc8a3e477a79"
           print("payload base64 chars:", len(full64))
           print("decoded gzip bytes:", len(decoded))
           print("decoded gzip sha256:", got)
