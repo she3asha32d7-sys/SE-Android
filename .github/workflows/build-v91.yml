@@ -57,6 +57,7 @@ jobs:
           cat build_payload/v91_patch_p18.b64 >> /tmp/v91_payload.b64
           cat build_payload/v91_patch_p20.b64 >> /tmp/v91_payload.b64
           cat build_payload/v91_patch_p21.b64 >> /tmp/v91_payload.b64
+          cat build_payload/v91_patch_p22a.b64 >> /tmp/v91_payload.b64
           for p in build_payload/p22x0 build_payload/p22x1 build_payload/p22x2 build_payload/p22x3; do
             cat "${p}" >> /tmp/v91_payload.b64
           done
