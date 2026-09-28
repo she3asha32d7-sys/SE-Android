@@ -26,7 +26,7 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10917068476/zip" \
             -o /tmp/v59-artifact.zip
           unzip -q /tmp/v59-artifact.zip -d /tmp/v59
-          SRC=$(find /tmp/v59 -type f -name 'SEAndroid-v100.0.59-source-reconstructed.zip' -print -quit)
+          SRC=$(find /tmp/v59 -type f -name 'SE-Android-V100.0.59-source-reconstructed.zip' -print -quit)
           test -n "${SRC}"
           unzip -q "${SRC}" -d /tmp/v91
           ROOT=$(find /tmp/v91 -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit | xargs -r dirname)
