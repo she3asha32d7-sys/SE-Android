@@ -94,6 +94,26 @@ jobs:
           test -f app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           echo "Patch applied successfully."
 
+      - name: Apply Kotlin build-fix (source v100.0.91 compile correction)
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt")
+          s = p.read_text()
+          old = [
+              "?.let(root::findViewById<TextView>) ?: return",
+              "?.let(root::findViewById<TextView>) ?: return",
+          ]
+          new = "?.let { root.findViewById<TextView>(it) } ?: return"
+          if s.count(old[0]) != 2:
+              raise SystemExit(f"Expected 2 MainSidebarController compile-fix sites, found {s.count(old[0])}")
+          s = s.replace(old[0], new)
+          p.write_text(s)
+          PY
+          grep -n "let { root.findViewById<TextView>(it) }" app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt
+
       - name: Build debug APK
         working-directory: ${{ env.ROOT }}
         run: |
@@ -108,7 +128,7 @@ jobs:
           mkdir -p /tmp/v91-out/apk /tmp/v91-out/source
           find app/build/outputs/apk -type f -name '*.apk' -print -exec cp {} /tmp/v91-out/apk/ \;
           test -n "$(find /tmp/v91-out/apk -type f -name '*.apk' -print -quit)"
-          zip -qr /tmp/v91-out/source/SEAndroid-v100.0.91-source.zip . \
+          zip -qr /tmp/v91-out/source/SEAndroid-v100.0.92-source.zip . \
             -x '.gradle/*' '*/build/*' 'app/build/*' '*.iml'
           ls -lh /tmp/v91-out/apk
           ls -lh /tmp/v91-out/source/SEAndroid-v100.0.91-source.zip
@@ -116,7 +136,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: v100.0.91-apk
+          name: v100.0.92-buildfixed-apk
           path: /tmp/v91-out/apk/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -124,7 +144,7 @@ jobs:
       - name: Upload source artifact
         uses: actions/upload-artifact@v4
         with:
-          name: v100.0.91-source
+          name: v100.0.92-buildfixed-source
           path: /tmp/v91-out/source/SEAndroid-v100.0.91-source.zip
           if-no-files-found: error
           retention-days: 14
