@@ -1,0 +1,106 @@
+name: SEAndroid v100.0.93 Build
+
+on:
+  push:
+    branches:
+      - v100.0.93
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore V100.0.59 reconstructed source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v59 /tmp/v93
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10917068476/zip" -o /tmp/v59-artifact.zip
+          unzip -q /tmp/v59-artifact.zip -d /tmp/v59
+          SRC=$(find /tmp/v59 -type f -name 'SE-Android-V100.0.59-source-reconstructed.zip' -print -quit)
+          test -n "${SRC}"
+          unzip -q "${SRC}" -d /tmp/v93
+          ROOT=$(find /tmp/v93 -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit | xargs -r dirname)
+          test -n "${ROOT}"
+          echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
+      - name: Reassemble V91 patch
+        run: |
+          set -euo pipefail
+          rm -f /tmp/v91_payload.b64 /tmp/v91.diff
+          for n in 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15; do cat "build_payload/v91_patch_p${n}.b64" >> /tmp/v91_payload.b64; done
+          cat build_payload/v91_patch_p16.b64 >> /tmp/v91_payload.b64
+          cat build_payload/v91_patch_p18.b64 >> /tmp/v91_payload.b64
+          cat build_payload/v91_patch_p20.b64 >> /tmp/v91_payload.b64
+          cat build_payload/v91_patch_p21.b64 >> /tmp/v91_payload.b64
+          cat build_payload/v91_patch_p22a.b64 >> /tmp/v91_payload.b64
+          for p in build_payload/p22x0 build_payload/p22x1 build_payload/p22x2 build_payload/p22x3; do cat "${p}" >> /tmp/v91_payload.b64; done
+          cat build_payload/v91_patch_p23.b64 >> /tmp/v91_payload.b64
+          for p in build_payload/v91_patch_p24a0.b64 build_payload/v91_patch_p24a1.b64 build_payload/v91_patch_p24a2.b64 build_payload/v91_patch_p24a3.b64; do cat "${p}" >> /tmp/v91_payload.b64; done
+          for n in 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do printf -v nn '%02d' "${n}"; cat "build_payload/v91_patch_p${nn}.b64" >> /tmp/v91_payload.b64; done
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64,gzip,hashlib
+          data=base64.b64decode(Path("/tmp/v91_payload.b64").read_text())
+          expected="a27975ac1ba1bfaa3facd3b160985cab3f30d2de1b910d2131acdc8a3e477a79"
+          if hashlib.sha256(data).hexdigest()!=expected: raise SystemExit("payload SHA-256 mismatch")
+          Path("/tmp/v91.diff").write_bytes(gzip.decompress(data))
+          PY
+      - name: Apply V91 source and compile fixes
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          patch -p1 < /tmp/v91.diff
+          chmod +x gradlew
+          python3 "${GITHUB_WORKSPACE}/build_payload/fix_v91.py"
+          python3 -m py_compile "${GITHUB_WORKSPACE}/build_payload/fix_v91.py"
+      - name: Apply V92 password fix
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          patch -p1 < "${GITHUB_WORKSPACE}/build_payload/v92_show_password.patch"
+          grep -q 'binding.btnShowPassword.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/login/LoginActivity.kt
+          test -f app/src/main/res/drawable/ic_visibility.xml
+          test -f app/src/main/res/drawable/ic_visibility_off.xml
+      - name: Apply V93 Search navigation fix
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          patch -p1 < "${GITHUB_WORKSPACE}/build_payload/v93_search_page.patch"
+          grep -q 'go(activity, SearchActivity::class.java)' app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt
+          grep -q 'Section.SEARCH -> SearchActivity::class.java' app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt
+          grep -q 'android:name=".ui.search.SearchActivity"' app/src/main/AndroidManifest.xml
+          grep -q 'versionName "100.0.93"' app/build.gradle
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+      - name: Verify APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -t app/build/outputs/apk/debug/app-debug.apk >/dev/null
+      - name: Package delivery
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          mkdir -p out source
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-V100.0.93-debug.apk
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='build_payload' --exclude='out' --exclude='source' --exclude='.github/workflows/build-v91.yml' --exclude='.github/workflows/build-v92.yml' --exclude='.github/workflows/build-v93.yml' ./ source/
+          (cd source && zip -qr ../out/SE-Android-v100.0.93-source.zip .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.93-debug-apk
+          path: ${{ env.ROOT }}/out/SE-Android-V100.0.93-debug.apk
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.93-source
+          path: ${{ env.ROOT }}/out/SE-Android-v100.0.93-source.zip
+          retention-days: 30
