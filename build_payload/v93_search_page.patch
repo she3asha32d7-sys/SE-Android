@@ -53,4 +53,3 @@
 +            android:windowSoftInputMode="adjustResize" />
 +
          <activity android:name=".ui.downloads.DownloadsActivity" android:exported="false" />
-*** End Patch
