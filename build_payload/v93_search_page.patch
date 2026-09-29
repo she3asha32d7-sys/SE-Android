@@ -53,3 +53,24 @@
 +            android:windowSoftInputMode="adjustResize" />
 +
          <activity android:name=".ui.downloads.DownloadsActivity" android:exported="false" />
+
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -17,8 +17,8 @@
+         applicationId "com.se.iptv.player"
+         minSdk 23
+         targetSdk 34
+-        versionCode 1000092
+-        versionName "100.0.92"
++        versionCode 1000093
++        versionName "100.0.93"
+ 
+         ndk {
+             abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -1,2 +1,2 @@
+-rootProject.name = "SEAndroid_v100.0.92"
++rootProject.name = "SEAndroid_v100.0.93"
+ include ':app'
+
