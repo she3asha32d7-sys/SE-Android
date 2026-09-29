@@ -1,0 +1,121 @@
+name: SEAndroid v100.0.112 Build
+
+on:
+  push:
+    branches:
+      - v100.0.112
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore successful V100.0.94 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base /tmp/source
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11035033340/zip" \
+            -o /tmp/v94-artifact.zip
+          unzip -q /tmp/v94-artifact.zip -d /tmp/base
+          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.94-source.zip' -print -quit)
+          test -n "${SRCZIP}"
+          unzip -q "${SRCZIP}" -d /tmp/source
+          ROOT=$(find /tmp/source -maxdepth 5 -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "${ROOT}"
+          echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
+
+      - name: Reconstruct exact V100.0.111 source
+        run: |
+          set -euo pipefail
+          cat build_payload/v94_to_v111.part*.b64 > /tmp/v94_to_v111.patch.xz.b64
+          base64 -d /tmp/v94_to_v111.patch.xz.b64 > /tmp/v94_to_v111.patch.xz
+          xz -t /tmp/v94_to_v111.patch.xz
+          xz -dc /tmp/v94_to_v111.patch.xz > /tmp/v94_to_v111.patch
+          cd "${ROOT}"
+          patch -p0 --forward < /tmp/v94_to_v111.patch
+
+      - name: Bump source to V100.0.112
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          root = Path(os.environ["ROOT"])
+          for rel in ("app/build.gradle", "settings.gradle", "SE_BUILD_MANIFEST.txt"):
+              p = root / rel
+              if p.exists():
+                  s = p.read_text(encoding="utf-8")
+                  s = s.replace("100.0.111", "100.0.112")
+                  s = s.replace("1000111", "1000112")
+                  p.write_text(s, encoding="utf-8")
+          PY
+          grep -q 'versionCode 1000112' "${ROOT}/app/build.gradle"
+          grep -q 'versionName "100.0.112"' "${ROOT}/app/build.gradle"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "${APK}"
+          unzip -t "${APK}" >/dev/null
+
+      - name: Package APK and source
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          rm -rf out source-package
+          mkdir -p out source-package
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.112-debug.apk
+          rsync -a ./ source-package/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-package' \
+            --exclude='build_payload' \
+            --exclude='.github'
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.112-source.zip .)
+          unzip -t out/SE-Android-v100.0.112-source.zip >/dev/null
+          test -s out/SE-Android-v100.0.112-source.zip
+
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.112
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.112-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.112-source.zip
+          if-no-files-found: error
+          retention-days: 30
