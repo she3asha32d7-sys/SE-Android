@@ -89,6 +89,7 @@ jobs:
           # V112 -> V122 patch stored on this V122 build branch.
           python3 - <<'PY'
           import base64
+          import os
           from pathlib import Path
 
           files = sorted((Path(os.environ["GITHUB_WORKSPACE"]) / "build_payload/v112_to_v122").glob("*.b64"))
