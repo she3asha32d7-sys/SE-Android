@@ -88,9 +88,7 @@ if '.ui.search.SearchActivity' not in s:
             android:windowSoftInputMode="adjustNothing" />
 
 '''
-    s = s.replace(anchor, anchor + "
-
-" + entry.rstrip(), 1)
+    s = s.replace(anchor, anchor + "\n\n" + entry.rstrip(), 1)
 manifest.write_text(s)
 
 # Version.
