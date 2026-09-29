@@ -147,6 +147,46 @@ jobs:
           grep -q 'versionName "100.0.123"' "${ROOT}/app/build.gradle"
           grep -q '100.0.123' "${ROOT}/settings.gradle"
 
+      - name: Fix V123 Kotlin compile compatibility
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          root = Path(os.environ["ROOT"])
+          replacements = {
+              "app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt": (
+                  "            text = liveSearchQuery",
+                  "            setText(liveSearchQuery)"
+              ),
+              "app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt": (
+                  "            text = categorySearchQuery",
+                  "            setText(categorySearchQuery)"
+              ),
+              "app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt": (
+                  "            text = categorySearchQuery",
+                  "            setText(categorySearchQuery)"
+              ),
+          }
+
+          for rel, (old, new) in replacements.items():
+              p = root / rel
+              s = p.read_text(encoding="utf-8")
+              if old not in s:
+                  raise SystemExit(f"Expected line not found in {rel}")
+              p.write_text(s.replace(old, new, 1), encoding="utf-8")
+
+          player = root / "app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt"
+          s = player.read_text(encoding="utf-8")
+          if "import android.view.ViewGroup" not in s:
+              anchor = "import android.view.ViewParent"
+              if anchor not in s:
+                  raise SystemExit("PlayerActivity import anchor not found")
+              s = s.replace(anchor, "import android.view.ViewGroup\n" + anchor, 1)
+              player.write_text(s, encoding="utf-8")
+          PY
+
       - name: Package reconstructed V123 source for diagnosis
         run: |
           set -euo pipefail
