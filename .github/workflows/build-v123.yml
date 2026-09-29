@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - v100.0.123
+  pull_request:
+    branches:
+      - v100.0.122
   workflow_dispatch:
 
 permissions:
@@ -16,161 +19,180 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout V123 build branch
+      - name: Checkout V122 build branch
         uses: actions/checkout@v4
 
-      - name: Restore known-good V100.0.94 source
+      - name: Download successful V112 source artifact
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p /tmp/base
-          curl -fL --retry 10 --retry-delay 2 --retry-all-errors             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11035033340/zip"             -o /tmp/v94-artifact.zip
-          unzip -q /tmp/v94-artifact.zip -d /tmp/base
-          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.94-source.zip' -print -quit)
+          mkdir -p /tmp/base /tmp/source
+          curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11060581322/zip" \
+            -o /tmp/v112-artifact.zip
+          unzip -q /tmp/v112-artifact.zip -d /tmp/base
+          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.112-source.zip' -print -quit)
           test -n "${SRCZIP}"
-          rm -rf /tmp/source
-          mkdir -p /tmp/source
           unzip -q "${SRCZIP}" -d /tmp/source
-          ROOT=$(find /tmp/source -maxdepth 6 -type f -name settings.gradle -print -quit | xargs -r dirname)
+          ROOT=$(find /tmp/source -type f -name settings.gradle -print -quit | xargs -r dirname)
           test -n "${ROOT}"
           echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
 
-      - name: Reconstruct exact V100.0.122 source
+      - name: Reconstruct and validate V112 to V122 source patch
         run: |
           set -euo pipefail
-          mkdir -p /tmp/v94v111
-
-          # V94 -> V111 patch is stored on the V112 branch.
-          for p in part01 part02 part02b part03 part04; do
-            curl -fsSL \
-              "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/v100.0.112/build_payload/v94_to_v111.${p}.b64" \
-              -o "/tmp/v94v111/${p}.b64"
+          mkdir -p /tmp/v112_to_v122_parts
+          for p in partaa partab partac partad partae; do
+            curl -fL --retry 8 --retry-delay 2 --retry-all-errors \
+              "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/6cb452e0abe4c9595c3833ac241fa5456ab17b8a/build_payload/v112_to_v122_parts/${p}.b64" \
+              -o "/tmp/v112_to_v122_parts/${p}.b64"
           done
 
-          python3 - <<'PY'
-          import base64
-          import os
-          from pathlib import Path
+          cat \
+            /tmp/v112_to_v122_parts/partaa.b64 \
+            /tmp/v112_to_v122_parts/partab.b64 \
+            /tmp/v112_to_v122_parts/partac.b64 \
+            /tmp/v112_to_v122_parts/partad.b64 \
+            /tmp/v112_to_v122_parts/partae.b64 \
+            | tr -d '\r\n' > /tmp/v112_to_v122.patch.xz.b64
 
-          parts = [Path("/tmp/v94v111") / f"{p}.b64"
-                   for p in ("part01", "part02", "part02b", "part03", "part04")]
-          raw = "".join(p.read_text(encoding="utf-8") for p in parts)
-          raw = "".join(raw.split())
-          raw += "=" * (-len(raw) % 4)
-          Path("/tmp/v94_to_v111.patch.xz").write_bytes(
-              base64.b64decode(raw, validate=False)
-          )
-          PY
-
-          xz -t /tmp/v94_to_v111.patch.xz
-          xz -dc /tmp/v94_to_v111.patch.xz > /tmp/v94_to_v111.patch
-          cd "${ROOT}"
-          patch -p0 --forward < /tmp/v94_to_v111.patch
-
-          # V111 -> V112
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-
-          root = Path(os.environ["ROOT"])
-          for rel in ("app/build.gradle", "settings.gradle", "SE_BUILD_MANIFEST.txt"):
-              p = root / rel
-              if p.exists():
-                  s = p.read_text(encoding="utf-8")
-                  s = s.replace("100.0.111", "100.0.112")
-                  s = s.replace("1000111", "1000112")
-                  p.write_text(s, encoding="utf-8")
-          PY
-
-          grep -q 'versionCode 1000112' "${ROOT}/app/build.gradle"
-          grep -q 'versionName "100.0.112"' "${ROOT}/app/build.gradle"
-
-          # V112 -> V122 patch stored on this V122 build branch.
-          python3 - <<'PY'
-          import base64
-          import os
-          import string
-          import subprocess
-          from pathlib import Path
-
-          files = sorted((Path(os.environ["GITHUB_WORKSPACE"]) / "build_payload/v112_to_v122").glob("*.b64"))
-          if not files:
-              raise SystemExit("No V112->V122 patch chunks found")
-
-          chunks = ["".join(p.read_text(encoding="utf-8").split()) for p in files]
-          total = "".join(chunks)
-          if len(total) % 4 == 0:
-              candidates = [(None, None, total)]
-          else:
-              if len(total) % 4 != 3:
-                  raise SystemExit(f"Unexpected Base64 length modulo: {len(total) % 4}")
-              candidates = []
-              alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits + "+/"
-              for boundary in range(1, len(chunks)):
-                  for ch in alphabet:
-                      test_chunks = chunks[:]
-                      test_chunks[boundary - 1] += ch
-                      raw = "".join(test_chunks)
-                      try:
-                          data = base64.b64decode(raw, validate=True)
-                      except Exception:
-                          continue
-                      test_path = Path("/tmp/v112_to_v122.candidate.xz")
-                      test_path.write_bytes(data)
-                      if subprocess.run(["xz", "-t", str(test_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
-                          candidates.append((boundary - 1, ch, raw))
-                          break
-                  if candidates:
-                      break
-
-          if not candidates:
-              raise SystemExit("Could not repair V112->V122 Base64 stream")
-
-          boundary, ch, raw = candidates[0]
-          if boundary is not None:
-              print(f"Repaired V112->V122 Base64 by inserting one character at chunk {boundary}: {ch}")
-          Path("/tmp/v112_to_v122.patch.xz").write_bytes(base64.b64decode(raw, validate=True))
-          PY
-
+          test "$(wc -c < /tmp/v112_to_v122.patch.xz.b64)" -eq 23880
+          echo "a00ec9b1b48aff18018cf92252f60ba1cf141bf20d4c8ca0b46291ba6ce993de  /tmp/v112_to_v122.patch.xz.b64" | sha256sum -c -
+          base64 -d /tmp/v112_to_v122.patch.xz.b64 > /tmp/v112_to_v122.patch.xz
           xz -t /tmp/v112_to_v122.patch.xz
+          echo "b60a0db9c99e47daa10838e85390e070c727c5bd9345d6eabfc1484e39995454  /tmp/v112_to_v122.patch.xz" | sha256sum -c -
           xz -dc /tmp/v112_to_v122.patch.xz > /tmp/v112_to_v122.patch
           cd "${ROOT}"
-          patch -p0 --forward < /tmp/v112_to_v122.patch
+          patch -p1 --dry-run --forward < /tmp/v112_to_v122.patch
+          patch -p1 --forward < /tmp/v112_to_v122.patch
 
-      - name: Verify V100.0.122 source before bump
+      - name: Install V122 launcher image and MaterialTV-style resources
         run: |
           set -euo pipefail
-          grep -q 'versionCode 1000122' "${ROOT}/app/build.gradle"
-          grep -q 'versionName "100.0.122"' "${ROOT}/app/build.gradle"
-          test -f "${ROOT}/settings.gradle"
+          cd "${ROOT}"
+          curl -fL --retry 8 --retry-delay 2 --retry-all-errors \
+            "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/6cb452e0abe4c9595c3833ac241fa5456ab17b8a/build_payload/v122_logo/partaa.b64" \
+            -o /tmp/se-logo.b64
+          tr -d '\r\n' < /tmp/se-logo.b64 | base64 -d > /tmp/se-logo.jpg
+          file /tmp/se-logo.jpg
+          rm -f app/src/main/res/drawable/app_logo.webp
+          rm -f app/src/main/res/drawable/se_launcher_scaled.xml
 
-      - name: Bump source from V100.0.122 to V100.0.123
+          command -v convert >/dev/null 2>&1 || command -v magick >/dev/null 2>&1
+          if command -v convert >/dev/null 2>&1; then
+            CONVERT=convert
+          else
+            CONVERT=magick
+          fi
+
+          mkdir -p \
+            app/src/main/res/mipmap-ldpi \
+            app/src/main/res/mipmap-mdpi \
+            app/src/main/res/mipmap-hdpi \
+            app/src/main/res/mipmap-xhdpi \
+            app/src/main/res/mipmap-xxhdpi \
+            app/src/main/res/mipmap-xxxhdpi \
+            app/src/main/res/mipmap-anydpi-v26 \
+            app/src/main/res/drawable \
+            app/src/main/res/values
+
+          cp /tmp/se-logo.jpg app/src/main/res/drawable/ic_app_logo.jpg
+
+          "$CONVERT" /tmp/se-logo.jpg -resize 36x36! app/src/main/res/mipmap-ldpi/ic_launcher.png
+          "$CONVERT" /tmp/se-logo.jpg -resize 48x48! app/src/main/res/mipmap-mdpi/ic_launcher.png
+          "$CONVERT" /tmp/se-logo.jpg -resize 72x72! app/src/main/res/mipmap-hdpi/ic_launcher.png
+          "$CONVERT" /tmp/se-logo.jpg -resize 96x96! app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          "$CONVERT" /tmp/se-logo.jpg -resize 144x144! app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          "$CONVERT" /tmp/se-logo.jpg -resize 192x192! app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
+          cp app/src/main/res/mipmap-ldpi/ic_launcher.png app/src/main/res/mipmap-ldpi/ic_launcher_round.png
+          cp app/src/main/res/mipmap-mdpi/ic_launcher.png app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+          cp app/src/main/res/mipmap-hdpi/ic_launcher.png app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+          cp app/src/main/res/mipmap-xhdpi/ic_launcher.png app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+          cp app/src/main/res/mipmap-xxhdpi/ic_launcher.png app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+          cp app/src/main/res/mipmap-xxxhdpi/ic_launcher.png app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+
+          "$CONVERT" /tmp/se-logo.jpg -resize 432x432! app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png
+          "$CONVERT" /tmp/se-logo.jpg -resize 432x432! app/src/main/res/mipmap-xxxhdpi/ic_launcher_monochrome.png
+
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background"/>
+              <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+              <monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>
+          </adaptive-icon>
+          EOF
+
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml <<'EOF'
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background"/>
+              <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+              <monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>
+          </adaptive-icon>
+          EOF
+
+          cat > app/src/main/res/values/ic_launcher_background.xml <<'EOF'
+          <resources>
+              <color name="ic_launcher_background">#ffffff</color>
+          </resources>
+          EOF
+
+          cat > app/src/main/res/drawable/tv_banner.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="320dp"
+              android:height="180dp"
+              android:viewportWidth="320"
+              android:viewportHeight="180">
+              <path
+                  android:fillColor="#1A1C1E"
+                  android:pathData="M0,0h320v180h-320z"/>
+              <path
+                  android:fillColor="#6750A4"
+                  android:pathData="M40,30h240v120h-240z"/>
+              <path
+                  android:fillColor="#E8DEF8"
+                  android:pathData="M130,65 l70,25 l-70,25 z"/>
+          </vector>
+          EOF
+
+      - name: Verify V122 version and logo references
+        run: |
+          set -euo pipefail
+          cd "${ROOT}"
+          grep -q 'versionCode 1000122' app/build.gradle
+          grep -q 'versionName "100.0.122"' app/build.gradle
+          grep -q 'android:icon="@mipmap/ic_launcher"' app/src/main/AndroidManifest.xml
+          grep -q 'android:roundIcon="@mipmap/ic_launcher_round"' app/src/main/AndroidManifest.xml
+          grep -q 'android:banner="@drawable/tv_banner"' app/src/main/AndroidManifest.xml
+          test -s app/src/main/res/drawable/ic_app_logo.jpg
+          test -s app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png
+          test -s app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          test ! -e app/src/main/res/drawable/app_logo.webp
+          test ! -e app/src/main/res/drawable/se_launcher_scaled.xml
+          ! grep -R -n --exclude-dir=.git --exclude='*.md' 'app_logo.webp\|se_launcher_scaled' app || true
+
+      - name: Bump reconstructed V122 source to V123
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import os
-
           root = Path(os.environ["ROOT"])
-          replacements = {
-              "100.0.122": "100.0.123",
-              "1000122": "1000123",
-              "V100.0.122": "V100.0.123",
-          }
-          files = [
+          for p in (
               root / "app/build.gradle",
               root / "settings.gradle",
               root / "SE_BUILD_MANIFEST.txt",
-              root / "app/src/main/res/layout/activity_settings.xml",
-          ]
-          for p in files:
-              if not p.exists():
-                  continue
-              s = p.read_text(encoding="utf-8")
-              for old, new in replacements.items():
-                  s = s.replace(old, new)
-              p.write_text(s, encoding="utf-8")
+          ):
+              if p.exists():
+                  s = p.read_text(encoding="utf-8")
+                  s = s.replace("100.0.122", "100.0.123")
+                  s = s.replace("1000122", "1000123")
+                  s = s.replace("V100.0.122", "V100.0.123")
+                  p.write_text(s, encoding="utf-8")
           PY
           grep -q 'versionCode 1000123' "${ROOT}/app/build.gradle"
           grep -q 'versionName "100.0.123"' "${ROOT}/app/build.gradle"
@@ -185,45 +207,49 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Assemble debug APK
+      - name: Build V123 debug APK
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-      - name: Verify APK
+      - name: Verify built APK
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
-          APK="app/build/outputs/apk/debug/app-debug.apk"
+          APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "${APK}"
           unzip -t "${APK}" >/dev/null
+          ls -lh "${APK}"
 
-      - name: Package APK and source
+      - name: Package GitHub-built APK and matching source
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
           rm -rf out source-package
           mkdir -p out source-package
           cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.123-debug.apk
-          rsync -a ./ source-package/             --exclude='.git'             --exclude='.gradle'             --exclude='.idea'             --exclude='app/build'             --exclude='out'             --exclude='source-package'             --exclude='build_payload'             --exclude='.github'
+          rsync -a ./ source-package/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-package' \
+            --exclude='build_payload' \
+            --exclude='.github'
           (cd source-package && zip -qr ../out/SE-Android-v100.0.123-source.zip .)
-          unzip -t out/SE-Android-v100.0.123-source.zip >/dev/null
-          test -s out/SE-Android-v100.0.123-source.zip
+          unzip -t out/SE-Android-v100.0.122-source.zip >/dev/null
+          test -s out/SE-Android-v100.0.122-source.zip
+          ls -lh out/*
 
-      - name: Upload APK artifact
+      - name: Upload APK and source artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid-v100.0.123-apk
-          path: ${{ env.ROOT }}/out/SE-Android-v100.0.123-debug.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload source artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: SEAndroid-v100.0.123-source
-          path: ${{ env.ROOT }}/out/SE-Android-v100.0.123-source.zip
+          name: SEAndroid-v100.0.123
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.122-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.122-source.zip
           if-no-files-found: error
           retention-days: 30
