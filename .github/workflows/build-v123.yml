@@ -39,18 +39,72 @@ jobs:
       - name: Reconstruct exact V100.0.122 source
         run: |
           set -euo pipefail
+          mkdir -p /tmp/v94v111
+
+          # V94 -> V111 patch is stored on the V112 branch.
+          for p in part01 part02 part02b part03 part04; do
+            curl -fsSL \
+              "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/v100.0.112/build_payload/v94_to_v111.${p}.b64" \
+              -o "/tmp/v94v111/${p}.b64"
+          done
+
           python3 - <<'PY'
           import base64
           from pathlib import Path
-          raw = Path("build_payload/v94_to_v122.patch.xz.b64").read_text(encoding="utf-8")
+
+          parts = [Path("/tmp/v94v111") / f"{p}.b64"
+                   for p in ("part01", "part02", "part02b", "part03", "part04")]
+          raw = "".join(p.read_text(encoding="utf-8") for p in parts)
           raw = "".join(raw.split())
           raw += "=" * (-len(raw) % 4)
-          Path("/tmp/v94_to_v122.patch.xz").write_bytes(base64.b64decode(raw, validate=False))
+          Path("/tmp/v94_to_v111.patch.xz").write_bytes(
+              base64.b64decode(raw, validate=False)
+          )
           PY
-          xz -t /tmp/v94_to_v122.patch.xz
-          xz -dc /tmp/v94_to_v122.patch.xz > /tmp/v94_to_v122.patch
+
+          xz -t /tmp/v94_to_v111.patch.xz
+          xz -dc /tmp/v94_to_v111.patch.xz > /tmp/v94_to_v111.patch
           cd "${ROOT}"
-          patch -p0 --forward < /tmp/v94_to_v122.patch
+          patch -p0 --forward < /tmp/v94_to_v111.patch
+
+          # V111 -> V112
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          root = Path(os.environ["ROOT"])
+          for rel in ("app/build.gradle", "settings.gradle", "SE_BUILD_MANIFEST.txt"):
+              p = root / rel
+              if p.exists():
+                  s = p.read_text(encoding="utf-8")
+                  s = s.replace("100.0.111", "100.0.112")
+                  s = s.replace("1000111", "1000112")
+                  p.write_text(s, encoding="utf-8")
+          PY
+
+          grep -q 'versionCode 1000112' "${ROOT}/app/build.gradle"
+          grep -q 'versionName "100.0.112"' "${ROOT}/app/build.gradle"
+
+          # V112 -> V122 patch stored on this V122 build branch.
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+
+          files = sorted(Path("build_payload/v112_to_v122").glob("*.b64"))
+          if not files:
+              raise SystemExit("No V112->V122 patch chunks found")
+          raw = "".join(p.read_text(encoding="utf-8") for p in files)
+          raw = "".join(raw.split())
+          raw += "=" * (-len(raw) % 4)
+          Path("/tmp/v112_to_v122.patch.xz").write_bytes(
+              base64.b64decode(raw, validate=False)
+          )
+          PY
+
+          xz -t /tmp/v112_to_v122.patch.xz
+          xz -dc /tmp/v112_to_v122.patch.xz > /tmp/v112_to_v122.patch
+          cd "${ROOT}"
+          patch -p0 --forward < /tmp/v112_to_v122.patch
 
       - name: Verify V100.0.122 source before bump
         run: |
