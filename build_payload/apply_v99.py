@@ -6,13 +6,6 @@ ROOT = Path(os.environ.get("ROOT", ".")).resolve()
 player = ROOT / "app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt"
 s = player.read_text()
 
-old = '''    // Side long-press no longer performs seek/speed-playing. Long-press behavior conflicted
-    // with the requested rule that a single tap only reveals the player controls.
-    private val sideSeekLongPressRunnable = Runnable { }
-    private val sideSeekRepeatRunnable = object : Runnable {
-        override fun run() = Unit
-    }
-'''
 new = '''    // Speed Playing is available only after a non-1x speed is selected in the player UI.
     // The action starts only after the Android long-press timeout while the finger remains down.
     private val sideSeekLongPressRunnable = Runnable {
@@ -27,6 +20,12 @@ new = '''    // Speed Playing is available only after a non-1x speed is selected
         override fun run() = Unit
     }
 '''
+start = s.find('    private val sideSeekLongPressRunnable = Runnable {')
+end = s.find('    private val sideSeekRepeatRunnable', start)
+if start < 0 or end < 0:
+    raise SystemExit("Speed Playing runnable anchors not found")
+end = s.find('    }', end) + len('    }')
+s = s[:start] + new + s[end:]
 if old not in s:
     raise SystemExit("V98 disabled long-press block not found")
 s = s.replace(old, new, 1)
