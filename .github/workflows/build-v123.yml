@@ -90,17 +90,47 @@ jobs:
           python3 - <<'PY'
           import base64
           import os
+          import string
+          import subprocess
           from pathlib import Path
 
           files = sorted((Path(os.environ["GITHUB_WORKSPACE"]) / "build_payload/v112_to_v122").glob("*.b64"))
           if not files:
               raise SystemExit("No V112->V122 patch chunks found")
-          raw = "".join(p.read_text(encoding="utf-8") for p in files)
-          raw = "".join(raw.split())
-          raw += "=" * (-len(raw) % 4)
-          Path("/tmp/v112_to_v122.patch.xz").write_bytes(
-              base64.b64decode(raw, validate=False)
-          )
+
+          chunks = ["".join(p.read_text(encoding="utf-8").split()) for p in files]
+          total = "".join(chunks)
+          if len(total) % 4 == 0:
+              candidates = [(None, None, total)]
+          else:
+              if len(total) % 4 != 3:
+                  raise SystemExit(f"Unexpected Base64 length modulo: {len(total) % 4}")
+              candidates = []
+              alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits + "+/"
+              for boundary in range(1, len(chunks)):
+                  for ch in alphabet:
+                      test_chunks = chunks[:]
+                      test_chunks[boundary - 1] += ch
+                      raw = "".join(test_chunks)
+                      try:
+                          data = base64.b64decode(raw, validate=True)
+                      except Exception:
+                          continue
+                      test_path = Path("/tmp/v112_to_v122.candidate.xz")
+                      test_path.write_bytes(data)
+                      if subprocess.run(["xz", "-t", str(test_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                          candidates.append((boundary - 1, ch, raw))
+                          break
+                  if candidates:
+                      break
+
+          if not candidates:
+              raise SystemExit("Could not repair V112->V122 Base64 stream")
+
+          boundary, ch, raw = candidates[0]
+          if boundary is not None:
+              print(f"Repaired V112->V122 Base64 by inserting one character at chunk {boundary}: {ch}")
+          Path("/tmp/v112_to_v122.patch.xz").write_bytes(base64.b64decode(raw, validate=True))
           PY
 
           xz -t /tmp/v112_to_v122.patch.xz
