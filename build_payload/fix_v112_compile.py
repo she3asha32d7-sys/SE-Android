@@ -55,6 +55,7 @@ for rel in [
         super.onDestroy()
     }
 """, 1)
+    s = s.rstrip() + "\n\n}\n"
     p.write_text(s, encoding="utf-8")
 
 # Merge duplicate RecyclerView detach overrides while preserving listener cleanup and scope cleanup.
