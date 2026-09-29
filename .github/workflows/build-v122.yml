@@ -62,6 +62,12 @@ jobs:
           patch -p1 --dry-run --forward < /tmp/v112_to_v122.patch
           patch -p1 --forward < /tmp/v112_to_v122.patch
 
+      - name: Install image tooling
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
       - name: Install V122 launcher image and MaterialTV-style resources
         run: |
           set -euo pipefail
