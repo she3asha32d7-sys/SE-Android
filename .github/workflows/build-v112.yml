@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - v100.0.112
+  pull_request:
+    branches:
+      - v100.0.112
   workflow_dispatch:
 
 permissions:
