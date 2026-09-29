@@ -1,0 +1,56 @@
+--- a/app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt
++++ b/app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt
+@@ -8,6 +8,7 @@
+ import com.orbital.iptv.R
+ import com.orbital.iptv.ui.favourites.FavouritesActivity
+ import com.orbital.iptv.ui.home.HomeActivity
++import com.orbital.iptv.ui.search.SearchActivity
+ import com.orbital.iptv.ui.series.SeriesActivity
+ import com.orbital.iptv.ui.vod.VodActivity
+ import com.orbital.iptv.recording.RecordingsActivity
+@@ -67,11 +68,10 @@
+                     focusSelected(activity, root, items, selected)
+                     return@setOnClickListener
+                 }
+-                if (section != Section.SEARCH) {
+-                    pendingFocus[targetActivityFor(section)] = section
+-                }
++                pendingFocus[targetActivityFor(section)] = section
+                 when (section) {
+                     Section.HOME -> { InlineSearchController.clear(activity); if (onHome != null) onHome() else goHome(activity, "HOME") }
+                     Section.LIVE_TV -> { InlineSearchController.clear(activity); if (onLiveTv != null) onLiveTv() else goHome(activity, "LIVE") }
+@@ -94,7 +94,10 @@
+                         InlineSearchController.clear(activity)
+                         go(activity, SeriesActivity::class.java)
+                     }                    Section.SEARCH -> {
+-                        InlineSearchController.open(activity, root)
++                        // Search is a dedicated full-page Activity. The old implementation
++                        // mounted an inline overlay inside the current Activity, which meant
++                        // pressing SEARCH from Downloads displayed the search UI on top of
++                        // Downloads and left focus/navigation anchored to Downloads.
++                        InlineSearchController.clear(activity)
++                        go(activity, SearchActivity::class.java)
+                     }
+                     Section.FAVOURITES -> {
+                         InlineSearchController.clear(activity)
+@@ -156,7 +160,7 @@
+         Section.LIVE_TV -> HomeActivity::class.java
+         Section.MOVIES -> VodActivity::class.java
+         Section.SERIES -> SeriesActivity::class.java
+-        Section.SEARCH -> Activity::class.java
++        Section.SEARCH -> SearchActivity::class.java
+         Section.FAVOURITES -> FavouritesActivity::class.java
+         Section.DOWNLOADS -> DownloadsActivity::class.java
+         Section.RECORDS -> RecordingsActivity::class.java
+*** Update File: app/src/main/AndroidManifest.xml
+@@ -75,6 +75,10 @@
+ 
+         <activity android:name=".ui.settings.SettingsActivity" android:exported="false" />
+ 
++        <activity
++            android:name=".ui.search.SearchActivity"
++            android:exported="false"
++            android:windowSoftInputMode="adjustResize" />
++
+         <activity android:name=".ui.downloads.DownloadsActivity" android:exported="false" />
+*** End Patch
