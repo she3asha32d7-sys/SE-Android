@@ -156,15 +156,14 @@ new = '''        b.switchAutoRotate.setOnCheckedChangeListener { _, checked ->
                     windowManager.defaultDisplay.rotation
                 }
 
+                // SE is a landscape app. Capture the currently visible landscape side
+                // and lock to that concrete side for every Activity while OFF.
                 val lockOrientation = when (rotation) {
-                    android.view.Surface.ROTATION_90 ->
-                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    android.view.Surface.ROTATION_180,
                     android.view.Surface.ROTATION_270 ->
                         android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-                    android.view.Surface.ROTATION_180 ->
-                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
                     else ->
-                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 }
 
                 PrefsManager.setAutoRotateLockOrientation(this, lockOrientation)
