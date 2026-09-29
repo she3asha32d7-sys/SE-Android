@@ -147,6 +147,23 @@ jobs:
           grep -q 'versionName "100.0.123"' "${ROOT}/app/build.gradle"
           grep -q '100.0.123' "${ROOT}/settings.gradle"
 
+      - name: Package reconstructed V123 source for diagnosis
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v123-diagnostic
+          mkdir -p /tmp/v123-diagnostic
+          rsync -a "${ROOT}/" /tmp/v123-diagnostic/ \
+            --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build'
+          (cd /tmp/v123-diagnostic && zip -qr /tmp/SE-Android-v100.0.123-diagnostic-source.zip .)
+
+      - name: Upload reconstructed V123 diagnostic source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.123-diagnostic-source
+          path: /tmp/SE-Android-v100.0.123-diagnostic-source.zip
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
