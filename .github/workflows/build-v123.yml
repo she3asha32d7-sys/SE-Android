@@ -39,8 +39,14 @@ jobs:
       - name: Reconstruct exact V100.0.122 source
         run: |
           set -euo pipefail
-          cat build_payload/v94_to_v122.patch.xz.b64 > /tmp/v94_to_v122.patch.xz.b64
-          base64 -d /tmp/v94_to_v122.patch.xz.b64 > /tmp/v94_to_v122.patch.xz
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          raw = Path("build_payload/v94_to_v122.patch.xz.b64").read_text(encoding="utf-8")
+          raw = "".join(raw.split())
+          raw += "=" * (-len(raw) % 4)
+          Path("/tmp/v94_to_v122.patch.xz").write_bytes(base64.b64decode(raw, validate=False))
+          PY
           xz -t /tmp/v94_to_v122.patch.xz
           xz -dc /tmp/v94_to_v122.patch.xz > /tmp/v94_to_v122.patch
           cd "${ROOT}"
