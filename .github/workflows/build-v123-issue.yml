@@ -99,6 +99,24 @@ jobs:
           cp "${ROOT}/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" "${ROOT}/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png"
           cp "${ROOT}/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" "${ROOT}/app/src/main/res/mipmap-xxxhdpi/ic_launcher_monochrome.png"
 
+      - name: Restore required adaptive icon foreground resources
+        run: |
+          set -euo pipefail
+          mkdir -p "${ROOT}/app/src/main/res/mipmap-anydpi-v26"
+          cat > "${ROOT}/app/src/main/res/mipmap-anydpi-v26/ic_launcher_foreground.xml" <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:fillColor="#FFFFFFFF"
+                  android:pathData="M40,30 L82,54 L40,78 Z"/>
+          </vector>
+          EOF
+          cp "${ROOT}/app/src/main/res/mipmap-anydpi-v26/ic_launcher_foreground.xml" "${ROOT}/app/src/main/res/mipmap-anydpi-v26/ic_launcher_monochrome.xml"
+
       - name: Bump V122 source to V123
         run: |
           set -euo pipefail
