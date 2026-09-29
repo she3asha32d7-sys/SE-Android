@@ -25,7 +25,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/base
-          curl -fsSL             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11035033340/zip"             -o /tmp/v94-artifact.zip
+          curl -fL --retry 10 --retry-delay 2 --retry-all-errors             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11035033340/zip"             -o /tmp/v94-artifact.zip
           unzip -q /tmp/v94-artifact.zip -d /tmp/base
           SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.94-source.zip' -print -quit)
           test -n "${SRCZIP}"
