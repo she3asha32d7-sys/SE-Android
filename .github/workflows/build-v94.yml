@@ -1,0 +1,99 @@
+name: SEAndroid v100.0.94 Build
+
+on:
+  push:
+    branches:
+      - v100.0.94
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore source V100.0.91
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base /tmp/outsource
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10988041981/zip" \
+            -o /tmp/v91-artifact.zip
+          unzip -q /tmp/v91-artifact.zip -d /tmp/base
+          SRC=$(find /tmp/base -type f -name 'SE-Android-v100.0.91-source.zip' -print -quit)
+          test -n "${SRC}"
+          unzip -q "${SRC}" -d /tmp/outsource
+          ROOT=$(find /tmp/outsource -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "${ROOT}"
+          echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
+
+      - name: Apply V100.0.94 transformation
+        run: |
+          set -euo pipefail
+          python3 build_payload/apply_v94.py
+          python3 -m py_compile build_payload/apply_v94.py
+          test -f "${ROOT}/app/src/main/java/com/orbital/iptv/utils/InlineSearchController.kt"
+          test -f "${ROOT}/app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt"
+          test -f "${ROOT}/app/src/main/res/layout/layout_inline_search.xml"
+          test ! -e "${ROOT}/app/src/main/java/com/orbital/iptv/ui/search/SearchActivity.kt"
+          test ! -e "${ROOT}/app/src/main/res/layout/activity_search.xml"
+          grep -q 'InlineSearchController.open(activity, root)' "${ROOT}/app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt"
+          grep -q 'IME_FLAG_NO_FULLSCREEN' "${ROOT}/app/src/main/java/com/orbital/iptv/utils/InlineSearchController.kt"
+          grep -q 'IME_FLAG_NO_EXTRACT_UI' "${ROOT}/app/src/main/java/com/orbital/iptv/utils/InlineSearchController.kt"
+          grep -q 'versionName "100.0.94"' "${ROOT}/app/build.gradle"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -t app/build/outputs/apk/debug/app-debug.apk >/dev/null
+
+      - name: Package outputs
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          mkdir -p out source
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-V100.0.94-debug.apk
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source' \
+            --exclude='build_payload' \
+            ./ source/
+          (cd source && zip -qr ../out/SE-Android-v100.0.94-source.zip .)
+          ls -lh out/SE-Android-V100.0.94-debug.apk
+          ls -lh out/SE-Android-v100.0.94-source.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.94-debug-apk
+          path: ${{ env.ROOT }}/out/SE-Android-V100.0.94-debug.apk
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.94-source
+          path: ${{ env.ROOT }}/out/SE-Android-v100.0.94-source.zip
+          retention-days: 30
