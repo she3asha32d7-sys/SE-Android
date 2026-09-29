@@ -50,6 +50,7 @@ jobs:
 
           python3 - <<'PY'
           import base64
+          import os
           from pathlib import Path
 
           parts = [Path("/tmp/v94v111") / f"{p}.b64"
@@ -90,7 +91,7 @@ jobs:
           import base64
           from pathlib import Path
 
-          files = sorted(Path("build_payload/v112_to_v122").glob("*.b64"))
+          files = sorted((Path(os.environ["GITHUB_WORKSPACE"]) / "build_payload/v112_to_v122").glob("*.b64"))
           if not files:
               raise SystemExit("No V112->V122 patch chunks found")
           raw = "".join(p.read_text(encoding="utf-8") for p in files)
