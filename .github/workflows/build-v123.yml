@@ -73,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y imagemagick
+          sudo apt-get install -y imagemagick ffmpeg
 
       - name: Install V122 launcher image and MaterialTV-style resources
         run: |
@@ -83,6 +83,10 @@ jobs:
             "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/6cb452e0abe4c9595c3833ac241fa5456ab17b8a/build_payload/v122_logo/partaa.b64" \
             -o /tmp/se-logo.b64
           tr -d '\r\n' < /tmp/se-logo.b64 | base64 -d > /tmp/se-logo.jpg
+          file /tmp/se-logo.jpg
+          ffmpeg -y -loglevel error -err_detect ignore_err \
+            -i /tmp/se-logo.jpg -frames:v 1 -q:v 2 /tmp/se-logo-fixed.jpg
+          mv /tmp/se-logo-fixed.jpg /tmp/se-logo.jpg
           file /tmp/se-logo.jpg
           rm -f app/src/main/res/drawable/app_logo.webp
           rm -f app/src/main/res/drawable/se_launcher_scaled.xml
