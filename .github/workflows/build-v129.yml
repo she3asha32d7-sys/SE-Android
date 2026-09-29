@@ -159,6 +159,37 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+
+      - name: Fix V128 compile issues
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          fixes = {
+              "app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt": ("            text = liveSearchQuery", "            text = liveSearchQuery"),
+              "app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt": ("            text = categorySearchQuery", "            text = categorySearchQuery"),
+              "app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt": ("            text = categorySearchQuery", "            text = categorySearchQuery"),
+          }
+          # EditText.text is Editable on this compile toolchain; use setText for the
+          # three dynamic category/live search fields.
+          for rel in fixes:
+              p = Path(rel)
+              s = p.read_text(encoding="utf-8")
+              s = s.replace("            text = liveSearchQuery\n", "            setText(liveSearchQuery)\n")
+              s = s.replace("            text = categorySearchQuery\n", "            setText(categorySearchQuery)\n")
+              p.write_text(s, encoding="utf-8")
+
+          p = Path("app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt")
+          s = p.read_text(encoding="utf-8")
+          if "import android.view.ViewGroup" not in s:
+              marker = "import android.view.View\n"
+              if marker not in s:
+                  raise SystemExit("PlayerActivity import marker not found")
+              s = s.replace(marker, marker + "import android.view.ViewGroup\n", 1)
+              p.write_text(s, encoding="utf-8")
+          PY
+
       - name: Build V129 debug APK
         working-directory: ${{ env.ROOT }}
         run: |
