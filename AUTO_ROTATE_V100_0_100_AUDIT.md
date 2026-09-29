@@ -5,11 +5,9 @@ The earlier implementation stored only the boolean Auto Rotate preference and us
 
 ## V100.0.100 fix
 - When Auto Rotate is switched OFF, capture the exact current display rotation first.
-- Convert it to a concrete ActivityInfo orientation:
-  - ROTATION_90 -> LANDSCAPE
-  - ROTATION_270 -> REVERSE_LANDSCAPE
-  - ROTATION_180 -> REVERSE_PORTRAIT
-  - ROTATION_0 -> PORTRAIT
+- Convert the current display rotation to one of the app's two supported landscape directions:
+  - ROTATION_0 / ROTATION_90 -> LANDSCAPE
+  - ROTATION_180 / ROTATION_270 -> REVERSE_LANDSCAPE
 - Persist that concrete lock orientation.
 - When Auto Rotate is OFF, every Activity uses that same persisted concrete orientation.
 - Apply the policy in `onActivityPreCreated` on Android 10/API 29+ so the lock is requested before the Activity's normal creation work.
