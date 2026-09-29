@@ -95,13 +95,6 @@ jobs:
       - name: Restore required adaptive icon foreground resources
         run: |
           set -euo pipefail
-          test -s "${ROOT}/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"
-          cp "${ROOT}/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" "${ROOT}/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png"
-          cp "${ROOT}/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" "${ROOT}/app/src/main/res/mipmap-xxxhdpi/ic_launcher_monochrome.png"
-
-      - name: Restore required adaptive icon foreground resources
-        run: |
-          set -euo pipefail
           mkdir -p "${ROOT}/app/src/main/res/mipmap-anydpi-v26"
           cat > "${ROOT}/app/src/main/res/mipmap-anydpi-v26/ic_launcher_foreground.xml" <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
