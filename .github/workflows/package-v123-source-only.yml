@@ -102,6 +102,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SEAndroid-v100.0.123-source-only
-          path: ${{ env.ROOT }}/out/SE-Android-v100.0.123-source.zip
+          path: out/SE-Android-v100.0.123-source.zip
           if-no-files-found: error
           retention-days: 7
