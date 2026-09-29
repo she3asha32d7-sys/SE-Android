@@ -26,10 +26,6 @@ if start < 0 or end < 0:
     raise SystemExit("Speed Playing runnable anchors not found")
 end = s.find('    }', end) + len('    }')
 s = s[:start] + new + s[end:]
-if old not in s:
-    raise SystemExit("V98 disabled long-press block not found")
-s = s.replace(old, new, 1)
-
 old = '''                lastTapAt = now
                 sideSeekHandler.postDelayed(sideSeekSingleRunnable, SEEK_SIDE_TAP_DELAY_MS)
                 return true
