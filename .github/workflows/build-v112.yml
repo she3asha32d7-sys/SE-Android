@@ -48,6 +48,12 @@ jobs:
           cd "${ROOT}"
           patch -p0 --forward < /tmp/v94_to_v111.patch
 
+      - name: Fix V100.0.112 compile blockers
+        run: |
+          set -euo pipefail
+          python3 build_payload/fix_v112_compile.py
+          python3 -m py_compile build_payload/fix_v112_compile.py
+
       - name: Bump source to V100.0.112
         run: |
           set -euo pipefail
