@@ -95,8 +95,87 @@ jobs:
               raise SystemExit("Could not locate versionCode/versionName in app/build.gradle")
           gradle.write_text(s2, encoding="utf-8")
 
+          settings = root / "settings.gradle"
+          t = settings.read_text(encoding="utf-8")
+          t = t.replace("100.0.122", "100.0.123")
+          t = t.replace("1000122", "1000123")
+          t = t.replace("V100.0.122", "V100.0.123")
+          if "rootProject.name" in t:
+              t = re.sub(r'(?m)^\\s*rootProject\\.name\\s*=\\s*["\\\'][^"\\\']+["\\\']\\s*
+          PY
+
+          echo "---- app/build.gradle version ----"
+          grep -nE 'versionCode|versionName' "${ROOT}/app/build.gradle"
+          echo "---- settings.gradle project name ----"
+          grep -nE 'rootProject.name|100\.0\.(122|123)' "${ROOT}/settings.gradle" || true
+          echo "---- settings.xml version ----"
+          grep -nE 'V100\.0\.(122|123)|100\.0\.123' "${ROOT}/app/src/main/res/layout/activity_settings.xml" || true
+
+          grep -q 'versionCode 1000123' "${ROOT}/app/build.gradle"
+          grep -q 'versionName "100.0.123"' "${ROOT}/app/build.gradle"
+          grep -q '100.0.123' "${ROOT}/settings.gradle"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build V123 debug APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify built APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "${APK}"
+          unzip -t "${APK}" >/dev/null
+          ls -lh "${APK}"
+
+      - name: Package GitHub-built APK and matching source
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          rm -rf out source-package
+          mkdir -p out source-package
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.123-debug.apk
+          rsync -a ./ source-package/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-package' \
+            --exclude='build_payload' \
+            --exclude='.github'
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.123-source.zip .)
+          unzip -t out/SE-Android-v100.0.122-source.zip >/dev/null
+          test -s out/SE-Android-v100.0.122-source.zip
+          ls -lh out/*
+
+      - name: Upload APK and source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.123
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.122-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.122-source.zip
+          if-no-files-found: error
+          retention-days: 30
+,
+                         'rootProject.name = "SEAndroid_v100.0.123"', t)
+          else:
+              t += '\\nrootProject.name = "SEAndroid_v100.0.123"\\n'
+          settings.write_text(t, encoding="utf-8")
+
           for rel in (
-              "settings.gradle",
               "SE_BUILD_MANIFEST.txt",
               "app/src/main/res/layout/activity_settings.xml",
           ):
