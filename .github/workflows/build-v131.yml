@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout V131 build helper files
+      - name: Checkout build assets
         uses: actions/checkout@v4
 
       - name: Download successful V130 source artifact
@@ -34,242 +34,32 @@ jobs:
           test -n "${ROOT}"
           echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
 
-      - name: Apply LG webOS DLNA Cast V131
+      - name: Reconstruct verified V130-to-V131 patch
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
-          mkdir -p app/src/main/java/com/orbital/iptv/utils app/src/main/res/drawable
-          cp "${GITHUB_WORKSPACE}/app/src/main/java/com/orbital/iptv/utils/LgDlnaCastManager.kt"              app/src/main/java/com/orbital/iptv/utils/LgDlnaCastManager.kt
-          cp "${GITHUB_WORKSPACE}/app/src/main/res/drawable/ic_cast.xml"              app/src/main/res/drawable/ic_cast.xml
+          cat "${GITHUB_WORKSPACE}"/build_payload/v130_to_v131_fixed_part*.b64 | tr -d '\r\n' > /tmp/v130_to_v131.patch.xz.b64
+          test "$(wc -c < /tmp/v130_to_v131.patch.xz.b64)" -eq 8976
+          echo "86f10ea2ade13c1777500f9317fe19915d081ec482b3d57d25358e84641aaef5  /tmp/v130_to_v131.patch.xz.b64" | sha256sum -c -
+          base64 -d /tmp/v130_to_v131.patch.xz.b64 > /tmp/v130_to_v131.patch.xz
+          xz -t /tmp/v130_to_v131.patch.xz
+          xz -dc /tmp/v130_to_v131.patch.xz > /tmp/v130_to_v131.diff
+          patch -p1 --forward < /tmp/v130_to_v131.diff
 
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          # ----- PlayerActivity: visible Cast button -> LG DLNA chooser, Google Cast fallback -----
-          p = Path("app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt")
-          s = p.read_text(encoding="utf-8")
-
-          old_setup = """        b.btnGencOpenWith.setOnClickListener { launchExternalPlayer() }
-          MediaRouteButtonFactory.setUpMediaRouteButton(this, b.btnGencCast)
-          b.btnGencFavorite.setOnClickListener { toggleGencFavorite() }
-          """
-          new_setup = """        b.btnGencOpenWith.setOnClickListener { launchExternalPlayer() }
-          b.btnGencCast.setOnClickListener { showCastChooser() }
-          b.btnGencFavorite.setOnClickListener { toggleGencFavorite() }
-          """
-          if old_setup not in s:
-              raise SystemExit("Visible Cast setup block not found")
-          s = s.replace(old_setup, new_setup, 1)
-
-          if "private fun showCastChooser()" not in s:
-              marker = "    private fun showGencOverlay() {"
-              method = """    private fun showCastChooser() {
-              if (isInPictureInPictureMode) return
-
-              val searching = AlertDialog.Builder(this, ThemeManager.dialogStyle())
-                  .setTitle("CAST TO TV")
-                  .setMessage("SEARCHING FOR LG TVS...")
-                  .setNegativeButton("CANCEL", null)
-                  .create()
-
-              searching.show()
-
-              lifecycleScope.launch {
-                  val devices = runCatching {
-                      LgDlnaCastManager.discover(this@PlayerActivity)
-                  }.getOrDefault(emptyList())
-
-                  if (isFinishing || isDestroyed) return@launch
-                  searching.dismiss()
-
-                  if (devices.isEmpty()) {
-                      Toast.makeText(
-                          this@PlayerActivity,
-                          "NO LG TV FOUND BY DLNA. TRYING GOOGLE CAST...",
-                          Toast.LENGTH_LONG
-                      ).show()
-                      binding.btnCast.performClick()
-                      return@launch
-                  }
-
-                  val labels = devices.map {
-                      it.friendlyName.ifBlank { "LG webOS TV" }
-                  }
-
-                  AlertDialog.Builder(this@PlayerActivity, ThemeManager.dialogStyle())
-                      .setTitle("CAST TO TV")
-                      .setItems(labels.toTypedArray()) { _, which ->
-                          val device = devices[which]
-
-                          val mediaUri =
-                              player.currentMediaItem?.localConfiguration?.uri?.toString()
-                                  ?.takeIf {
-                                      it.startsWith("http://", true) ||
-                                      it.startsWith("https://", true)
-                                  }
-                                  ?: streamUrl
-
-                          if (mediaUri.isBlank()) {
-                              Toast.makeText(
-                                  this@PlayerActivity,
-                                  "NO MEDIA URL AVAILABLE",
-                                  Toast.LENGTH_LONG
-                              ).show()
-                              return@setItems
-                          }
-
-                          lifecycleScope.launch {
-                              val result = LgDlnaCastManager.cast(
-                                  device = device,
-                                  mediaUrl = mediaUri,
-                                  title = channelName,
-                                  isLive = isLive
-                              )
-
-                              if (result.isSuccess) {
-                                  if (::localPlayer.isInitialized) {
-                                      localPlayer.pause()
-                                  }
-
-                                  Toast.makeText(
-                                      this@PlayerActivity,
-                                      "CASTING TO " + device.friendlyName,
-                                      Toast.LENGTH_SHORT
-                                  ).show()
-
-                                  showGencOverlay()
-                              } else {
-                                  val message =
-                                      result.exceptionOrNull()?.message ?: "UNKNOWN ERROR"
-
-                                  Toast.makeText(
-                                      this@PlayerActivity,
-                                      "CAST FAILED: " + message,
-                                      Toast.LENGTH_LONG
-                                  ).show()
-                              }
-                          }
-                      }
-                      .setNegativeButton("CANCEL", null)
-                      .show()
-              }
-          }
-
-"""
-              if marker not in s:
-                  raise SystemExit("showGencOverlay marker not found")
-              s = s.replace(marker, method + marker, 1)
-
-          p.write_text(s, encoding="utf-8")
-
-          # ----- Player layout: top-right order remains Fullscreen -> Cast -> Favourite -----
-          p = Path("app/src/main/res/layout/layout_genc_player_overlay.xml")
-          s = p.read_text(encoding="utf-8")
-
-          cast_pattern = re.compile(
-              r'<androidx\.mediarouter\.app\.MediaRouteButton\s+'
-              r'android:id="@\+id/btn_genc_cast".*?'
-              r'</androidx\.mediarouter\.app\.MediaRouteButton>',
-              re.S
-          )
-
-          cast_replacement = """        <ImageButton
-              android:id="@+id/btn_genc_cast"
-              android:layout_width="44dp"
-              android:layout_height="44dp"
-              android:layout_marginEnd="6dp"
-              android:background="@drawable/bg_genc_pill"
-              android:contentDescription="Cast to TV"
-              android:clickable="true"
-              android:focusable="true"
-              android:padding="10dp"
-              android:scaleType="centerInside"
-              android:src="@drawable/ic_cast"
-              android:tint="@android:color/white"
-              android:visibility="visible" />"""
-
-          s2, count = cast_pattern.subn(cast_replacement, s, count=1)
-          if count != 1:
-              raise SystemExit("Expected exactly one visible Genç Cast MediaRouteButton")
-          p.write_text(s2, encoding="utf-8")
-
-          # ----- Manifest: Wi-Fi multicast permissions for SSDP discovery -----
-          p = Path("app/src/main/AndroidManifest.xml")
-          s = p.read_text(encoding="utf-8")
-          if "android.permission.ACCESS_WIFI_STATE" not in s:
-              s = s.replace(
-                  '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />',
-                  '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'
-                  '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />',
-                  1
-              )
-          if "android.permission.CHANGE_WIFI_MULTICAST_STATE" not in s:
-              s = s.replace(
-                  '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />',
-                  '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />\n'
-                  '    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />',
-                  1
-              )
-          p.write_text(s, encoding="utf-8")
-
-          # ----- Version -----
-          p = Path("app/build.gradle")
-          s = p.read_text(encoding="utf-8")
-          s = re.sub(r'(?m)^\s*versionCode\s+\d+', '        versionCode 1000131', s)
-          s = re.sub(r'(?m)^\s*versionName\s+"[^"]+"', '        versionName "100.0.131"', s)
-          p.write_text(s, encoding="utf-8")
-
-          p = Path("settings.gradle")
-          s = p.read_text(encoding="utf-8")
-          s = re.sub(
-              r'(?m)^\s*rootProject\.name\s*=\s*"[^"]+"',
-              'rootProject.name = "SEAndroid_v100.0.131"',
-              s
-          )
-          p.write_text(s, encoding="utf-8")
-
-          p = Path("app/src/main/res/layout/activity_settings.xml")
-          if p.exists():
-              s = p.read_text(encoding="utf-8").replace("100.0.130", "100.0.131")
-              p.write_text(s, encoding="utf-8")
-
-          Path("CAST_DLNA_LG_V100_0_131_AUDIT.md").write_text(
-              """# LG webOS DLNA Cast — V100.0.131
-
-V130 used Google Cast discovery only. LG webOS TVs commonly expose a DLNA/UPnP
-MediaRenderer with AVTransport, so the TV can be on the same Wi-Fi yet absent from
-a Google Cast route list.
-
-V131:
-- Keeps the existing Google Cast path as fallback.
-- Uses SSDP discovery for LG DLNA/UPnP MediaRenderer devices.
-- Acquires an Android Wi-Fi multicast lock during discovery.
-- Parses the TV device description and resolves the AVTransport control URL.
-- Sends SetAVTransportURI followed by Play using SOAP/UPnP.
-- Uses the exact HTTP/HTTPS IPTV media URL so the TV fetches it directly.
-- Applies to the common PlayerActivity used for Movies, Series, and Live.
-- Visible player button order stays Fullscreen -> Cast -> Favourite.
-
-Actual stream playback still depends on the LG TV accepting the IPTV URL and its
-supported codecs/containers.
-""",
-              encoding="utf-8"
-          )
-          PY
-
-      - name: Verify V131 LG DLNA Cast source
+      - name: Verify V131 source
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
           grep -q 'versionCode 1000131' app/build.gradle
           grep -q 'versionName "100.0.131"' app/build.gradle
-          grep -q 'showCastChooser' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          grep -q 'LgDlnaCastManager' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          test -s app/src/main/java/com/orbital/iptv/utils/LgDlnaCastManager.kt
           grep -q '239.255.255.250' app/src/main/java/com/orbital/iptv/utils/LgDlnaCastManager.kt
           grep -q 'SetAVTransportURI' app/src/main/java/com/orbital/iptv/utils/LgDlnaCastManager.kt
+          grep -q 'showCastChooser' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'android:id="@+id/btn_genc_cast"' app/src/main/res/layout/layout_genc_player_overlay.xml
+          grep -q 'android:src="@drawable/ic_cast"' app/src/main/res/layout/layout_genc_player_overlay.xml
           grep -q 'CHANGE_WIFI_MULTICAST_STATE' app/src/main/AndroidManifest.xml
-          test "$(grep -c 'android:id="@+id/btn_genc_cast"' app/src/main/res/layout/layout_genc_player_overlay.xml)" -eq 1
+          test -s app/src/main/res/drawable/ic_cast.xml
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -306,6 +96,7 @@ supported codecs/containers.
           rsync -a ./ source-package/             --exclude='.git'             --exclude='.gradle'             --exclude='.idea'             --exclude='app/build'             --exclude='out'             --exclude='source-package'
           (cd source-package && zip -qr ../out/SE-Android-v100.0.131-source.zip .)
           unzip -t out/SE-Android-v100.0.131-source.zip >/dev/null
+          test -s out/SE-Android-v100.0.131-debug.apk
           test -s out/SE-Android-v100.0.131-source.zip
           ls -lh out/*
 
