@@ -35,14 +35,14 @@ replace_once(
             val webOsHosts = devices.filter { it.protocol == Protocol.WEBOS }.map { it.host }
             devices
                 .filter { it.protocol == Protocol.WEBOS || it.host !in webOsHosts }
-                .distinctBy { "${it.protocol}:\$it.host:${it.controlUrl ?: it.port}" }
+                .distinctBy { "${it.protocol}:$it.host:${it.controlUrl ?: it.port}" }
                 .sortedWith(compareBy<Device> { it.friendlyName.lowercase(Locale.US) }.thenBy { it.protocol.label })''',
     '''            // Prefer standard DLNA for an LG host when both DLNA and SSAP are advertised.
             // DLNA avoids the webOS pairing prompt. Keep SSAP as fallback when DLNA is absent.
             val dlnaHosts = devices.filter { it.protocol == Protocol.DLNA }.map { it.host }.toSet()
             devices
                 .filter { it.protocol == Protocol.DLNA || it.host !in dlnaHosts }
-                .distinctBy { "${it.protocol}:\$it.host:${it.controlUrl ?: it.port}" }
+                .distinctBy { "${it.protocol}:$it.host:${it.controlUrl ?: it.port}" }
                 .sortedWith(
                     compareBy<Device> { if (it.protocol == Protocol.DLNA) 0 else 1 }
                         .thenBy { it.friendlyName.lowercase(Locale.US) }
