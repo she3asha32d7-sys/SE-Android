@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
-ROOT = Path.cwd()
+ROOT = Path(__file__).resolve().parent
 
 def replace_once(path: str, old: str, new: str) -> None:
     p = ROOT / path
