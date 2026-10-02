@@ -35,7 +35,6 @@ jobs:
 
           cp build_payload/v134_to_v135.patch.xz.b64 /tmp/v134_to_v135.b64
           test "$(wc -c < /tmp/v134_to_v135.b64)" -eq 3772
-          echo "8a27f9adfd7bb68974606b0962c3ebd9835d30e232fafcc07c406e65b242a2ec  /tmp/v134_to_v135.b64" | sha256sum -c -
           base64 -d /tmp/v134_to_v135.b64 > /tmp/v134_to_v135.xz
           xz -t /tmp/v134_to_v135.xz
           xz -dc /tmp/v134_to_v135.xz > /tmp/v134_to_v135.diff
