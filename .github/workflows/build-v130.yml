@@ -252,7 +252,7 @@ jobs:
         with:
           name: SEAndroid-v100.0.130
           path: |
-            ${{ env.ROOT }}/out/SE-Android-v100.0.129-debug.apk
-            ${{ env.ROOT }}/out/SE-Android-v100.0.129-source.zip
+            ${{ env.ROOT }}/out/SE-Android-v100.0.130-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.130-source.zip
           if-no-files-found: error
           retention-days: 30
