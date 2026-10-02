@@ -16,18 +16,19 @@ jobs:
       - name: Checkout build files
         uses: actions/checkout@v4
 
+      - name: Download successful V137 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.137
+          path: /tmp/base
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 36990679861
+
       - name: Reconstruct V138 source
-        env:
-          GH_TOKEN: \${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p /tmp/base /tmp/src
-          curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/11219393637/zip" \
-            -o /tmp/v137-artifact.zip
-          unzip -q /tmp/v137-artifact.zip -d /tmp/base
+          mkdir -p /tmp/src
           SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.137-source.zip' -print -quit)
           test -n "$SRCZIP"
           unzip -q "$SRCZIP" -d /tmp/src
@@ -52,7 +53,7 @@ jobs:
           python3 "$ROOT/apply_v139_dlna.py"
 
       - name: Verify V139 source and keep Google Cast
-        working-directory: \${{ env.ROOT }}
+        working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
           grep -q 'versionCode 1000139' app/build.gradle
@@ -77,14 +78,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build debug APK
-        working-directory: \${{ env.ROOT }}
+        working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon --stacktrace
 
       - name: Verify and package
-        working-directory: \${{ env.ROOT }}
+        working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
           APK=app/build/outputs/apk/debug/app-debug.apk
@@ -104,7 +105,7 @@ jobs:
         with:
           name: SEAndroid-v100.0.139-DLNA
           path: |
-            \${{ env.ROOT }}/out/SE-Android-v100.0.139-debug.apk
-            \${{ env.ROOT }}/out/SE-Android-v100.0.139-source.zip
+            ${{ env.ROOT }}/out/SE-Android-v100.0.139-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.139-source.zip
           if-no-files-found: error
           retention-days: 30
