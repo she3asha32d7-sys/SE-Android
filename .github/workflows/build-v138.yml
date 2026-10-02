@@ -1,0 +1,104 @@
+name: SEAndroid V100.0.138 Build
+on:
+  push:
+    branches:
+      - v100.0.138-build
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout build files
+        uses: actions/checkout@v4
+
+      - name: Reconstruct V138 source from tested V137 and apply V138 fix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base /tmp/src
+          curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/11219393637/zip" \
+            -o /tmp/v137-artifact.zip
+          unzip -q /tmp/v137-artifact.zip -d /tmp/base
+          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.137-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+          cp build_payload/v137_to_v138.patch.xz.b64 /tmp/v137_to_v138.b64
+          test "$(wc -c < /tmp/v137_to_v138.b64)" -eq 11564
+          echo "24ce5855957f498e8d788dc675b05fab716c4d75c40cf04fc654a8249446dde5  /tmp/v137_to_v138.b64" | sha256sum -c -
+          base64 -d /tmp/v137_to_v138.b64 > /tmp/v137_to_v138.xz
+          xz -t /tmp/v137_to_v138.xz
+          xz -dc /tmp/v137_to_v138.xz > /tmp/v137_to_v138.diff
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v137_to_v138.diff
+
+      - name: Verify V138 source
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000138' app/build.gradle
+          grep -q 'versionName "100.0.138"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.138' settings.gradle
+          grep -q 'MediaChannelConnection' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+          grep -q 'fun disconnectActiveCast' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+          grep -q 'ssap://webapp/connectToApp' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+          grep -q '"type", "subscribe"' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+          grep -q 'connectsdk.mediaCommand' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+          grep -q 'application/x-mpegurl' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+          grep -q 'Color.BLACK' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'DISCONNECT' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          ! grep -q 'ssap://pairing/setPin' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+          ! grep -q 'PAIRING_PIN_REQUIRED' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify and package
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          rm -rf out source-package
+          mkdir -p out source-package
+          cp "$APK" out/SE-Android-v100.0.138-debug.apk
+          rsync -a ./ source-package/ --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-package'
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.138-source.zip .)
+          unzip -t out/SE-Android-v100.0.138-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.138-debug.apk out/SE-Android-v100.0.138-source.zip
+          ls -lh out/*
+
+      - name: Upload V138 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.138
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.138-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.138-source.zip
+          if-no-files-found: error
+          retention-days: 30
