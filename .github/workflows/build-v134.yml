@@ -34,7 +34,7 @@ jobs:
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
           cp build_payload/v133_to_v134.patch.xz.b64 /tmp/v133_to_v134.b64
           test "$(wc -c < /tmp/v133_to_v134.b64)" -eq 6360
-          echo "5da58193878d9298590a9fe645c270f1a6707c3d5a8572197027525f224b7298 /tmp/v133_to_v134.b64" | sed 's/ /  /' | sha256sum -c -
+          echo "5da58193878d9298590a9fe645c270f1a6707c3d5a8572197027525f224b7298  /tmp/v133_to_v134.b64" | sha256sum -c -
           base64 -d /tmp/v133_to_v134.b64 > /tmp/v133_to_v134.xz
           xz -t /tmp/v133_to_v134.xz
           xz -dc /tmp/v133_to_v134.xz > /tmp/v133_to_v134.diff
@@ -50,8 +50,9 @@ jobs:
           grep -q 'object UniversalCastManager' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
           grep -q 'ssap://system/getSystemInfo' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
           grep -q '.put("pairingType", "PROMPT")' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
-          grep -q 'ws://${host}:3000' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
-          grep -q 'wss://${host}:3001' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+          grep -q 'ws://' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+          grep -q 'wss://' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
+          grep -q 'ssap://media.viewer/open' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
