@@ -99,3 +99,5 @@ jobs:
             ${{ env.ROOT }}/out/SE-Android-v100.0.136-source.zip
           if-no-files-found: error
           retention-days: 30
+
+# V136 build trigger
