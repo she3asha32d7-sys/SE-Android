@@ -35,14 +35,14 @@ replace_once(
             val webOsHosts = devices.filter { it.protocol == Protocol.WEBOS }.map { it.host }
             devices
                 .filter { it.protocol == Protocol.WEBOS || it.host !in webOsHosts }
-                .distinctBy { "\${it.protocol}:\$it.host:\${it.controlUrl ?: it.port}" }
+                .distinctBy { "${it.protocol}:\$it.host:${it.controlUrl ?: it.port}" }
                 .sortedWith(compareBy<Device> { it.friendlyName.lowercase(Locale.US) }.thenBy { it.protocol.label })''',
     '''            // Prefer standard DLNA for an LG host when both DLNA and SSAP are advertised.
             // DLNA avoids the webOS pairing prompt. Keep SSAP as fallback when DLNA is absent.
             val dlnaHosts = devices.filter { it.protocol == Protocol.DLNA }.map { it.host }.toSet()
             devices
                 .filter { it.protocol == Protocol.DLNA || it.host !in dlnaHosts }
-                .distinctBy { "\${it.protocol}:\$it.host:\${it.controlUrl ?: it.port}" }
+                .distinctBy { "${it.protocol}:\$it.host:${it.controlUrl ?: it.port}" }
                 .sortedWith(
                     compareBy<Device> { if (it.protocol == Protocol.DLNA) 0 else 1 }
                         .thenBy { it.friendlyName.lowercase(Locale.US) }
@@ -62,8 +62,8 @@ replace_once(
                 val protocolInfo = "http-get:*:$mime:*"
                 val didl = buildDidl(title, mediaUrl, mime, protocolInfo, isLive)
                 val setUriBody = "<InstanceID>0</InstanceID>" +
-                    "<CurrentURI>\${xmlEscape(mediaUrl)}</CurrentURI>" +
-                    "<CurrentURIMetaData>\${xmlEscape(didl)}</CurrentURIMetaData>"
+                    "<CurrentURI>${xmlEscape(mediaUrl)}</CurrentURI>" +
+                    "<CurrentURIMetaData>${xmlEscape(didl)}</CurrentURIMetaData>"
                 soap(controlUrl, serviceType, "SetAVTransportURI", setUriBody)
                 Thread.sleep(PLAY_DELAY_MS)
                 soap(
@@ -96,8 +96,8 @@ replace_once(
                     val didl = buildDidl(title, loadUrl, mime, protocolInfo, isLive)
                     soap(
                         controlUrl, serviceType, "SetAVTransportURI",
-                        "<InstanceID>0</InstanceID><CurrentURI>\${xmlEscape(loadUrl)}</CurrentURI>" +
-                            "<CurrentURIMetaData>\${xmlEscape(didl)}</CurrentURIMetaData>"
+                        "<InstanceID>0</InstanceID><CurrentURI>${xmlEscape(loadUrl)}</CurrentURI>" +
+                            "<CurrentURIMetaData>${xmlEscape(didl)}</CurrentURIMetaData>"
                     )
                     Thread.sleep(900L)
                     soap(controlUrl, serviceType, "Play", "<InstanceID>0</InstanceID><Speed>1</Speed>")
