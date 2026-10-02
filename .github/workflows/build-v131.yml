@@ -150,14 +150,14 @@ jobs:
           grep -q 'versionCode 1000129' app/build.gradle
           grep -q 'versionName "100.0.129"' app/build.gradle
 
-      - name: Apply V129 to V131 Cast patch
+      - name: Apply V129 to V130 Cast patch
         run: |
           set -euo pipefail
-          base64 -d build_payload/v129_to_v131_cast.patch.xz.b64 > /tmp/v129_to_v131.patch.xz
-          xz -t /tmp/v129_to_v131.patch.xz
-          xz -dc /tmp/v129_to_v131.patch.xz > /tmp/v129_to_v131.patch
+          base64 -d build_payload/v129_to_v130_cast.patch.xz.b64 > /tmp/v129_to_v130.patch.xz
+          xz -t /tmp/v129_to_v130.patch.xz
+          xz -dc /tmp/v129_to_v130.patch.xz > /tmp/v129_to_v130.patch
           cd "${ROOT}"
-          patch -p1 --forward < /tmp/v129_to_v131.patch
+          patch -p1 --forward < /tmp/v129_to_v130.patch
           grep -q 'versionCode 1000130' app/build.gradle
           grep -q 'versionName "100.0.130"' app/build.gradle
 
