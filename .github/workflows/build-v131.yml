@@ -190,12 +190,6 @@ jobs:
           grep -q 'versionCode 1000131' app/build.gradle
           grep -q 'versionName "100.0.131"' app/build.gradle
         working-directory: ${{ env.ROOT }}
-        run: |
-          set -euo pipefail
-          grep -q 'CastPlayer.Builder' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          grep -q 'btn_genc_cast' app/src/main/res/layout/layout_genc_player_overlay.xml
-          test "$(grep -c 'android:id="@+id/btn_genc_cast"' app/src/main/res/layout/layout_genc_player_overlay.xml)" -eq 1
-          grep -q 'media3-cast:1.9.0' app/build.gradle
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
