@@ -189,7 +189,6 @@ jobs:
           grep -q 'android.permission.CHANGE_WIFI_MULTICAST_STATE' app/src/main/AndroidManifest.xml
           grep -q 'versionCode 1000131' app/build.gradle
           grep -q 'versionName "100.0.131"' app/build.gradle
-        working-directory: ${{ env.ROOT }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
