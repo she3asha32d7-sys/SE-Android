@@ -42,6 +42,7 @@ jobs:
           xz -dc /tmp/v137_to_v138.xz > /tmp/v137_to_v138.diff
           cd "$ROOT"
           patch -p1 --forward --batch < /tmp/v137_to_v138.diff
+          sed -i 's/^                MediaChannelConnection(sock, appClient, fid, mediaResponses)$/                return MediaChannelConnection(sock, appClient, fid, mediaResponses)/' "$ROOT/app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt"
 
       - name: Verify V138 source
         working-directory: ${{ env.ROOT }}
