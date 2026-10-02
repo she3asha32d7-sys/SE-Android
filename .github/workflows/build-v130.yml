@@ -244,7 +244,7 @@ jobs:
             --exclude='.github'
           (cd source-package && zip -qr ../out/SE-Android-v100.0.130-source.zip .)
           unzip -t out/SE-Android-v100.0.130-source.zip >/dev/null
-          test -s out/SE-Android-v100.0.129-source.zip
+          test -s out/SE-Android-v100.0.130-source.zip
           ls -lh out/*
 
       - name: Upload APK and source artifacts
