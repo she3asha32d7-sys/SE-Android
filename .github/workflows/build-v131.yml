@@ -38,7 +38,7 @@ jobs:
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
-          cat "${GITHUB_WORKSPACE}"/build_payload/v130_to_v131_fixed_part*.b64 | tr -d '\r\n' > /tmp/v130_to_v131.patch.xz.b64
+          cp "${GITHUB_WORKSPACE}/build_payload/v130_to_v131_verified.patch.xz.b64" /tmp/v130_to_v131.patch.xz.b64
           test "$(wc -c < /tmp/v130_to_v131.patch.xz.b64)" -eq 8976
           echo "86f10ea2ade13c1777500f9317fe19915d081ec482b3d57d25358e84641aaef5  /tmp/v130_to_v131.patch.xz.b64" | sha256sum -c -
           base64 -d /tmp/v130_to_v131.patch.xz.b64 > /tmp/v130_to_v131.patch.xz
