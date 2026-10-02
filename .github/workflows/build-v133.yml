@@ -64,6 +64,7 @@ jobs:
           bad = 'NO DLNA/LG webOS TV FOUND.\n\nGoogle Cast/Chromecast devices can still be selected from the system Cast dialog.'
           fixed = 'NO DLNA/LG webOS TV FOUND.\\n\\nGoogle Cast/Chromecast devices can still be selected from the system Cast dialog.'
           s = s.replace(bad, fixed)
+          s = s.replace('                    singleLine = true', '                    isSingleLine = true')
           p.write_text(s, encoding='utf-8')
           p = Path('app/build.gradle')
           s = p.read_text(encoding='utf-8').replace('versionCode 1000132','versionCode 1000133').replace('versionName "100.0.132"','versionName "100.0.133"')
