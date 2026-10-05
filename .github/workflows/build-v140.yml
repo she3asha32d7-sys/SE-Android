@@ -52,7 +52,13 @@ jobs:
           raw=base64.b64decode(d["content"])
           open("/tmp/v138_to_v139.b64","wb").write(raw)
           PY
-          tr -d '\r\n' < /tmp/v138_to_v139.b64 | base64 -d > /tmp/v138_to_v139.xz
+          python3 - <<'PY'
+          import base64
+          s=open("/tmp/v138_to_v139.b64","rb").read()
+          s=b"".join(s.split())
+          s += b"=" * ((-len(s)) % 4)
+          open("/tmp/v138_to_v139.xz","wb").write(base64.b64decode(s))
+          PY
           xz -t /tmp/v138_to_v139.xz
           xz -dc /tmp/v138_to_v139.xz > /tmp/v138_to_v139.patch
           cd "$ROOT"
