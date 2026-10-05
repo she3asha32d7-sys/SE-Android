@@ -37,6 +37,8 @@ jobs:
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
 
       - name: Reconstruct V139 source
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
