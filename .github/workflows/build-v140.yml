@@ -43,21 +43,13 @@ jobs:
           set -euo pipefail
           curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
             -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/2a73a8828b25c6f2d1696c0131caeda63f047092" \
-            -o /tmp/v139blob.json
-          python3 - <<'PY'
-          import base64, json
-          d=json.load(open("/tmp/v139blob.json", encoding="utf-8"))
-          raw=base64.b64decode(d["content"])
-          open("/tmp/v138_to_v139.b64","wb").write(raw)
-          PY
+            -H "Accept: application/vnd.github.raw+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/build_payload/v138_to_v139_dlna.patch.xz.b64?ref=v100.0.139-dlna-build" \
+            -o /tmp/v138_to_v139.b64
           python3 - <<'PY'
           import base64
-          s=open("/tmp/v138_to_v139.b64","rb").read()
-          s=b"".join(s.split())
-          s += b"=" * ((-len(s)) % 4)
-          open("/tmp/v138_to_v139.xz","wb").write(base64.b64decode(s))
+          s=b"".join(open("/tmp/v138_to_v139.b64","rb").read().split())
+          open("/tmp/v138_to_v139.xz","wb").write(base64.b64decode(s + b"==="))
           PY
           xz -t /tmp/v138_to_v139.xz
           xz -dc /tmp/v138_to_v139.xz > /tmp/v138_to_v139.patch
