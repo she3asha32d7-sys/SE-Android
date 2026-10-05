@@ -47,9 +47,29 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/build_payload/v138_to_v139_dlna.patch.xz.b64?ref=v100.0.139-dlna-build" \
             -o /tmp/v138_to_v139.b64
           python3 - <<'PY'
-          import base64
+          import base64, lzma, string
           s=b"".join(open("/tmp/v138_to_v139.b64","rb").read().split())
-          open("/tmp/v138_to_v139.xz","wb").write(base64.b64decode(s + b"==="))
+          if len(s) % 4 != 0:
+              # The historical payload has one missing base64 data character.
+              # Recover it by testing the 64 legal base64 characters and validate the XZ stream.
+              alphabet=b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+              fixed=False
+              for ch in alphabet:
+                  candidate=s[:-1] + bytes([ch]) + s[-1:]
+                  try:
+                      raw=base64.b64decode(candidate)
+                      lzma.decompress(raw)
+                      open("/tmp/v138_to_v139.xz","wb").write(raw)
+                      fixed=True
+                      break
+                  except Exception:
+                      pass
+              if not fixed:
+                  raise SystemExit("Could not recover V139 patch payload")
+          else:
+              raw=base64.b64decode(s)
+              lzma.decompress(raw)
+              open("/tmp/v138_to_v139.xz","wb").write(raw)
           PY
           xz -t /tmp/v138_to_v139.xz
           xz -dc /tmp/v138_to_v139.xz > /tmp/v138_to_v139.patch
