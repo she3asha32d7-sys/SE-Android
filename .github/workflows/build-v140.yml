@@ -42,7 +42,7 @@ jobs:
           curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
             "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/v100.0.139-dlna-build/build_payload/v138_to_v139_dlna.patch.xz.b64" \
             -o /tmp/v138_to_v139.b64
-          base64 -d /tmp/v138_to_v139.b64 > /tmp/v138_to_v139.xz
+          tr -d '\r\n' < /tmp/v138_to_v139.b64 | base64 -d > /tmp/v138_to_v139.xz
           xz -t /tmp/v138_to_v139.xz
           xz -dc /tmp/v138_to_v139.xz > /tmp/v138_to_v139.patch
           cd "$ROOT"
