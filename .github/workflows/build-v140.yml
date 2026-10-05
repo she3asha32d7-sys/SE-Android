@@ -40,8 +40,16 @@ jobs:
         run: |
           set -euo pipefail
           curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
-            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/v100.0.139-dlna-build/build_payload/v138_to_v139_dlna.patch.xz.b64" \
-            -o /tmp/v138_to_v139.b64
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/2a73a8828b25c6f2d1696c0131caeda63f047092" \
+            -o /tmp/v139blob.json
+          python3 - <<'PY'
+          import base64, json
+          d=json.load(open("/tmp/v139blob.json", encoding="utf-8"))
+          raw=base64.b64decode(d["content"])
+          open("/tmp/v138_to_v139.b64","wb").write(raw)
+          PY
           tr -d '\r\n' < /tmp/v138_to_v139.b64 | base64 -d > /tmp/v138_to_v139.xz
           xz -t /tmp/v138_to_v139.xz
           xz -dc /tmp/v138_to_v139.xz > /tmp/v138_to_v139.patch
