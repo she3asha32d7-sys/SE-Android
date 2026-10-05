@@ -19,7 +19,7 @@ jobs:
 
       - name: Restore tested V138 source
         env:
-          GH_TOKEN: ${ github.token }
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/base /tmp/src
@@ -76,14 +76,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build debug APK
-        working-directory: ${ env.ROOT }
+        working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon --stacktrace
 
       - name: Verify and package
-        working-directory: ${ env.ROOT }
+        working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
           APK=app/build/outputs/apk/debug/app-debug.apk
@@ -101,7 +101,7 @@ jobs:
         with:
           name: SEAndroid-v100.0.140
           path: |
-            ${ env.ROOT }/out/SE-Android-v100.0.140-debug.apk
-            ${ env.ROOT }/out/SE-Android-v100.0.140-source.zip
+            ${{ env.ROOT }}/out/SE-Android-v100.0.140-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.140-source.zip
           if-no-files-found: error
           retention-days: 30
