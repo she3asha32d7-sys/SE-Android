@@ -1,0 +1,107 @@
+name: SEAndroid V100.0.140 Build
+
+on:
+  push:
+    branches:
+      - v100.0.140-cast-control-build
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout build payload
+        uses: actions/checkout@v4
+
+      - name: Restore tested V138 source
+        env:
+          GH_TOKEN: ${ github.token }
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base /tmp/src
+          curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11223170499/zip" \
+            -o /tmp/v138-artifact.zip
+          unzip -q /tmp/v138-artifact.zip -d /tmp/base
+          SRCZIP=$(find /tmp/base -type f -name "SE-Android-v100.0.138-source.zip" -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Reconstruct V139 source
+        run: |
+          set -euo pipefail
+          curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/v100.0.139-dlna-build/build_payload/v138_to_v139_dlna.patch.xz.b64" \
+            -o /tmp/v138_to_v139.b64
+          base64 -d /tmp/v138_to_v139.b64 > /tmp/v138_to_v139.xz
+          xz -t /tmp/v138_to_v139.xz
+          xz -dc /tmp/v138_to_v139.xz > /tmp/v138_to_v139.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v138_to_v139.patch
+
+      - name: Bump V139 to V140
+        run: |
+          set -euo pipefail
+          python3 - "$ROOT" <<'PY'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1])
+          for rel in ("app/build.gradle", "settings.gradle", "SE_BUILD_MANIFEST.txt", "app/src/main/res/layout/activity_settings.xml"):
+              p = root / rel
+              if p.exists():
+                  s = p.read_text(encoding="utf-8")
+                  s = s.replace("100.0.139", "100.0.140").replace("1000139", "1000140").replace("V100.0.139", "V100.0.140")
+                  p.write_text(s, encoding="utf-8")
+          g = (root / "app/build.gradle").read_text(encoding="utf-8")
+          if "versionCode 1000140" not in g or 'versionName "100.0.140"' not in g:
+              raise SystemExit("V140 bump failed")
+          PY
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        working-directory: ${ env.ROOT }
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify and package
+        working-directory: ${ env.ROOT }
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          rm -rf out source-package
+          mkdir -p out source-package
+          cp "$APK" out/SE-Android-v100.0.140-debug.apk
+          rsync -a ./ source-package/ --exclude=".git" --exclude=".gradle" --exclude=".idea" --exclude="app/build" --exclude="out" --exclude="source-package" --exclude="build_payload" --exclude=".github"
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.140-source.zip .)
+          unzip -t out/SE-Android-v100.0.140-source.zip >/dev/null
+
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.140
+          path: |
+            ${ env.ROOT }/out/SE-Android-v100.0.140-debug.apk
+            ${ env.ROOT }/out/SE-Android-v100.0.140-source.zip
+          if-no-files-found: error
+          retention-days: 30
