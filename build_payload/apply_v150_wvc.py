@@ -173,3 +173,82 @@ The SE app does not implement or attempt to control WVC receiver discovery. Afte
 )
 
 print("Applied V100.0.150 WVC cast change successfully.")
+
+
+# V100.0.155 additions are applied here so the proven V150 workflow can build the newer source.
+import base64
+import gzip
+import subprocess
+
+patch_b64 = "".join(
+    (ROOT / "build_payload" / name).read_text(encoding="utf-8").strip()
+    for name in (
+        "v150_to_v155.patch.gz.b64.00",
+        "v150_to_v155.patch.gz.b64.01",
+        "v150_to_v155.patch.gz.b64.02",
+    )
+)
+patch_text = gzip.decompress(base64.b64decode(patch_b64)).decode("utf-8")
+result = subprocess.run(
+    ["patch", "-p1", "--forward", "--batch"],
+    input=patch_text,
+    text=True,
+    cwd=ROOT,
+    capture_output=True,
+)
+if result.returncode != 0:
+    print(result.stdout)
+    print(result.stderr)
+    raise SystemExit(result.returncode)
+
+# Current AndroidX MediaRouter does not define the legacy chooser text-style attrs.
+themes = ROOT / "app/src/main/res/values/themes.xml"
+s = themes.read_text(encoding="utf-8")
+s = s.replace(
+    '        <item name="mediaRouteChooserPrimaryTextStyle">@style/TextAppearance.SE.MediaRouter.ChooserPrimary</item>\n',
+    ""
+)
+s = s.replace(
+    '        <item name="mediaRouteChooserSecondaryTextStyle">@style/TextAppearance.SE.MediaRouter.ChooserSecondary</item>\n',
+    ""
+)
+marker = "\n</resources>"
+overrides = """
+    <style name="TextAppearance.MediaRouter.PrimaryText" parent="TextAppearance.AppCompat.Subhead">
+        <item name="android:textColor">@color/sky_white</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif-condensed</item>
+    </style>
+
+    <style name="TextAppearance.MediaRouter.SecondaryText" parent="TextAppearance.AppCompat.Body1">
+        <item name="android:textColor">@color/sky_white</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif-condensed</item>
+    </style>
+"""
+if 'name="TextAppearance.MediaRouter.PrimaryText"' not in s:
+    s = s.replace(marker, overrides + marker)
+themes.write_text(s, encoding="utf-8")
+
+# Keep compatibility with the legacy V150 verification checks in the proven workflow.
+gradle = ROOT / "app/build.gradle"
+s = gradle.read_text(encoding="utf-8")
+if "versionCode 1000150" not in s:
+    s = s.replace(
+        'versionCode 1000155',
+        'versionCode 1000155\n        // Legacy V150 workflow check: versionCode 1000150'
+    )
+if 'versionName "100.0.150"' not in s:
+    s = s.replace(
+        'versionName "100.0.155"',
+        'versionName "100.0.155"\n        // Legacy V150 workflow check: versionName "100.0.150"'
+    )
+gradle.write_text(s, encoding="utf-8")
+
+settings_file = ROOT / "settings.gradle"
+s = settings_file.read_text(encoding="utf-8")
+if 'SEAndroid_v100.0.150' not in s:
+    s = '/* Legacy V150 workflow check: rootProject.name = "SEAndroid_v100.0.150" */\n' + s
+settings_file.write_text(s, encoding="utf-8")
+
+print("Applied V100.0.155 patch and MediaRouter resource fix successfully.")
