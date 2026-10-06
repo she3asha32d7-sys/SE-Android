@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -86,3 +86,15 @@ jobs:
             out/SE-Android-v100.0.158-source.zip
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish V158 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v100.0.158-apk"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
+          gh release create "$TAG"             --target "$GITHUB_SHA"             --title "SE Android V100.0.158"             --notes "Verified V100.0.158 debug APK and matching source code."
+          gh release upload "$TAG"             out/SE-Android-v100.0.158-debug.apk             out/SE-Android-v100.0.158-source.zip
