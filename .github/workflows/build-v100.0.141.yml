@@ -21,6 +21,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Inspect existing build artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" > /tmp/artifacts.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/artifacts.json"))
+          for a in d.get("artifacts",[]):
+              print(a["id"], a["name"], a.get("expired"), a.get("workflow_run",{}).get("id"))
+          PY
+
       - name: Restore V138 source artifact
         env:
           GH_TOKEN: ${{ github.token }}
