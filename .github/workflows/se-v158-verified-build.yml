@@ -1,0 +1,97 @@
+name: SEAndroid V100.0.158 Verified Build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.150-WVC
+          path: /tmp/base
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 37530935752
+      - name: Reconstruct V158
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.150-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          cat build_payload/v150_to_v155.patch.gz.b64.00 build_payload/v150_to_v155.patch.gz.b64.01 build_payload/v150_to_v155.patch.gz.b64.02 > /tmp/p.b64
+          base64 -d /tmp/p.b64 > /tmp/p.gz
+          gzip -dc /tmp/p.gz > /tmp/p.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/p.patch
+          cp "$GITHUB_WORKSPACE/build_payload/apply_v158_part1.py" "$ROOT/apply_v158_part1.py"
+          cp "$GITHUB_WORKSPACE/build_payload/apply_v158_part2.py" "$ROOT/apply_v158_part2.py"
+          python3 "$ROOT/apply_v158_part1.py"
+          python3 "$ROOT/apply_v158_part2.py"
+          rm -f "$ROOT/apply_v158_part1.py" "$ROOT/apply_v158_part2.py"
+          perl -0pi -e 's/versionCode\\s+\\d+/versionCode 1000158/' app/build.gradle
+          perl -0pi -e 's/versionName\\s+"[^"]+"/versionName "100.0.158"/' app/build.gradle
+          printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.158"' "include ':app'" > settings.gradle
+      - name: Verify source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000158' app/build.gradle
+          grep -q 'versionName "100.0.158"' app/build.gradle
+          grep -q 'configurePlayerEdgeToEdge' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'RESIZE_MODE_ZOOM' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'ACTION_PICK_ACTIVITY' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'MANAGE_EXTERNAL_STORAGE' app/src/main/AndroidManifest.xml
+          grep -q 'SE IPTV PLAYER' app/src/main/java/com/orbital/iptv/utils/PublicMediaStorage.kt
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+      - name: Verify and package
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          rm -rf out source-package
+          mkdir -p out source-package
+          cp "$APK" out/SE-Android-v100.0.158-debug.apk
+          rsync -a ./ source-package/ --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-package' --exclude='build_payload' --exclude='.github'
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.158-source.zip .)
+          unzip -t out/SE-Android-v100.0.158-source.zip >/dev/null
+          sha256sum out/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.158-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.158-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.158-source.zip
+          if-no-files-found: error
+          retention-days: 30
