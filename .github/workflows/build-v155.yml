@@ -102,13 +102,7 @@ jobs:
 
           rm -rf out source-package
           mkdir -p out source-package
-
           cp "$APK" out/SE-Android-v100.0.155-debug.apk
-
-          rsync -a source-package/ ./source-package/ 2>/dev/null || true
-          rsync -a ./source-package/ /tmp/blank-source/ 2>/dev/null || true
-          rm -rf source-package
-          mkdir -p source-package
 
           rsync -a ./ source-package/ \
             --exclude='.git' \
