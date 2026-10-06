@@ -23,8 +23,8 @@ jobs:
         with:
           name: SEAndroid-v100.0.150-WVC
           path: /tmp/base
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
+          github-token: \${{ github.token }}
+          repository: \${{ github.repository }}
           run-id: 37499781228
 
       - name: Reconstruct V155 source
@@ -49,11 +49,49 @@ jobs:
           cd "$ROOT"
           patch -p1 --forward --batch < /tmp/v150_to_v155.patch
 
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("app/src/main/res/values/themes.xml")
+          s = p.read_text(encoding="utf-8")
+
+          # The old MediaRouter chooser attrs are not part of current AndroidX MediaRouter.
+          s = s.replace(
+              '        <item name="mediaRouteChooserPrimaryTextStyle">@style/TextAppearance.SE.MediaRouter.ChooserPrimary</item>\n',
+              ''
+          )
+          s = s.replace(
+              '        <item name="mediaRouteChooserSecondaryTextStyle">@style/TextAppearance.SE.MediaRouter.ChooserSecondary</item>\n',
+              ''
+          )
+
+          # Current AndroidX chooser list items use TextAppearance.MediaRouter.PrimaryText.
+          # Override that app resource so route names stay white and are 16sp.
+          marker = '\n</resources>'
+          overrides = '''
+    <style name="TextAppearance.MediaRouter.PrimaryText" parent="TextAppearance.AppCompat.Subhead">
+        <item name="android:textColor">@color/sky_white</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif-condensed</item>
+    </style>
+
+    <style name="TextAppearance.MediaRouter.SecondaryText" parent="TextAppearance.AppCompat.Body1">
+        <item name="android:textColor">@color/sky_white</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif-condensed</item>
+    </style>
+'''
+          if 'name="TextAppearance.MediaRouter.PrimaryText"' not in s:
+              s = s.replace(marker, overrides + marker)
+
+          p.write_text(s, encoding="utf-8")
+          PY
+
           perl -0pi -e 's/versionCode\s+\d+/versionCode 1000155/; s/versionName\s+"[^"]+"/versionName "100.0.155"/' app/build.gradle
           printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.155"' "include ':app'" > settings.gradle
 
       - name: Verify V155 source
-        working-directory: ${{ env.ROOT }}
+        working-directory: \${{ env.ROOT }}
         run: |
           set -euo pipefail
           grep -q 'versionCode 1000155' app/build.gradle
@@ -66,8 +104,11 @@ jobs:
           grep -q 'Intent.createChooser' app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt
           grep -q 'btn_play' app/src/main/res/layout/item_download.xml
           grep -q 'mediaRouteTheme' app/src/main/res/values/themes.xml
+          grep -q 'TextAppearance.MediaRouter.PrimaryText' app/src/main/res/values/themes.xml
           grep -q '16sp' app/src/main/res/values/themes.xml
           grep -q '<queries>' app/src/main/AndroidManifest.xml
+          ! grep -q 'mediaRouteChooserPrimaryTextStyle' app/src/main/res/values/themes.xml
+          ! grep -q 'mediaRouteChooserSecondaryTextStyle' app/src/main/res/values/themes.xml
 
           test -s CAST_BLACK_DIALOG_V100_0_150_AUDIT.md
           test -s CAST_BLACK_DIALOG_V100_0_151_AUDIT.md
@@ -86,14 +127,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build debug APK
-        working-directory: ${{ env.ROOT }}
+        working-directory: \${{ env.ROOT }}
         run: |
           set -euo pipefail
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon --stacktrace
 
       - name: Verify and package
-        working-directory: ${{ env.ROOT }}
+        working-directory: \${{ env.ROOT }}
         run: |
           set -euo pipefail
           APK=app/build/outputs/apk/debug/app-debug.apk
@@ -111,7 +152,8 @@ jobs:
             --exclude='app/build' \
             --exclude='out' \
             --exclude='source-package' \
-            --exclude='.github'
+            --exclude='.github' \
+            --exclude='build_payload'
 
           (cd source-package && zip -qr ../out/SE-Android-v100.0.155-source.zip .)
           unzip -t out/SE-Android-v100.0.155-source.zip >/dev/null
@@ -124,7 +166,7 @@ jobs:
         with:
           name: SEAndroid-v100.0.155
           path: |
-            ${{ env.ROOT }}/out/SE-Android-v100.0.155-debug.apk
-            ${{ env.ROOT }}/out/SE-Android-v100.0.155-source.zip
+            \${{ env.ROOT }}/out/SE-Android-v100.0.155-debug.apk
+            \${{ env.ROOT }}/out/SE-Android-v100.0.155-source.zip
           if-no-files-found: error
           retention-days: 30
