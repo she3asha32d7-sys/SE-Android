@@ -47,7 +47,10 @@ jobs:
           cat build_payload/v155_to_v158.patch.gz.b64.00 \
               build_payload/v155_to_v158.patch.gz.b64.01 \
               build_payload/v155_to_v158.patch.gz.b64.02 \
-              build_payload/v155_to_v158.patch.gz.b64.03 \
+              build_payload/v155_to_v158.patch.gz.b64.03a \
+              build_payload/v155_to_v158.patch.gz.b64.03b \
+              build_payload/v155_to_v158.patch.gz.b64.03c \
+              build_payload/v155_to_v158.patch.gz.b64.03d \
               build_payload/v155_to_v158.patch.gz.b64.04 > /tmp/v155_to_v158.patch.gz.b64
 
           base64 -d /tmp/v155_to_v158.patch.gz.b64 > /tmp/v155_to_v158.patch.gz
