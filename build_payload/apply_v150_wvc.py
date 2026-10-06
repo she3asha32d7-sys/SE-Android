@@ -232,6 +232,16 @@ if 'name="TextAppearance.MediaRouter.PrimaryText"' not in s:
     s = s.replace(marker, overrides + marker)
 themes.write_text(s, encoding="utf-8")
 
+# Fix the V155 Records screen function boundary before Kotlin compilation.
+recordings = ROOT / "app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt"
+rs = recordings.read_text(encoding="utf-8")
+rs = rs.replace(
+    "        }\n\n    private fun playRecording",
+    "        }\n    }\n\n    private fun playRecording",
+    1,
+)
+recordings.write_text(rs, encoding="utf-8")
+
 # Keep compatibility with the legacy V150 verification checks in the proven workflow.
 gradle = ROOT / "app/build.gradle"
 s = gradle.read_text(encoding="utf-8")
