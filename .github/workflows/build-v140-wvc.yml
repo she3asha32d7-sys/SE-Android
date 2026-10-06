@@ -1,0 +1,510 @@
+name: SEAndroid v100.0.140 WVC Build
+
+on:
+  push:
+    branches:
+      - v100.0.140-wvc-build
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout build payload
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact V100.0.139 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base /tmp/source
+
+          curl -fL --retry 10 --retry-delay 2 --retry-all-errors             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11219393637/zip"             -o /tmp/v137-artifact.zip
+
+          unzip -q /tmp/v137-artifact.zip -d /tmp/base
+          SRCZIP="$(find /tmp/base -type f -name 'SE-Android-v100.0.137-source.zip' -print -quit)"
+          test -n "${SRCZIP}"
+          unzip -q "${SRCZIP}" -d /tmp/source
+
+          ROOT="$(find /tmp/source -type f -name settings.gradle -print -quit | xargs -r dirname)"
+          test -n "${ROOT}"
+          echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
+
+          cp build_payload/v137_to_v138.patch.xz.b64 /tmp/v137_to_v138.b64
+          test "$(wc -c < /tmp/v137_to_v138.b64)" -eq 11564
+          echo "24ce5855957f498e8d788dc675b05fab716c4d75c40cf04fc654a8249446dde5  /tmp/v137_to_v138.b64" | sha256sum -c -
+          base64 -d /tmp/v137_to_v138.b64 > /tmp/v137_to_v138.xz
+          xz -t /tmp/v137_to_v138.xz
+          xz -dc /tmp/v137_to_v138.xz > /tmp/v137_to_v138.diff
+          cd "${ROOT}"
+          patch -p1 --forward --batch < /tmp/v137_to_v138.diff
+
+          cp "${GITHUB_WORKSPACE}/build_payload/v138_to_v139_dlna.patch.xz.b64" /tmp/v138_to_v139.b64
+          base64 -d /tmp/v138_to_v139.b64 > /tmp/v138_to_v139.xz
+          xz -t /tmp/v138_to_v139.xz
+          xz -dc /tmp/v138_to_v139.xz > /tmp/v138_to_v139.diff
+          patch -p1 --forward --batch < /tmp/v138_to_v139.diff
+
+      - name: Apply V100.0.140 WVC bridge
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path(".")
+          gradle = root / "app/build.gradle"
+          settings = root / "settings.gradle"
+          manifest = root / "app/src/main/AndroidManifest.xml"
+
+          s = gradle.read_text(encoding="utf-8")
+          s = re.sub(r'versionCode\s+\d+', 'versionCode 1000140', s, count=1)
+          s = re.sub(r'versionName\s+"[^"]+"', 'versionName "100.0.140"', s, count=1)
+          gradle.write_text(s, encoding="utf-8")
+
+          s = settings.read_text(encoding="utf-8")
+          s = re.sub(r'rootProject\.name\s*=\s*"[^"]+"',
+                     'rootProject.name = "SEAndroid_v100.0.140"', s, count=1)
+          settings.write_text(s, encoding="utf-8")
+
+          s = manifest.read_text(encoding="utf-8")
+          if "android.permission.FOREGROUND_SERVICE_DATA_SYNC" not in s:
+              marker = '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />'
+              if marker in s:
+                  s = s.replace(marker, marker + '\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />', 1)
+          if 'android:name=".utils.WvcBridgeService"' not in s:
+              marker = '    </application>'
+              service = '''        <service
+              android:name=".utils.WvcBridgeService"
+              android:exported="false"
+              android:stopWithTask="false"
+              android:foregroundServiceType="dataSync" />
+
+          '''
+              s = s.replace(marker, service + marker, 1)
+          manifest.write_text(s, encoding="utf-8")
+
+          candidates = list((root / "app/src/main/java").rglob("*.kt"))
+          application_file = None
+          for p in candidates:
+              t = p.read_text(encoding="utf-8", errors="ignore")
+              if re.search(r'class\s+OrbitalApp\s*:\s*Application\s*\(\)', t) or 'registerActivityLifecycleCallbacks' in t:
+                  application_file = p
+                  break
+          if application_file is None:
+              for p in candidates:
+                  t = p.read_text(encoding="utf-8", errors="ignore")
+                  if ': Application()' in t and 'class ' in t:
+                      application_file = p
+                      break
+          if application_file is None:
+              raise SystemExit("Could not find the Android Application class.")
+
+          t = application_file.read_text(encoding="utf-8")
+          if 'import com.orbital.iptv.utils.WvcBridgeService' not in t:
+              pkg_line = re.search(r'^package\s+[^\n]+\n', t, re.M)
+              if not pkg_line:
+                  raise SystemExit("Could not locate package declaration.")
+              pos = pkg_line.end()
+              t = t[:pos] + '\nimport com.orbital.iptv.utils.WvcBridgeService\n' + t[pos:]
+
+          if 'WvcBridgeService.ensureStarted(a)' not in t and 'WvcBridgeService.ensureStarted(this)' not in t:
+              m = re.search(r'(override\s+fun\s+onActivityStarted\s*\(\s*a\s*:\s*Activity\s*\)\s*\{)', t)
+              if m:
+                  pos = m.end()
+                  t = t[:pos] + '\n                WvcBridgeService.ensureStarted(a)' + t[pos:]
+              else:
+                  m = re.search(r'(override\s+fun\s+onCreate\s*\(\s*\)\s*\{)', t)
+                  if not m:
+                      raise SystemExit("Could not find an Application lifecycle entry point.")
+                  pos = m.end()
+                  t = t[:pos] + '\n        WvcBridgeService.ensureStarted(this)' + t[pos:]
+
+          application_file.write_text(t, encoding="utf-8")
+          print("Patched Application:", application_file)
+          PY
+
+          mkdir -p app/src/main/java/com/orbital/iptv/utils
+
+          cat > app/src/main/java/com/orbital/iptv/utils/WvcBridgeService.kt <<'KOTLIN'
+          package com.orbital.iptv.utils
+
+          import android.app.Notification
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.Service
+          import android.content.ActivityNotFoundException
+          import android.content.Context
+          import android.content.Intent
+          import android.net.Uri
+          import android.net.wifi.WifiManager
+          import android.os.Build
+          import android.os.Bundle
+          import android.os.IBinder
+          import android.app.ServiceInfo
+          import org.json.JSONObject
+          import java.io.BufferedReader
+          import java.io.InputStreamReader
+          import java.io.OutputStream
+          import java.net.DatagramPacket
+          import java.net.DatagramSocket
+          import java.net.InetAddress
+          import java.net.ServerSocket
+          import java.net.Socket
+          import java.nio.charset.StandardCharsets
+          import java.util.Locale
+          import java.util.UUID
+          import java.util.concurrent.Executors
+          import java.util.concurrent.atomic.AtomicBoolean
+
+          class WvcBridgeService : Service() {
+
+              companion object {
+                  const val ACTION_ENSURE = "com.orbital.iptv.player.action.ENSURE_WVC_BRIDGE"
+                  private const val CHANNEL_ID = "se_wvc_bridge"
+                  private const val NOTIFICATION_ID = 1410
+                  private const val HTTP_PORT = 37123
+                  private const val DISCOVERY_PORT = 37124
+                  private const val DISCOVERY_REQUEST = "SE_WVC_DISCOVER 1"
+                  private const val PREFS = "se_wvc_bridge"
+                  private const val TOKEN_KEY = "token"
+
+                  fun ensureStarted(context: Context) {
+                      val intent = Intent(context, WvcBridgeService::class.java).setAction(ACTION_ENSURE)
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+                      else context.startService(intent)
+                  }
+              }
+
+              private val running = AtomicBoolean(false)
+              private val executor = Executors.newCachedThreadPool()
+              private var httpServer: ServerSocket? = null
+              private var discoverySocket: DatagramSocket? = null
+              private lateinit var token: String
+
+              override fun onCreate() {
+                  super.onCreate()
+                  val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+                  token = prefs.getString(TOKEN_KEY, null).orEmpty().ifBlank {
+                      UUID.randomUUID().toString().replace("-", "").take(16).also {
+                          prefs.edit().putString(TOKEN_KEY, it).apply()
+                      }
+                  }
+                  createNotificationChannel()
+                  if (Build.VERSION.SDK_INT >= 29) {
+                      startForeground(
+                          NOTIFICATION_ID,
+                          notification(),
+                          ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                      )
+                  } else {
+                      startForeground(NOTIFICATION_ID, notification())
+                  }
+              }
+
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  if (running.compareAndSet(false, true)) {
+                      executor.execute { runDiscoveryServer() }
+                      executor.execute { runHttpServer() }
+                  }
+                  return START_STICKY
+              }
+
+              private fun createNotificationChannel() {
+                  if (Build.VERSION.SDK_INT < 26) return
+                  val manager = getSystemService(NotificationManager::class.java)
+                  manager.createNotificationChannel(
+                      NotificationChannel(
+                          CHANNEL_ID,
+                          "SE Web Video Caster bridge",
+                          NotificationManager.IMPORTANCE_LOW
+                      )
+                  )
+              }
+
+              private fun notification(): Notification {
+                  val builder = if (Build.VERSION.SDK_INT >= 26) {
+                      Notification.Builder(this, CHANNEL_ID)
+                  } else {
+                      @Suppress("DEPRECATION") Notification.Builder(this)
+                  }
+                  return builder
+                      .setSmallIcon(android.R.drawable.ic_media_play)
+                      .setContentTitle("SE IPTV PLAYER")
+                      .setContentText("Web Video Caster bridge is available")
+                      .setOngoing(true)
+                      .build()
+              }
+
+              private fun runDiscoveryServer() {
+                  try {
+                      DatagramSocket(DISCOVERY_PORT, InetAddress.getByName("0.0.0.0")).use { socket ->
+                          discoverySocket = socket
+                          socket.broadcast = true
+                          val buffer = ByteArray(512)
+                          while (running.get()) {
+                              val packet = DatagramPacket(buffer, buffer.size)
+                              socket.receive(packet)
+                              val message = String(
+                                  packet.data, packet.offset, packet.length,
+                                  StandardCharsets.UTF_8
+                              ).trim()
+                              if (message == DISCOVERY_REQUEST) {
+                                  val reply = ("SE_WVC_BRIDGE 1 " + HTTP_PORT + " " + token)
+                                      .toByteArray(StandardCharsets.UTF_8)
+                                  socket.send(DatagramPacket(reply, reply.size, packet.address, packet.port))
+                              }
+                          }
+                      }
+                  } catch (_: Exception) {
+                  }
+              }
+
+              private fun runHttpServer() {
+                  try {
+                      ServerSocket(HTTP_PORT, 32, InetAddress.getByName("0.0.0.0")).use { server ->
+                          httpServer = server
+                          while (running.get()) {
+                              val socket = server.accept()
+                              executor.execute { handleClient(socket) }
+                          }
+                      }
+                  } catch (_: Exception) {
+                  }
+              }
+
+              private fun handleClient(socket: Socket) {
+                  socket.use { client ->
+                      try {
+                          client.soTimeout = 8000
+                          val reader = BufferedReader(
+                              InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8)
+                          )
+                          val requestLine = reader.readLine() ?: return
+                          val parts = requestLine.split(" ")
+                          if (parts.size < 2) return
+
+                          val method = parts[0]
+                          val path = parts[1]
+                          var contentLength = 0
+                          var requestToken = ""
+
+                          while (true) {
+                              val line = reader.readLine() ?: break
+                              if (line.isEmpty()) break
+                              val colon = line.indexOf(':')
+                              if (colon <= 0) continue
+                              val name = line.substring(0, colon).trim()
+                              val value = line.substring(colon + 1).trim()
+                              if (name.equals("Content-Length", true)) {
+                                  contentLength = value.toIntOrNull() ?: 0
+                              }
+                              if (name.equals("X-SE-Bridge-Token", true)) {
+                                  requestToken = value
+                              }
+                          }
+
+                          when {
+                              method.equals("OPTIONS", true) -> {
+                                  respond(client, 200, "{\"returnValue\":true}")
+                              }
+                              method.equals("GET", true) && path == "/status" -> {
+                                  val body = JSONObject()
+                                      .put("returnValue", true)
+                                      .put("bridgeIp", localIp())
+                                      .put("bridgePort", HTTP_PORT)
+                                      .put("bridgeToken", token)
+                                      .toString()
+                                  respond(client, 200, body)
+                              }
+                              method.equals("POST", true) && path == "/cast" -> {
+                                  if (requestToken != token) {
+                                      respond(client, 401, "{\"returnValue\":false,\"errorText\":\"Invalid bridge token\"}")
+                                      return
+                                  }
+
+                                  val bodyChars = CharArray(contentLength)
+                                  var read = 0
+                                  while (read < contentLength) {
+                                      val n = reader.read(bodyChars, read, contentLength - read)
+                                      if (n < 0) break
+                                      read += n
+                                  }
+
+                                  val media = JSONObject(String(bodyChars, 0, read))
+                                  val result = launchWvc(media)
+                                  respond(client, if (result.first) 200 else 409, result.second)
+                              }
+                              else -> respond(client, 404, "{\"returnValue\":false}")
+                          }
+                      } catch (e: Exception) {
+                          try {
+                              respond(
+                                  client, 500,
+                                  JSONObject()
+                                      .put("returnValue", false)
+                                      .put("errorText", e.message ?: "Bridge error")
+                                      .toString()
+                              )
+                          } catch (_: Exception) {
+                          }
+                      }
+                  }
+              }
+
+              private fun launchWvc(media: JSONObject): Pair<Boolean, String> {
+                  val url = media.optString("url", "").trim()
+                  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                      return false to "{\"returnValue\":false,\"errorText\":\"Invalid HTTP(S) media URL\"}"
+                  }
+
+                  val intent = Intent(Intent.ACTION_VIEW).apply {
+                      setDataAndType(Uri.parse(url), media.optString("mimeType", "video/*"))
+                      setPackage("com.instantbits.cast.webvideo")
+                      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+                      val title = media.optString("title", "")
+                      if (title.isNotBlank()) putExtra("title", title)
+
+                      val poster = media.optString("poster", "")
+                      if (poster.isNotBlank()) putExtra("poster", poster)
+
+                      val subtitle = media.optString("subtitle", "")
+                      if (subtitle.isNotBlank()) putExtra("subtitle", subtitle)
+
+                      val headers = media.optJSONObject("headers")
+                      if (headers != null) {
+                          val bundle = Bundle()
+                          val keys = headers.keys()
+                          while (keys.hasNext()) {
+                              val key = keys.next()
+                              bundle.putString(key, headers.optString(key, ""))
+                          }
+                          putExtra("android.media.intent.extra.HTTP_HEADERS", bundle)
+                      }
+                  }
+
+                  return try {
+                      startActivity(intent)
+                      true to "{\"returnValue\":true,\"opened\":true}"
+                  } catch (_: ActivityNotFoundException) {
+                      false to "{\"returnValue\":false,\"errorText\":\"Web Video Caster is not installed on this phone\"}"
+                  } catch (e: Exception) {
+                      false to JSONObject()
+                          .put("returnValue", false)
+                          .put("errorText", e.message ?: "Unable to open Web Video Caster")
+                          .toString()
+                  }
+              }
+
+              private fun respond(socket: Socket, status: Int, body: String) {
+                  val bytes = body.toByteArray(StandardCharsets.UTF_8)
+                  val reason = when (status) {
+                      200 -> "OK"
+                      401 -> "Unauthorized"
+                      404 -> "Not Found"
+                      409 -> "Conflict"
+                      else -> "Internal Server Error"
+                  }
+                  val header =
+                      "HTTP/1.1 " + status + " " + reason + "\r\n" +
+                      "Content-Type: application/json; charset=utf-8\r\n" +
+                      "Content-Length: " + bytes.size + "\r\n" +
+                      "Access-Control-Allow-Origin: *\r\n" +
+                      "Access-Control-Allow-Headers: Content-Type, X-SE-Bridge-Token\r\n" +
+                      "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n" +
+                      "Connection: close\r\n\r\n"
+                  val output: OutputStream = socket.getOutputStream()
+                  output.write(header.toByteArray(StandardCharsets.UTF_8))
+                  output.write(bytes)
+                  output.flush()
+              }
+
+              private fun localIp(): String {
+                  return try {
+                      val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                      val ip = wifi.connectionInfo.ipAddress
+                      String.format(
+                          Locale.US,
+                          "%d.%d.%d.%d",
+                          ip and 0xff,
+                          ip shr 8 and 0xff,
+                          ip shr 16 and 0xff,
+                          ip shr 24 and 0xff
+                      )
+                  } catch (_: Exception) {
+                      "127.0.0.1"
+                  }
+              }
+
+              override fun onDestroy() {
+                  running.set(false)
+                  try { discoverySocket?.close() } catch (_: Exception) {}
+                  try { httpServer?.close() } catch (_: Exception) {}
+                  executor.shutdownNow()
+                  super.onDestroy()
+              }
+
+              override fun onBind(intent: Intent?): IBinder? = null
+          }
+          KOTLIN
+
+          grep -q 'versionCode 1000140' app/build.gradle
+          grep -q 'versionName "100.0.140"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.140' settings.gradle
+          grep -q 'WvcBridgeService' app/src/main/AndroidManifest.xml
+          test -s app/src/main/java/com/orbital/iptv/utils/WvcBridgeService.kt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify and package
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "${APK}"
+          unzip -t "${APK}" >/dev/null
+          rm -rf out source-package
+          mkdir -p out source-package
+
+          cp "${APK}" out/SE-Android-v100.0.140-debug.apk
+
+          rsync -a ./ source-package/             --exclude='.git' --exclude='.gradle' --exclude='.idea'             --exclude='app/build' --exclude='out' --exclude='source-package'             --exclude='.github'
+
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.140-source.zip .)
+          unzip -t out/SE-Android-v100.0.140-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.140-debug.apk out/SE-Android-v100.0.140-source.zip
+          ls -lh out/*
+
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.140
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.140-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.140-source.zip
+          if-no-files-found: error
+          retention-days: 30
