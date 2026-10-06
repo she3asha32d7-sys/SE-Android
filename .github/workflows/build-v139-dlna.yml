@@ -1,9 +1,11 @@
-name: SEAndroid V100.0.150 Web Video Caster Build
+name: SEAndroid V100.0.155 GitHub Build
+
 on:
   push:
     branches:
-      - v100.0.150-wvc
+      - v100.0.155-github-build
   workflow_dispatch:
+
 permissions:
   contents: read
   actions: read
@@ -16,68 +18,81 @@ jobs:
       - name: Checkout build files
         uses: actions/checkout@v4
 
-      - name: Download successful V137 source artifact
+      - name: Download successful V150 source artifact
         uses: actions/download-artifact@v4
         with:
-          name: SEAndroid-v100.0.137
+          name: SEAndroid-v100.0.150-WVC
           path: /tmp/base
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: 36990679861
+          run-id: 37499781228
 
-      - name: Reconstruct V138 source
+      - name: Reconstruct V155 source
         run: |
           set -euo pipefail
           mkdir -p /tmp/src
-          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.137-source.zip' -print -quit)
+          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.150-source.zip' -print -quit)
           test -n "$SRCZIP"
           unzip -q "$SRCZIP" -d /tmp/src
           ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
           test -n "$ROOT"
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
 
-          cp build_payload/v137_to_v138.patch.xz.b64 /tmp/v137_to_v138.b64
-          test "$(wc -c < /tmp/v137_to_v138.b64)" -eq 11564
-          echo "24ce5855957f498e8d788dc675b05fab716c4d75c40cf04fc654a8249446dde5  /tmp/v137_to_v138.b64" | sha256sum -c -
-          base64 -d /tmp/v137_to_v138.b64 > /tmp/v137_to_v138.xz
-          xz -t /tmp/v137_to_v138.xz
-          xz -dc /tmp/v137_to_v138.xz > /tmp/v137_to_v138.diff
+          cat build_payload/v150_to_v155.patch.gz.b64.00 \
+              build_payload/v150_to_v155.patch.gz.b64.01 \
+              build_payload/v150_to_v155.patch.gz.b64.02 > /tmp/v150_to_v155.patch.gz.b64
+          base64 -d /tmp/v150_to_v155.patch.gz.b64 > /tmp/v150_to_v155.patch.gz
+          gzip -t /tmp/v150_to_v155.patch.gz
+          gzip -dc /tmp/v150_to_v155.patch.gz > /tmp/v150_to_v155.patch
+
           cd "$ROOT"
-          patch -p1 --forward --batch < /tmp/v137_to_v138.diff
-          sed -i 's/^                MediaChannelConnection(sock, appClient, fid, mediaResponses)$/                return MediaChannelConnection(sock, appClient, fid, mediaResponses)/' "$ROOT/app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt"
+          patch -p1 --forward --batch < /tmp/v150_to_v155.patch
 
-      - name: Apply V139 DLNA change
-        run: |
-          set -euo pipefail
-          cp build_payload/apply_v139_dlna.py "$ROOT/apply_v139_dlna.py"
-          python3 "$ROOT/apply_v139_dlna.py"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/src/main/res/values/themes.xml")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace('        <item name="mediaRouteChooserPrimaryTextStyle">@style/TextAppearance.SE.MediaRouter.ChooserPrimary</item>\n', '')
+          s = s.replace('        <item name="mediaRouteChooserSecondaryTextStyle">@style/TextAppearance.SE.MediaRouter.ChooserSecondary</item>\n', '')
+          marker = "\n</resources>"
+          overrides = """\n    <style name="TextAppearance.MediaRouter.PrimaryText" parent="TextAppearance.AppCompat.Subhead">
+          <item name="android:textColor">@color/sky_white</item>
+          <item name="android:textSize">16sp</item>
+          <item name="android:fontFamily">sans-serif-condensed</item>
+      </style>
 
-      - name: Apply V150 Web Video Caster change
-        run: |
-          set -euo pipefail
-          cp build_payload/apply_v150_wvc.py "$ROOT/apply_v150_wvc.py"
-          python3 "$ROOT/apply_v150_wvc.py"
+      <style name="TextAppearance.MediaRouter.SecondaryText" parent="TextAppearance.AppCompat.Body1">
+          <item name="android:textColor">@color/sky_white</item>
+          <item name="android:textSize">14sp</item>
+          <item name="android:fontFamily">sans-serif-condensed</item>
+      </style>
+"""
+          if 'name="TextAppearance.MediaRouter.PrimaryText"' not in s:
+              s = s.replace(marker, overrides + marker)
+          p.write_text(s, encoding="utf-8")
+          PY
 
-      - name: Verify V150 source and keep TV and Google Cast
+          # Keep the build source explicitly on V100.0.155.
+          perl -0pi -e 's/versionCode\s+\d+/versionCode 1000155/; s/versionName\s+"[^"]+"/versionName "100.0.155"/' app/build.gradle
+          printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.155"' "include ':app'" > settings.gradle
+
+      - name: Verify V155 source
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
-          grep -q 'versionCode 1000150' app/build.gradle
-          grep -q 'versionName "100.0.150"' app/build.gradle
-          grep -q 'SEAndroid_v100.0.150' settings.gradle
-          grep -q 'activeDlnaDevice' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
-          grep -q 'GencMediaPlayer.swapLiveFormat' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
-          grep -q 'Thread.sleep(900L)' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
-          grep -q 'ssap://webapp/connectToApp' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
-          grep -q 'connectsdk.mediaCommand' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
-          grep -q 'CastPlayer' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          grep -q 'MediaRouteButton' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          test -s CAST_DLNA_LG_V100_0_139_AUDIT.md
-          grep -q 'setItems(arrayOf("TV", "Web Video Caster", "Google Cast"))' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          grep -q 'com.instantbits.cast.webvideo' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          grep -q 'binding.btnCastBottomRoute.setOnClickListener { showCastChooser() }' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          grep -q 'MediaRouteButtonFactory.setUpMediaRouteButton(this, binding.btnCast)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          grep -q 'UniversalCastManager.cast' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'versionCode 1000155' app/build.gradle
+          grep -q 'versionName "100.0.155"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.155' settings.gradle
+          test -f app/src/main/java/com/orbital/iptv/utils/SeriesPlayerPreference.kt
+          grep -q 'PLAY WITH' app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt
+          grep -q 'Intent.createChooser' app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt
+          grep -q 'btn_play' app/src/main/res/layout/item_download.xml
+          grep -q 'mediaRouteTheme' app/src/main/res/values/themes.xml
+          grep -q 'TextAppearance.MediaRouter.PrimaryText' app/src/main/res/values/themes.xml
+          grep -q '16sp' app/src/main/res/values/themes.xml
+          grep -q '<queries>' app/src/main/AndroidManifest.xml
+          ! grep -q 'mediaRouteChooserPrimaryTextStyle' app/src/main/res/values/themes.xml
+          ! grep -q 'mediaRouteChooserSecondaryTextStyle' app/src/main/res/values/themes.xml
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -102,21 +117,32 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           unzip -t "$APK" >/dev/null
+
           rm -rf out source-package
           mkdir -p out source-package
-          cp "$APK" out/SE-Android-v100.0.150-debug.apk
-          rsync -a ./ source-package/ --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-package' --exclude='apply_v139_dlna.py' --exclude='apply_v150_wvc.py'
-          (cd source-package && zip -qr ../out/SE-Android-v100.0.150-source.zip .)
-          unzip -t out/SE-Android-v100.0.150-source.zip >/dev/null
-          sha256sum out/SE-Android-v100.0.150-debug.apk out/SE-Android-v100.0.150-source.zip
+          cp "$APK" out/SE-Android-v100.0.155-debug.apk
+
+          rsync -a ./ source-package/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-package' \
+            --exclude='.github' \
+            --exclude='build_payload'
+
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.155-source.zip .)
+          unzip -t out/SE-Android-v100.0.155-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.155-debug.apk out/SE-Android-v100.0.155-source.zip
           ls -lh out/*
 
-      - name: Upload V139 artifacts
+      - name: Upload V155 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid-v100.0.150-WVC
+          name: SEAndroid-v100.0.155
           path: |
-            ${{ env.ROOT }}/out/SE-Android-v100.0.150-debug.apk
-            ${{ env.ROOT }}/out/SE-Android-v100.0.150-source.zip
+            ${{ env.ROOT }}/out/SE-Android-v100.0.155-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.155-source.zip
           if-no-files-found: error
           retention-days: 30
