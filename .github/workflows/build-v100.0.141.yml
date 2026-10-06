@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -18,7 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Restore V138 source artifact
+      - name: Restore V139 DLNA source
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -27,65 +30,247 @@ jobs:
           curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11223170499/zip" \
-            -o /tmp/v138-artifact.zip
-          unzip -q /tmp/v138-artifact.zip -d /tmp/base
-          SRCZIP=$(find /tmp/base -type f -name "SE-Android-v100.0.138-source.zip" -print -quit)
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11240291690/zip" \
+            -o /tmp/v139-artifact.zip
+          unzip -q /tmp/v139-artifact.zip -d /tmp/base
+          SRCZIP=$(find /tmp/base -type f -name "SE-Android-v100.0.139-source.zip" -print -quit)
           test -n "$SRCZIP"
           unzip -q "$SRCZIP" -d /tmp/src
           ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
           test -n "$ROOT"
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
 
-      - name: Reconstruct V139
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github.raw+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/build_payload/v138_to_v139_dlna.patch.xz.b64?ref=v100.0.139-dlna-build" \
-            -o /tmp/v138_to_v139.b64
-          python3 - <<'PY'
-          import base64, lzma
-          s=b"".join(open("/tmp/v138_to_v139.b64","rb").read().split())
-          alphabet=b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-          raw=None
-          if len(s)%4==0:
-              try:
-                  c=base64.b64decode(s); lzma.decompress(c); raw=c
-              except Exception: pass
-          if raw is None:
-              for ch in alphabet:
-                  try:
-                      c=base64.b64decode(s[:-1]+bytes([ch])+s[-1:]); lzma.decompress(c); raw=c; break
-                  except Exception: pass
-          if raw is None: raise SystemExit("Could not recover V139 patch")
-          open("/tmp/v138_to_v139.xz","wb").write(raw)
-          PY
-          xz -t /tmp/v138_to_v139.xz
-          xz -dc /tmp/v138_to_v139.xz > /tmp/v138_to_v139.patch
-          cd "$ROOT"
-          patch -p1 --forward --batch < /tmp/v138_to_v139.patch
-
-      - name: Bump V139 to V140 then V141
+      - name: Inject WVC bridge and bump to V141
         run: |
           set -euo pipefail
           python3 - "$ROOT" <<'PY'
           from pathlib import Path
           import sys
           root=Path(sys.argv[1])
-          files=["app/build.gradle","settings.gradle","SE_BUILD_MANIFEST.txt","app/src/main/res/layout/activity_settings.xml"]
-          for rel in files:
-              p=root/rel
-              if p.exists():
-                  s=p.read_text(encoding="utf-8")
-                  s=s.replace("100.0.139","100.0.140").replace("1000139","1000140").replace("V100.0.139","V100.0.140")
-                  s=s.replace("100.0.140","100.0.141").replace("1000140","1000141").replace("V100.0.140","V100.0.141")
-                  p.write_text(s,encoding="utf-8")
+
+          p=root/"app/build.gradle"
+          s=p.read_text(encoding="utf-8").replace("100.0.139","100.0.141").replace("1000139","1000141")
+          p.write_text(s,encoding="utf-8")
+          p=root/"settings.gradle"
+          if p.exists(): p.write_text(p.read_text(encoding="utf-8").replace("100.0.139","100.0.141"),encoding="utf-8")
+
+          p=root/"app/src/main/AndroidManifest.xml"
+          s=p.read_text(encoding="utf-8")
+          if "FOREGROUND_SERVICE_CONNECTED_DEVICE" not in s:
+              s=s.replace('    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />','    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />')
+          service='''        <service
+            android:name=".utils.WvcBridgeService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="connectedDevice" />
+
+'''
+          if ".utils.WvcBridgeService" not in s:
+              s=s.replace('        <service\n            android:name=".recording.RecordingService"',service+'        <service\n            android:name=".recording.RecordingService"')
+          p.write_text(s,encoding="utf-8")
+
+          p=root/"app/src/main/java/com/orbital/iptv/OrbitalApp.kt"
+          s=p.read_text(encoding="utf-8")
+          if "import com.orbital.iptv.utils.WvcBridgeService" not in s:
+              s=s.replace("import android.app.Activity\n","import android.app.Activity\nimport com.orbital.iptv.utils.WvcBridgeService\n")
+          if "WvcBridgeService.ensureStarted(a)" not in s:
+              s=s.replace("                applyOrientationPolicy(a)\n            }\n            override fun onActivityResumed", "                applyOrientationPolicy(a)\n                WvcBridgeService.ensureStarted(a)\n            }\n            override fun onActivityResumed",1)
+          p.write_text(s,encoding="utf-8")
+
+          bridge=root/"app/src/main/java/com/orbital/iptv/utils/WvcBridgeService.kt"
+          bridge.parent.mkdir(parents=True,exist_ok=True)
+          bridge.write_text(r'''package com.orbital.iptv.utils
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.net.wifi.WifiManager
+import android.os.Build
+import android.os.Bundle
+import android.os.IBinder
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.nio.charset.StandardCharsets
+import java.util.Locale
+import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+
+class WvcBridgeService : Service() {
+    companion object {
+        private const val CHANNEL_ID="se_wvc_bridge"
+        private const val NOTIFICATION_ID=1410
+        private const val HTTP_PORT=37123
+        private const val DISCOVERY_PORT=37124
+        private const val DISCOVERY_REQUEST="SE_WVC_DISCOVER 1"
+        private const val PREFS="se_wvc_bridge"
+        private const val TOKEN_KEY="token"
+        fun ensureStarted(context: Context) {
+            val i=Intent(context,WvcBridgeService::class.java)
+            if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O) context.startForegroundService(i) else context.startService(i)
+        }
+    }
+    private val running=AtomicBoolean(false)
+    private val executor=Executors.newCachedThreadPool()
+    private var httpServer:ServerSocket?=null
+    private var discoverySocket:DatagramSocket?=null
+    private lateinit var token:String
+
+    override fun onCreate(){
+        super.onCreate()
+        token=getSharedPreferences(PREFS,MODE_PRIVATE).getString(TOKEN_KEY,null).orEmpty().ifBlank{
+            UUID.randomUUID().toString().replace("-","").take(16).also{
+                getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(TOKEN_KEY,it).apply()
+            }
+        }
+        if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O){
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(CHANNEL_ID,"SE Web Video Caster bridge",NotificationManager.IMPORTANCE_LOW))
+        }
+        val b=if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O) Notification.Builder(this,CHANNEL_ID)
+             else @Suppress("DEPRECATION") Notification.Builder(this)
+        val n=b.setSmallIcon(android.R.drawable.ic_media_play).setContentTitle("SE IPTV PLAYER")
+            .setContentText("Web Video Caster bridge is available").setOngoing(true).build()
+        if(Build.VERSION.SDK_INT>=29) startForeground(NOTIFICATION_ID,n,android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        else startForeground(NOTIFICATION_ID,n)
+    }
+
+    override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
+        if(running.compareAndSet(false,true)){
+            executor.execute{runDiscoveryServer()}
+            executor.execute{runHttpServer()}
+        }
+        return START_STICKY
+    }
+
+    private fun runDiscoveryServer(){
+        try{
+            DatagramSocket(DISCOVERY_PORT,InetAddress.getByName("0.0.0.0")).use{s->
+                discoverySocket=s;s.broadcast=true
+                val buf=ByteArray(512)
+                while(running.get()){
+                    val p=DatagramPacket(buf,buf.size);s.receive(p)
+                    val msg=String(p.data,p.offset,p.length,StandardCharsets.UTF_8).trim()
+                    if(msg==DISCOVERY_REQUEST){
+                        val out="SE_WVC_BRIDGE 1 $HTTP_PORT $token".toByteArray(StandardCharsets.UTF_8)
+                        s.send(DatagramPacket(out,out.size,p.address,p.port))
+                    }
+                }
+            }
+        }catch(_:Exception){}
+    }
+
+    private fun runHttpServer(){
+        try{
+            ServerSocket(HTTP_PORT,32,InetAddress.getByName("0.0.0.0")).use{s->
+                httpServer=s
+                while(running.get()){
+                    val c=s.accept()
+                    executor.execute{handleClient(c)}
+                }
+            }
+        }catch(_:Exception){}
+    }
+
+    private fun handleClient(socket:Socket){
+        socket.use{client->
+            try{
+                client.soTimeout=8000
+                val r=BufferedReader(InputStreamReader(client.getInputStream(),StandardCharsets.UTF_8))
+                val first=r.readLine() ?: return
+                val parts=first.split(" ");if(parts.size<2)return
+                val method=parts[0];val path=parts[1]
+                var len=0;var reqToken=""
+                while(true){
+                    val h=r.readLine() ?: break
+                    if(h.isEmpty())break
+                    val k=h.indexOf(':');if(k<=0)continue
+                    val name=h.substring(0,k).trim();val value=h.substring(k+1).trim()
+                    if(name.equals("Content-Length",true))len=value.toIntOrNull()?:0
+                    if(name.equals("X-SE-Bridge-Token",true))reqToken=value
+                }
+                when{
+                    method.equals("OPTIONS",true)->respond(client,200,"""{"returnValue":true}""")
+                    method.equals("GET",true)&&path=="/status"->respond(client,200,JSONObject()
+                        .put("returnValue",true).put("bridgeIp",localIp()).put("bridgePort",HTTP_PORT).put("bridgeToken",token).toString())
+                    method.equals("POST",true)&&path=="/cast"->{
+                        if(reqToken!=token){respond(client,401,"""{"returnValue":false,"errorText":"Invalid bridge token"}""");return}
+                        val chars=CharArray(len);var read=0
+                        while(read<len){val n=r.read(chars,read,len-read);if(n<0)break;read+=n}
+                        val result=launchWvc(JSONObject(String(chars,0,read)))
+                        respond(client,if(result.first)200 else 409,result.second)
+                    }
+                    else->respond(client,404,"""{"returnValue":false}""")
+                }
+            }catch(e:Exception){
+                try{respond(client,500,JSONObject().put("returnValue",false).put("errorText",e.message?:"Bridge error").toString())}catch(_:Exception){}
+            }
+        }
+    }
+
+    private fun launchWvc(media:JSONObject):Pair<Boolean,String>{
+        val url=media.optString("url","").trim()
+        if(!url.startsWith("http://")&&!url.startsWith("https://"))
+            return false to """{"returnValue":false,"errorText":"Invalid HTTP(S) media URL"}"""
+        val intent=Intent(Intent.ACTION_VIEW).apply{
+            setDataAndType(Uri.parse(url),media.optString("mimeType","video/*"))
+            setPackage("com.instantbits.cast.webvideo")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val title=media.optString("title","");if(title.isNotBlank())putExtra("title",title)
+            val poster=media.optString("poster","");if(poster.isNotBlank())putExtra("poster",poster)
+            val subtitle=media.optString("subtitle","");if(subtitle.isNotBlank())putExtra("subtitle",subtitle)
+            val headers=media.optJSONObject("headers")
+            if(headers!=null){
+                val b=Bundle();val keys=headers.keys()
+                while(keys.hasNext()){val k=keys.next();b.putString(k,headers.optString(k,""))}
+                putExtra("android.media.intent.extra.HTTP_HEADERS",b)
+            }
+        }
+        return try{startActivity(intent);true to """{"returnValue":true,"opened":true}"""
+        }catch(_:ActivityNotFoundException){false to """{"returnValue":false,"errorText":"Web Video Caster is not installed on this phone"}"""
+        }catch(e:Exception){false to JSONObject().put("returnValue",false).put("errorText",e.message?:"Unable to open Web Video Caster").toString()}
+    }
+
+    private fun respond(socket:Socket,status:Int,body:String){
+        val bytes=body.toByteArray(StandardCharsets.UTF_8)
+        val reason=when(status){200->"OK";401->"Unauthorized";404->"Not Found";409->"Conflict";else->"Internal Server Error"}
+        socket.getOutputStream().apply{
+            write(("HTTP/1.1 $status $reason\r\n"+
+                "Content-Type: application/json; charset=utf-8\r\n"+
+                "Content-Length: ${bytes.size}\r\n"+
+                "Access-Control-Allow-Origin: *\r\n"+
+                "Access-Control-Allow-Headers: Content-Type, X-SE-Bridge-Token\r\n"+
+                "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"+
+                "Connection: close\r\n\r\n").toByteArray(StandardCharsets.UTF_8))
+            write(bytes);flush()
+        }
+    }
+
+    private fun localIp():String{
+        return try{
+            val w=applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+            val ip=w.connectionInfo.ipAddress
+            String.format(Locale.US,"%d.%d.%d.%d",ip and 255,ip shr 8 and 255,ip shr 16 and 255,ip shr 24 and 255)
+        }catch(_:Exception){"127.0.0.1"}
+    }
+    override fun onDestroy(){running.set(false);try{discoverySocket?.close()}catch(_:Exception){};try{httpServer?.close()}catch(_:Exception){};executor.shutdownNow();super.onDestroy()}
+    override fun onBind(intent:Intent?):android.os.IBinder?=null
+}
+''',encoding="utf-8")
+
           g=(root/"app/build.gradle").read_text(encoding="utf-8")
-          assert "versionCode 1000141" in g and 'versionName "100.0.141"' in g
+          if "versionCode 1000141" not in g or 'versionName "100.0.141"' not in g: raise SystemExit("V141 bump failed")
           PY
 
       - name: Set up JDK 17
