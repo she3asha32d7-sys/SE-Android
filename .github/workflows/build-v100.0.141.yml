@@ -45,26 +45,36 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github.raw+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/build_payload/v138_to_v139_dlna.patch.xz.b64?ref=v100.0.139-dlna-build" \
-            -o /tmp/v138_to_v139.b64
+          mkdir -p /tmp/parts
+          for n in 1 2 3 4; do
+            curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github.raw+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/build_payload/v138_to_v139_dlna_patch_parts/part${n}.b64?ref=v100.0.140-cast-control-build" \
+              -o "/tmp/parts/part${n}.b64"
+          done
+          cat /tmp/parts/part1.b64 /tmp/parts/part2.b64 /tmp/parts/part3.b64 /tmp/parts/part4.b64 | tr -d '\\r\\n' > /tmp/v138_to_v139.b64
           python3 - <<'PY'
-          import base64, lzma
+          import base64, itertools, lzma
           s=b"".join(open("/tmp/v138_to_v139.b64","rb").read().split())
+          # The historical payload has two placeholder '?' characters in part2.
+          positions=[i for i,b in enumerate(s) if b==ord('?')]
           alphabet=b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+          if len(positions)!=2:
+              raise SystemExit(f"Expected 2 placeholder chars, found {len(positions)}")
           raw=None
-          if len(s)%4==0:
+          for a,b in itertools.product(alphabet, repeat=2):
+              t=bytearray(s)
+              t[positions[0]]=a; t[positions[1]]=b
               try:
-                  c=base64.b64decode(s); lzma.decompress(c); raw=c
-              except Exception: pass
+                  c=base64.b64decode(bytes(t), validate=True)
+                  lzma.decompress(c)
+                  raw=c
+                  break
+              except Exception:
+                  pass
           if raw is None:
-              for ch in alphabet:
-                  try:
-                      c=base64.b64decode(s[:-1]+bytes([ch])+s[-1:]); lzma.decompress(c); raw=c; break
-                  except Exception: pass
-          if raw is None: raise SystemExit("Could not recover V139 patch")
+              raise SystemExit("Could not recover V139 patch payload from parts")
           open("/tmp/v138_to_v139.xz","wb").write(raw)
           PY
           xz -t /tmp/v138_to_v139.xz
