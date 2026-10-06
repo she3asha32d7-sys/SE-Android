@@ -1,8 +1,8 @@
-name: SEAndroid V100.0.139 DLNA Build
+name: SEAndroid V100.0.150 Web Video Caster Build
 on:
   push:
     branches:
-      - v100.0.139-dlna-build-clean
+      - v100.0.150-wvc
   workflow_dispatch:
 permissions:
   contents: read
@@ -52,13 +52,19 @@ jobs:
           cp build_payload/apply_v139_dlna.py "$ROOT/apply_v139_dlna.py"
           python3 "$ROOT/apply_v139_dlna.py"
 
-      - name: Verify V139 source and keep Google Cast
+      - name: Apply V150 Web Video Caster change
+        run: |
+          set -euo pipefail
+          cp build_payload/apply_v150_wvc.py "$ROOT/apply_v150_wvc.py"
+          python3 "$ROOT/apply_v150_wvc.py"
+
+      - name: Verify V150 source and keep TV and Google Cast
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
-          grep -q 'versionCode 1000139' app/build.gradle
-          grep -q 'versionName "100.0.139"' app/build.gradle
-          grep -q 'SEAndroid_v100.0.139' settings.gradle
+          grep -q 'versionCode 1000150' app/build.gradle
+          grep -q 'versionName "100.0.150"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.150' settings.gradle
           grep -q 'activeDlnaDevice' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
           grep -q 'GencMediaPlayer.swapLiveFormat' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
           grep -q 'Thread.sleep(900L)' app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt
@@ -67,6 +73,11 @@ jobs:
           grep -q 'CastPlayer' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           grep -q 'MediaRouteButton' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           test -s CAST_DLNA_LG_V100_0_139_AUDIT.md
+          grep -q 'setItems(arrayOf("TV", "Web Video Caster", "Google Cast"))' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'com.instantbits.cast.webvideo' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'binding.btnCastBottomRoute.setOnClickListener { showCastChooser() }' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'MediaRouteButtonFactory.setUpMediaRouteButton(this, binding.btnCast)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'UniversalCastManager.cast' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -93,19 +104,19 @@ jobs:
           unzip -t "$APK" >/dev/null
           rm -rf out source-package
           mkdir -p out source-package
-          cp "$APK" out/SE-Android-v100.0.139-debug.apk
-          rsync -a ./ source-package/ --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-package' --exclude='apply_v139_dlna.py'
-          (cd source-package && zip -qr ../out/SE-Android-v100.0.139-source.zip .)
-          unzip -t out/SE-Android-v100.0.139-source.zip >/dev/null
-          sha256sum out/SE-Android-v100.0.139-debug.apk out/SE-Android-v100.0.139-source.zip
+          cp "$APK" out/SE-Android-v100.0.150-debug.apk
+          rsync -a ./ source-package/ --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-package' --exclude='apply_v139_dlna.py' --exclude='apply_v150_wvc.py'
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.150-source.zip .)
+          unzip -t out/SE-Android-v100.0.150-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.150-debug.apk out/SE-Android-v100.0.150-source.zip
           ls -lh out/*
 
       - name: Upload V139 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid-v100.0.139-DLNA
+          name: SEAndroid-v100.0.150-WVC
           path: |
-            ${{ env.ROOT }}/out/SE-Android-v100.0.139-debug.apk
-            ${{ env.ROOT }}/out/SE-Android-v100.0.139-source.zip
+            ${{ env.ROOT }}/out/SE-Android-v100.0.150-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.150-source.zip
           if-no-files-found: error
           retention-days: 30
