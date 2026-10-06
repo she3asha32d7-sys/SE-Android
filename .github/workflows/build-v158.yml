@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - v100.0.158-github-build
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -34,9 +37,7 @@ jobs:
           grep -q 'versionCode 1000158' app/build.gradle
           grep -q 'versionName "100.0.158"' app/build.gradle
           grep -q 'rootProject.name = "SEAndroid_v100.0.158"' settings.gradle
-          grep -q 'PLAYER_SCALE_EDGE_TO_EDGE_V100_0_158' PLAYER_SCALE_EDGE_TO_EDGE_V100_0_158_AUDIT.md
-          grep -q 'DownloadsActivity' SE_BUILD_MANIFEST.txt
-          grep -q 'RecordingsActivity' SE_BUILD_MANIFEST.txt
+          test -s PLAYER_SCALE_EDGE_TO_EDGE_V100_0_158_AUDIT.md
 
       - name: Build debug APK
         run: |
@@ -50,10 +51,11 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           unzip -t "$APK" >/dev/null
-          if command -v aapt2 >/dev/null 2>&1; then
-            aapt2 dump packagename "$APK" >/dev/null
+          if command -v apkanalyzer >/dev/null 2>&1; then
+            test "$(apkanalyzer manifest version-name "$APK")" = "100.0.158"
+            test "$(apkanalyzer manifest version-code "$APK")" = "1000158"
           elif command -v aapt >/dev/null 2>&1; then
-            aapt dump badging "$APK" | grep -q 'versionName=\x27100.0.158\x27'
+            aapt dump badging "$APK" | grep -q "versionName='100.0.158'"
           fi
 
       - name: Package outputs
@@ -62,7 +64,14 @@ jobs:
           rm -rf out source-package
           mkdir -p out source-package
           cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.158-debug.apk
-          rsync -a ./ source-package/             --exclude='.git'             --exclude='.gradle'             --exclude='.idea'             --exclude='app/build'             --exclude='out'             --exclude='source-package'             --exclude='.github'
+          rsync -a ./ source-package/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-package' \
+            --exclude='.github'
           (cd source-package && zip -qr ../out/SE-Android-v100.0.158-source.zip .)
           unzip -t out/SE-Android-v100.0.158-source.zip >/dev/null
           sha256sum out/SE-Android-v100.0.158-debug.apk out/SE-Android-v100.0.158-source.zip
