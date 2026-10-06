@@ -1,0 +1,113 @@
++            val documentDeleted = runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }.getOrDefault(false)
++            if (!documentDeleted && !PublicMediaStorage.deleteMediaStoreUri(context, uri)) {
+                 throw IOException("COULD NOT DELETE FILE")
+             }
+             return
+@@ -84,6 +86,7 @@ object RecordingFileOperations {
+     }
+
+     fun parentTreeUri(context: Context, uri: Uri): Uri? {
++        if (PublicMediaStorage.isMediaStoreUri(uri)) return RecordingPublicStorage.folderTreeUri()
+         if (uri.scheme != "content") return null
+         return runCatching {
+             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return@runCatching null
+diff --git a/app/src/main/java/com/orbital/iptv/recording/RecordingPublicStorage.kt b/app/src/main/java/com/orbital/iptv/recording/RecordingPublicStorage.kt
+new file mode 100644
+index 0000000..0612364
+--- /dev/null
++++ b/app/src/main/java/com/orbital/iptv/recording/RecordingPublicStorage.kt
+@@ -0,0 +1,33 @@
++package com.orbital.iptv.recording
++
++import android.content.Context
++import android.net.Uri
++import android.os.Build
++import android.provider.MediaStore
++import com.orbital.iptv.utils.PublicMediaStorage
++import java.io.File
++
++object RecordingPublicStorage {
++    fun migrateCompleted(context: Context, record: RecordingEntity): Uri? {
++        if (record.fileUri.isNotBlank()) return Uri.parse(record.fileUri)
++        if (record.filePath.isBlank()) return null
++        val file = File(record.filePath)
++        if (!file.isFile || file.length() <= 0L) return null
++        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
++        return PublicMediaStorage.importRecordingFile(
++            context,
++            file,
++            file.name,
++            PublicMediaStorage.mimeForName(file.name)
++        )
++    }
++
++    fun locationUri(record: RecordingEntity): Uri? {
++        if (record.fileUri.isNotBlank()) return Uri.parse(record.fileUri)
++        return null
++    }
++
++    fun folderTreeUri(): Uri = PublicMediaStorage.recordingFolderTreeUri()
++
++    fun isPublicMediaUri(uri: Uri): Boolean = PublicMediaStorage.isMediaStoreUri(uri)
++}
+diff --git a/app/src/main/java/com/orbital/iptv/recording/RecordingService.kt b/app/src/main/java/com/orbital/iptv/recording/RecordingService.kt
+index 8fe8698..afe1cf9 100644
+--- a/app/src/main/java/com/orbital/iptv/recording/RecordingService.kt
++++ b/app/src/main/java/com/orbital/iptv/recording/RecordingService.kt
+@@ -396,7 +396,26 @@ class RecordingService : Service() {
+         val success = error == null && file.isFile && file.length() > 0L && !transformerStopRequested
+         scope.launch {
+             val dao = RecordingDatabase.get(applicationContext).dao()
+-            dao.updateStatus(id, if (success) RecordingStatus.COMPLETED else RecordingStatus.FAILED)
++            val current = dao.byId(id)
++            if (success && current != null) {
++                val published = runCatching {
++                    RecordingPublicStorage.migrateCompleted(
++                        applicationContext,
++                        current.copy(filePath = file.absolutePath, fileUri = "")
++                    )
++                }.getOrNull()
++                dao.update(
++                    current.copy(
++                        status = RecordingStatus.COMPLETED,
++                        filePath = if (published != null) "" else file.absolutePath,
++                        fileUri = published?.toString() ?: current.fileUri
++                    )
++                )
++            } else if (current != null) {
++                dao.update(current.copy(status = RecordingStatus.FAILED))
++            } else {
++                dao.updateStatus(id, if (success) RecordingStatus.COMPLETED else RecordingStatus.FAILED)
++            }
+             if (!success && file.exists()) runCatching { file.delete() }
+             clearActiveState()
+             RecordingState.postRecordingFinished(id, if (success) null else (error ?: "RECORDING CANCELLED"))
+@@ -409,7 +428,27 @@ class RecordingService : Service() {
+ 
+     private fun withContextOrMain(status: RecordingStatus, error: String?, id: Int, file: File) {
+         val scopeJob = scope.launch {
+-            RecordingDatabase.get(applicationContext).dao().updateStatus(id, status)
++            val dao = RecordingDatabase.get(applicationContext).dao()
++            val current = dao.byId(id)
++            if (status == RecordingStatus.COMPLETED && current != null) {
++                val published = runCatching {
++                    RecordingPublicStorage.migrateCompleted(
++                        context = applicationContext,
++                        record = current.copy(filePath = file.absolutePath, fileUri = "")
++                    )
++                }.getOrNull()
++                dao.update(
++                    current.copy(
++                        status = status,
++                        filePath = if (published != null) "" else file.absolutePath,
++                        fileUri = published?.toString() ?: current.fileUri
++                    )
++                )
++            } else if (current != null) {
++                dao.update(current.copy(status = status))
++            } else {
++                dao.updateStatus(id, status)
++            }
+             clearActiveState()
+             RecordingState.postRecordingFinished(id, if (status == RecordingStatus.FAILED) (error ?: "RECORDING FAILED") else null)
+             withContext(Dispatchers.Main) {
