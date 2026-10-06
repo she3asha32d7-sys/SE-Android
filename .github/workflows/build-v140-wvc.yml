@@ -19,47 +19,23 @@ jobs:
       - name: Checkout build payload
         uses: actions/checkout@v4
 
-      - name: Reconstruct exact V100.0.139 source
+      - name: Restore successful V100.0.139 source
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/base /tmp/source
 
-          curl -fL --retry 10 --retry-delay 2 --retry-all-errors             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11219393637/zip"             -o /tmp/v137-artifact.zip
+          curl -fL --retry 10 --retry-delay 2 --retry-all-errors             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11240291690/zip"             -o /tmp/v139-artifact.zip
 
-          unzip -q /tmp/v137-artifact.zip -d /tmp/base
-          SRCZIP="$(find /tmp/base -type f -name 'SE-Android-v100.0.137-source.zip' -print -quit)"
+          unzip -q /tmp/v139-artifact.zip -d /tmp/base
+          SRCZIP="$(find /tmp/base -type f -name 'SE-Android-v100.0.139-source.zip' -print -quit)"
           test -n "${SRCZIP}"
           unzip -q "${SRCZIP}" -d /tmp/source
 
           ROOT="$(find /tmp/source -type f -name settings.gradle -print -quit | xargs -r dirname)"
           test -n "${ROOT}"
           echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
-
-          cp build_payload/v137_to_v138.patch.xz.b64 /tmp/v137_to_v138.b64
-          test "$(wc -c < /tmp/v137_to_v138.b64)" -eq 11564
-          echo "24ce5855957f498e8d788dc675b05fab716c4d75c40cf04fc654a8249446dde5  /tmp/v137_to_v138.b64" | sha256sum -c -
-          base64 -d /tmp/v137_to_v138.b64 > /tmp/v137_to_v138.xz
-          xz -t /tmp/v137_to_v138.xz
-          xz -dc /tmp/v137_to_v138.xz > /tmp/v137_to_v138.diff
-          cd "${ROOT}"
-          patch -p1 --forward --batch < /tmp/v137_to_v138.diff
-
-          cp "${GITHUB_WORKSPACE}/build_payload/v138_to_v139_dlna.patch.xz.b64" /tmp/v138_to_v139.b64
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64
-          p = Path("/tmp/v138_to_v139.b64")
-          raw = "".join(p.read_text(encoding="utf-8").split()).rstrip("=")
-          raw += "=" * ((4 - (len(raw) % 4)) % 4)
-          data = base64.b64decode(raw, validate=True)
-          Path("/tmp/v138_to_v139.xz").write_bytes(data)
-          print("Normalized V138->V139 patch base64:", len(raw), "chars;", len(data), "bytes")
-          PY
-          xz -t /tmp/v138_to_v139.xz
-          xz -dc /tmp/v138_to_v139.xz > /tmp/v138_to_v139.diff
-          patch -p1 --forward --batch < /tmp/v138_to_v139.diff
 
       - name: Apply V100.0.140 WVC bridge
         working-directory: ${{ env.ROOT }}
