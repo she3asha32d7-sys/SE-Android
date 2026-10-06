@@ -3,7 +3,7 @@ name: SEAndroid v100.0.141 WVC Build
 on:
   push:
     branches:
-      - v100.0.141-wvc-build
+      - v100.0.140-wvc-build
   workflow_dispatch:
 
 permissions:
