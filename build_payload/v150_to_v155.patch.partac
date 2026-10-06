@@ -1,0 +1,189 @@
+         }
+ 
+-        val parent = File(rec.filePath).parentFile
+-        val folderUri = parent?.let {
+-            runCatching {
+-                FileProvider.getUriForFile(this, "\${packageName}.recordings.fileprovider", it)
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && initialTree != null) {
++            val folderUri = runCatching {
++                DocumentsContract.buildDocumentUri(
++                    initialTree.authority ?: return@runCatching null,
++                    DocumentsContract.getTreeDocumentId(initialTree)
++                )
+             }.getOrNull()
+-        }
+-        if (folderUri != null) {
+-            val folderMimes = arrayOf("resource/folder", "vnd.android.document/directory", "inode/directory")
+-            for (mime in folderMimes) {
+-                val intent = Intent(Intent.ACTION_VIEW).apply {
+-                    setDataAndType(folderUri, mime)
++            if (folderUri != null) {
++                val viewFolder = Intent(Intent.ACTION_VIEW).apply {
++                    setDataAndType(folderUri, DocumentsContract.Document.MIME_TYPE_DIR)
+                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+-                    clipData = android.content.ClipData.newRawUri("FOLDER", folderUri)
+                 }
+-                try {
+-                    startActivity(Intent.createChooser(intent, "OPEN FILE LOCATION"))
+-                    return
+-                } catch (_: ActivityNotFoundException) { }
++                if (runCatching { startActivity(viewFolder); true }.getOrDefault(false)) return
+             }
+         }
+-
+-        val fallback = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
++        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
+             Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                 Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                 Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+         )
+-        runCatching { startActivityForResult(fallback, REQUEST_OPEN_LOCATION) }
+-            .onFailure { Toast.makeText(this, "FILE MANAGER NOT AVAILABLE", Toast.LENGTH_SHORT).show() }
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && initialTree != null) {
++            intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, initialTree)
++        }
++        runCatching { startActivityForResult(intent, REQUEST_OPEN_LOCATION) }
++            .onFailure {
++                Toast.makeText(this, "FILE MANAGER NOT AVAILABLE", Toast.LENGTH_SHORT).show()
++            }
+     }
+ 
+     private fun startCopyMove(rec: RecordingEntity, move: Boolean) {
+@@ -167,6 +221,15 @@ class RecordingsActivity : AppCompatActivity() {
+                 Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                 Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+         )
++        val sourceUri = rec.fileUri.takeIf { it.isNotBlank() }?.let(Uri::parse)
++        val currentTree = when {
++            sourceUri != null && RecordingPublicStorage.isPublicMediaUri(sourceUri) -> RecordingPublicStorage.folderTreeUri()
++            sourceUri != null -> RecordingFileOperations.parentTreeUri(this, sourceUri)
++            else -> null
++        }
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && currentTree != null) {
++            intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, currentTree)
++        }
+         runCatching { startActivityForResult(intent, REQUEST_COPY_MOVE) }
+             .onFailure {
+                 pendingFileAction = null
+diff --git a/app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt b/app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt
+index 33895fb..2eb1f20 100644
+--- a/app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt
++++ b/app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt
+@@ -18,8 +18,11 @@ import com.orbital.iptv.databinding.ItemDownloadBinding
+ import com.orbital.iptv.utils.DownloadFileOperations
+ import com.orbital.iptv.utils.DownloadItem
+ import com.orbital.iptv.utils.DownloadStore
++import com.orbital.iptv.utils.PlayerLauncher
++import com.orbital.iptv.utils.PlayerType
+ import com.orbital.iptv.utils.MainSidebarController
+ import com.orbital.iptv.utils.ThemeManager
++import com.orbital.iptv.utils.PublicMediaStorage
+ import java.io.File
+ 
+ class DownloadsActivity : AppCompatActivity() {
+@@ -28,6 +31,7 @@ class DownloadsActivity : AppCompatActivity() {
+     private val handler = Handler(Looper.getMainLooper())
+     private val refreshTask = object : Runnable { override fun run() { if (!isFinishing) { refresh(); handler.postDelayed(this, 500L) } } }
+     private var pendingFileAction: PendingFileAction? = null
++    @Volatile private var legacyMigrationRunning = false
+ 
+     private data class PendingFileAction(val type: Type, val item: DownloadItem) {
+         enum class Type { COPY, MOVE }
+@@ -55,6 +59,7 @@ class DownloadsActivity : AppCompatActivity {
+             ) 
+         }
+         refresh()
++        migrateLegacyCompletedDownloads()
+     }
+ 
+     override fun onResume() { super.onResume(); if (::adapter.isInitialized) { refresh(); handler.post(refreshTask) } }
+@@ -82,12 +87,58 @@ class DownloadsActivity : AppCompatActivity {
+         }
+     }
+ 
++    private fun migrateLegacyCompletedDownloads() {
++        if (legacyMigrationRunning) return
++        legacyMigrationRunning = true
++        Thread {
++            var changed = false
++            for (item in DownloadStore.all(this)) {
++                if (item.status != "COMPLETED" || item.uri.isBlank()) continue
++                val uri = runCatching { Uri.parse(item.uri) }.getOrNull() ?: continue
++                if (uri.scheme != "file") continue
++                val file = File(uri.path ?: continue)
++                if (!file.isFile || file.length() <= 0L) continue
++                if (!file.absolutePath.contains("/Android/data/\${packageName}/", ignoreCase = true)) continue
++                runCatching {
++                    val newUri = PublicMediaStorage.importDownloadFile(
++                        this, file, file.name, PublicMediaStorage.mimeForName(file.name)
++                    )
++                    if (newUri != null) {
++                        DownloadStore.updateUri(this, item.id, newUri.toString())
++                        changed = true
++                    }
++                }
++            }
++            if (changed) runOnUiThread { refresh() }
++            legacyMigrationRunning = false
++        }.start()
++    }
++
+     private fun openFileLocation(item: DownloadItem) {
+         if (!DownloadFileOperations.isAvailable(this, item.uri)) {
+             Toast.makeText(this, "FILE IS NOT AVAILABLE YET", Toast.LENGTH_SHORT).show()
+             return
+         }
+-        val tree = DownloadFileOperations.parentTreeUri(item.uri)
++        val uri = Uri.parse(item.uri)
++        val tree = when {
++            PublicMediaStorage.isMediaStoreUri(uri) -> PublicMediaStorage.downloadFolderTreeUri()
++            else -> DownloadFileOperations.parentTreeUri(item.uri)
++        }
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && tree != null) {
++            val folderUri = runCatching {
++                DocumentsContract.buildDocumentUri(
++                    tree.authority ?: return@runCatching null,
++                    DocumentsContract.getTreeDocumentId(tree)
++                )
++            }.getOrNull()
++            if (folderUri != null) {
++                val viewFolder = Intent(Intent.ACTION_VIEW).apply {
++                    setDataAndType(folderUri, DocumentsContract.Document.MIME_TYPE_DIR)
++                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
++                }
++                if (runCatching { startActivity(viewFolder); true }.getOrDefault(false)) return
++            }
++        }
++        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
++            Intent.FLAG_GRANT_READ_URI_PERMISSION or
++            Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
++            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
++        )
++        val initialTree = when {
++            PublicMediaStorage.isMediaStoreUri(uri) -> PublicMediaStorage.downloadFolderTreeUri()
++            else -> tree
++        }
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && initialTree != null) {
++            intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, initialTree)
++        }
++        runCatching { startActivityForResult(intent, REQUEST_OPEN_LOCATION) }
++            .onFailure { Toast.makeText(this, "FILE MANAGER NOT AVAILABLE", Toast.LENGTH_SHORT).show() }
++    }
++
++    private fun startCopyMove(item: DownloadItem, move: Boolean) {
++        pendingFileAction = PendingFileAction(if (move) PendingFileAction.Type.MOVE else PendingFileAction.Type.COPY, item)
++        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
++            Intent.FLAG_GRANT_READ_URI_PERMISSION or
++                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
++                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
++        )
++        val sourceUri = Uri.parse(item.uri)
++        val currentTree = if (PublicMediaStorage.isMediaStoreUri(sourceUri)) {
++            PublicMediaStorage.downloadFolderTreeUri()
++        } else {
++            DownloadFileOperations.parentTreeUri(item.uri)
++        }
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && currentTree != null) {
++            intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, currentTree)
++        }
+         
