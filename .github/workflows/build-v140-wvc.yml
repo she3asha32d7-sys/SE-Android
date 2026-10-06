@@ -1,9 +1,9 @@
-name: SEAndroid v100.0.140 WVC Build
+name: SEAndroid v100.0.141 WVC Build
 
 on:
   push:
     branches:
-      - v100.0.140-wvc-build
+      - v100.0.141-wvc-build
   workflow_dispatch:
 
 permissions:
@@ -37,7 +37,7 @@ jobs:
           test -n "${ROOT}"
           echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
 
-      - name: Apply V100.0.140 WVC bridge
+      - name: Apply V100.0.141 WVC bridge
         working-directory: ${{ env.ROOT }}
         run: |
           set -euo pipefail
@@ -52,13 +52,13 @@ jobs:
           manifest = root / "app/src/main/AndroidManifest.xml"
 
           s = gradle.read_text(encoding="utf-8")
-          s = re.sub(r'versionCode\s+\d+', 'versionCode 1000140', s, count=1)
-          s = re.sub(r'versionName\s+"[^"]+"', 'versionName "100.0.140"', s, count=1)
+          s = re.sub(r'versionCode\s+\d+', 'versionCode 1000141', s, count=1)
+          s = re.sub(r'versionName\s+"[^"]+"', 'versionName "100.0.141"', s, count=1)
           gradle.write_text(s, encoding="utf-8")
 
           s = settings.read_text(encoding="utf-8")
           s = re.sub(r'rootProject\.name\s*=\s*"[^"]+"',
-                     'rootProject.name = "SEAndroid_v100.0.140"', s, count=1)
+                     'rootProject.name = "SEAndroid_v100.0.141"', s, count=1)
           settings.write_text(s, encoding="utf-8")
 
           s = manifest.read_text(encoding="utf-8")
@@ -135,8 +135,7 @@ jobs:
           import android.os.Build
           import android.os.Bundle
           import android.os.IBinder
-          import android.content.pm.ServiceInfo
-          import org.json.JSONObject
+                    import org.json.JSONObject
           import java.io.BufferedReader
           import java.io.InputStreamReader
           import java.io.OutputStream
@@ -186,11 +185,7 @@ jobs:
                   }
                   createNotificationChannel()
                   if (Build.VERSION.SDK_INT >= 29) {
-                      startForeground(
-                          NOTIFICATION_ID,
-                          notification(),
-                          ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                      )
+                      startForeground(NOTIFICATION_ID, notification())
                   } else {
                       startForeground(NOTIFICATION_ID, notification())
                   }
@@ -443,9 +438,9 @@ jobs:
           }
           KOTLIN
 
-          grep -q 'versionCode 1000140' app/build.gradle
-          grep -q 'versionName "100.0.140"' app/build.gradle
-          grep -q 'SEAndroid_v100.0.140' settings.gradle
+          grep -q 'versionCode 1000141' app/build.gradle
+          grep -q 'versionName "100.0.141"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.141' settings.gradle
           grep -q 'WvcBridgeService' app/src/main/AndroidManifest.xml
           test -s app/src/main/java/com/orbital/iptv/utils/WvcBridgeService.kt
 
@@ -475,21 +470,21 @@ jobs:
           rm -rf out source-package
           mkdir -p out source-package
 
-          cp "${APK}" out/SE-Android-v100.0.140-debug.apk
+          cp "${APK}" out/SE-Android-v100.0.141-debug.apk
 
           rsync -a ./ source-package/             --exclude='.git' --exclude='.gradle' --exclude='.idea'             --exclude='app/build' --exclude='out' --exclude='source-package'             --exclude='.github'
 
-          (cd source-package && zip -qr ../out/SE-Android-v100.0.140-source.zip .)
-          unzip -t out/SE-Android-v100.0.140-source.zip >/dev/null
-          sha256sum out/SE-Android-v100.0.140-debug.apk out/SE-Android-v100.0.140-source.zip
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.141-source.zip .)
+          unzip -t out/SE-Android-v100.0.141-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.141-debug.apk out/SE-Android-v100.0.141-source.zip
           ls -lh out/*
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid-v100.0.140
+          name: SEAndroid-v100.0.141
           path: |
-            ${{ env.ROOT }}/out/SE-Android-v100.0.140-debug.apk
-            ${{ env.ROOT }}/out/SE-Android-v100.0.140-source.zip
+            ${{ env.ROOT }}/out/SE-Android-v100.0.141-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.141-source.zip
           if-no-files-found: error
           retention-days: 30
