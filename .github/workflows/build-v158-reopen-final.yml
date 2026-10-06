@@ -20,7 +20,7 @@ jobs:
       - name: Checkout V158 payloads
         uses: actions/checkout@v4
 
-      - name: Download V150 source
+      - name: Download verified V155 source artifact
         uses: actions/download-artifact@v4
         with:
           name: SEAndroid-v100.0.150-WVC
@@ -29,41 +29,35 @@ jobs:
           repository: ${{ github.repository }}
           run-id: 37530935752
 
-      - name: Reconstruct V158 source
+      - name: Reconstruct exact V158 source
         shell: bash
         run: |
           set -euo pipefail
           rm -rf /tmp/src
           mkdir -p /tmp/src
+
           SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.150-source.zip' -print -quit)
           test -n "$SRCZIP"
           unzip -q "$SRCZIP" -d /tmp/src
+
           ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
           test -n "$ROOT"
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
 
-          cp "$ROOT/app/src/main/res/values/themes.xml" /tmp/themes_v150.xml
+          cat build_payload/v155_to_v158.patch.gz.b64.00 \
+              build_payload/v155_to_v158.patch.gz.b64.01 \
+              build_payload/v155_to_v158.patch.gz.b64.02 \
+              build_payload/v155_to_v158.patch.gz.b64.03 \
+              build_payload/v155_to_v158.patch.gz.b64.04 > /tmp/v155_to_v158.patch.gz.b64
 
-          cat build_payload/v150_to_v155.patch.gz.b64.00 build_payload/v150_to_v155.patch.gz.b64.01 build_payload/v150_to_v155.patch.gz.b64.02 > /tmp/p.b64
-          base64 -d /tmp/p.b64 > /tmp/p.gz
-          gzip -t /tmp/p.gz
-          gzip -dc /tmp/p.gz > /tmp/p.patch
+          base64 -d /tmp/v155_to_v158.patch.gz.b64 > /tmp/v155_to_v158.patch.gz
+          gzip -t /tmp/v155_to_v158.patch.gz
+          gzip -dc /tmp/v155_to_v158.patch.gz > /tmp/v155_to_v158.patch
 
           cd "$ROOT"
-          patch -p1 --forward --batch < /tmp/p.patch
-          cp /tmp/themes_v150.xml app/src/main/res/values/themes.xml
+          patch -p3 --forward --batch < /tmp/v155_to_v158.patch
 
-          cp "$GITHUB_WORKSPACE/build_payload/apply_v158_part1.py" "$ROOT/apply_v158_part1.py"
-          cp "$GITHUB_WORKSPACE/build_payload/apply_v158_part2.py" "$ROOT/apply_v158_part2.py"
-          python3 apply_v158_part1.py
-          python3 apply_v158_part2.py
-          rm -f apply_v158_part1.py apply_v158_part2.py
-
-          perl -0pi -e 's/versionCode\s+\d+/versionCode 1000158/' app/build.gradle
-          perl -0pi -e 's/versionName\s+"[^"]+"/versionName "100.0.158"/' app/build.gradle
-          printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.158"' "include ':app'" > settings.gradle
-
-      - name: Verify V158 source
+      - name: Verify exact V158 source
         working-directory: ${{ env.ROOT }}
         shell: bash
         run: |
@@ -72,14 +66,29 @@ jobs:
           test -f app/build.gradle
           grep -q 'versionCode 1000158' app/build.gradle
           grep -q 'versionName "100.0.158"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.158' settings.gradle
+
           grep -q 'configurePlayerEdgeToEdge' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           grep -q 'RESIZE_MODE_ZOOM' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'setColor(Color.BLACK)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+
           grep -q 'ACTION_PICK_ACTIVITY' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'externalPlayerPicker' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+
           grep -q 'MANAGE_EXTERNAL_STORAGE' app/src/main/AndroidManifest.xml
+          grep -q 'requestLegacyExternalStorage' app/src/main/AndroidManifest.xml
           grep -q 'SE IPTV PLAYER' app/src/main/java/com/orbital/iptv/utils/PublicMediaStorage.kt
+          grep -q 'DOWNLOADS' app/src/main/java/com/orbital/iptv/utils/PublicMediaStorage.kt
+          grep -q 'RECORDS' app/src/main/java/com/orbital/iptv/utils/PublicMediaStorage.kt
+
+          grep -q 'FileProvider' app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt
+          grep -q 'SE IPTV PLAYER/' app/src/main/res/xml/provider_paths.xml
+
+          test -f app/src/main/java/com/orbital/iptv/recording/RecordingPublicStorage.kt
           test -f app/src/main/java/com/orbital/iptv/recording/RecordingRepository.kt
           test -f app/src/main/java/com/orbital/iptv/recording/RecordingService.kt
-          test -f app/src/main/res/xml/provider_paths.xml
+          test -f app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt
 
       - name: Java 17
         uses: actions/setup-java@v5
@@ -98,7 +107,7 @@ jobs:
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-      - name: Verify and package
+      - name: Verify APK
         working-directory: ${{ env.ROOT }}
         shell: bash
         run: |
@@ -106,18 +115,48 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           unzip -t "$APK" >/dev/null
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer -perm -111 2>/dev/null | head -n 1 || true)"
+          if [ -n "$APKANALYZER" ]; then
+            test "$("$APKANALYZER" manifest version-name "$APK")" = "100.0.158"
+            test "$("$APKANALYZER" manifest version-code "$APK")" = "1000158"
+            echo "applicationId=$("$APKANALYZER" manifest application-id "$APK")"
+          else
+            AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -perm -111 2>/dev/null | sort -V | tail -n 1 || true)"
+            test -n "$AAPT"
+            "$AAPT" dump badging "$APK" | grep -q "versionName='100.0.158'"
+            "$AAPT" dump badging "$APK" | grep -q "versionCode='1000158'"
+          fi
+          sha256sum "$APK"
+          ls -lh "$APK"
+
+      - name: Package APK and exact source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
           rm -rf out source-export
           mkdir -p out source-export
-          cp "$APK" out/SE-Android-v100.0.158-debug.apk
-          rsync -a ./ source-export/ --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-export' --exclude='build_payload' --exclude='.github'
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.158-debug.apk
+
+          rsync -a ./ source-export/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-export' \
+            --exclude='build_payload' \
+            --exclude='.github'
+
           (cd source-export && zip -qr ../out/SE-Android-v100.0.158-source.zip .)
           unzip -t out/SE-Android-v100.0.158-source.zip >/dev/null
           sha256sum out/SE-Android-v100.0.158-debug.apk out/SE-Android-v100.0.158-source.zip
+          ls -lh out/
 
       - name: Upload final V158 files
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid-v100.0.158-FINAL-REOPEN
+          name: SEAndroid-v100.0.158-FINAL
           path: |
             ${{ env.ROOT }}/out/SE-Android-v100.0.158-debug.apk
             ${{ env.ROOT }}/out/SE-Android-v100.0.158-source.zip
