@@ -1,0 +1,79 @@
+name: SEAndroid V100.0.158 GitHub Build
+
+on:
+  push:
+    branches:
+      - v100.0.158-github-build
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout V158 source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Verify V158 source
+        run: |
+          set -euo pipefail
+          test -f gradlew
+          test -f app/build.gradle
+          grep -q 'versionCode 1000158' app/build.gradle
+          grep -q 'versionName "100.0.158"' app/build.gradle
+          grep -q 'rootProject.name = "SEAndroid_v100.0.158"' settings.gradle
+          grep -q 'PLAYER_SCALE_EDGE_TO_EDGE_V100_0_158' PLAYER_SCALE_EDGE_TO_EDGE_V100_0_158_AUDIT.md
+          grep -q 'DownloadsActivity' SE_BUILD_MANIFEST.txt
+          grep -q 'RecordingsActivity' SE_BUILD_MANIFEST.txt
+
+      - name: Build debug APK
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          if command -v aapt2 >/dev/null 2>&1; then
+            aapt2 dump packagename "$APK" >/dev/null
+          elif command -v aapt >/dev/null 2>&1; then
+            aapt dump badging "$APK" | grep -q 'versionName=\x27100.0.158\x27'
+          fi
+
+      - name: Package outputs
+        run: |
+          set -euo pipefail
+          rm -rf out source-package
+          mkdir -p out source-package
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.158-debug.apk
+          rsync -a ./ source-package/             --exclude='.git'             --exclude='.gradle'             --exclude='.idea'             --exclude='app/build'             --exclude='out'             --exclude='source-package'             --exclude='.github'
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.158-source.zip .)
+          unzip -t out/SE-Android-v100.0.158-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.158-debug.apk out/SE-Android-v100.0.158-source.zip
+          ls -lh out/*
+
+      - name: Upload V158 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.158
+          path: |
+            out/SE-Android-v100.0.158-debug.apk
+            out/SE-Android-v100.0.158-source.zip
+          if-no-files-found: error
+          retention-days: 30
