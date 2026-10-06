@@ -1,0 +1,252 @@
+diff --git a/CAST_BLACK_DIALOG_V100_0_150_AUDIT.md b/CAST_BLACK_DIALOG_V100_0_150_AUDIT.md
+new file mode 100644
+index 0000000..efc823e
+--- /dev/null
++++ b/CAST_BLACK_DIALOG_V100_0_150_AUDIT.md
+@@ -0,0 +1,13 @@
++# CAST BLACK DIALOG — V100.0.150
++
++Change is source-only. No APK/Gradle/GitHub build was run.
++
++## Change
++The app-wide `Theme.SE` now supplies `mediaRouteTheme` pointing to `Theme.SE.MediaRouter`.
++The custom MediaRouter theme forces a black dialog/window background and white text, and increases
++primary cast-route text to 16sp. Header/body text appearances are also overridden for consistency.
++
++This applies to the standard AndroidX MediaRouter chooser used by the Google Cast `MediaRouteButton`
++flow in PlayerActivity (Movies, Series episodes, Live) and TvModeActivity (Live).
++
++Google Cast routing/discovery logic is unchanged.
+diff --git a/CAST_BLACK_DIALOG_V100_0_151_AUDIT.md b/CAST_BLACK_DIALOG_V100_0_151_AUDIT.md
+new file mode 100644
+index 0000000..c235551
+--- /dev/null
++++ b/CAST_BLACK_DIALOG_V100_0_151_AUDIT.md
+@@ -0,0 +1,25 @@
++# CAST BLACK DIALOG — V100.0.151
++
++Source-only verification after the requested version increment.
++
++## Verified change 1 — Cast chooser appearance
++- `Theme.SE` points `mediaRouteTheme` to `Theme.SE.MediaRouter`.
++- `Theme.SE.MediaRouter` uses a black window/background (`#000000`) and white text.
++- Primary route text is `16sp`; secondary/header/body text is also explicitly styled.
++- `MediaRouteButton` is used by `PlayerActivity` for Movies and Series playback and by `TvModeActivity` for Live.
++- Google Cast routing/discovery code was not changed by this visual update.
++
++## Verified change 2 — Series player selection
++- `btnPlayerForSeries` opens a selection dialog and does not start playback.
++- `SE PLAYER` saves the choice for the current series.
++- `OPEN WITH` enumerates installed external video players, saves the selected package for the current series, and does not start playback.
++- Episode Play uses the saved series-specific player; the selected external package is launched explicitly.
++- The preference key is scoped by active profile + series ID.
++- The series player-selection dialogs use the black `Theme.SE.SeriesPlayerDialog`.
++
++## Version
++- `versionCode`: `1000151`
++- `versionName`: `100.0.151`
++- `settings.gradle` root project name: `SEAndroid_v100.0.151`
++
++No APK/Gradle/GitHub build was run.
+diff --git a/DOWNLOAD_PLAY_WITH_CHOOSER_V100_0_154_AUDIT.md b/DOWNLOAD_PLAY_WITH_CHOOSER_V100_0_154_AUDIT.md
+new file mode 100644
+index 0000000..3f83917
+--- /dev/null
++++ b/DOWNLOAD_PLAY_WITH_CHOOSER_V100_0_154_AUDIT.md
+@@ -0,0 +1,22 @@
++# V100.0.154 — Downloads PLAY chooser audit
++
++- Base: V100.0.153
++- Version: 100.0.154 / 100.0.154
++- No Gradle/GitHub build performed.
++
++## Requested behavior
++Downloads > PLAY now opens a black `PLAY WITH` dialog with:
++1. SE PLAYER — opens the downloaded URI in the internal SE player.
++2. OPEN WITH — opens the Android system video-player chooser so the user can select any installed compatible player.
++
++## Safety / URI handling
++- PLAY remains disabled unless the download is COMPLETED and the URI is available.
++- External player intent carries `FLAG_GRANT_READ_URI_PERMISSION`, allowing compatible apps to read MediaStore/content URIs.
++- MIME type is inferred from the downloaded filename through `PublicMediaStorage.mimeForName()`.
++
++## Static checks
++- `versionCode 1000154` present.
++- `versionName "100.0.154"` present.
++- `playDownloadedFile()` contains both `SE PLAYER` and `OPEN WITH` branches.
++- External branch uses `Intent.ACTION_VIEW`, `video/*`-compatible MIME, and `Intent.createChooser`.
++- No build executed.
+diff --git a/RECORD_PLAY_CHOOSER_V100_0_155_AUDIT.md b/RECORD_PLAY_CHOOSER_V100_0_155_AUDIT.md
+new file mode 100644
+index 0000000..67f5165
+--- /dev/null
++++ b/RECORD_PLAY_CHOOSER_V100_0_155_AUDIT.md
+@@ -0,0 +1,15 @@
++# V100.0.155 — Recordings Play Chooser Audit
++
++Requested change: the PLAY button in Records/Recordings must show a choice between SE PLAYER and OPEN WITH, matching Downloads behavior.
++
++## Changes
++- RecordingsActivity.playRecording() now opens a black PLAY WITH dialog.
++- SE PLAYER launches the local recording through PlayerLauncher using the internal GENC_MEDIA3 player.
++- OPEN WITH launches Android's external video-player chooser with the recording content URI and read grant.
++- Recording MIME type is inferred using PublicMediaStorage.mimeForName().
++- CANCEL leaves playback untouched.
++- Existing recording availability checks remain in place.
++- Version bumped from 100.0.154 to 100.0.155.
++
++## Build status
++No Gradle/GitHub build was run. Static source inspection only.
+diff --git a/STORAGE_DOWNLOAD_PLAY_V100_0_153_AUDIT.md b/STORAGE_DOWNLOAD_PLAY_V100_0_153_AUDIT.md
+new file mode 100644
+index 0000000..9cd07b2
+--- /dev/null
++++ b/STORAGE_DOWNLOAD_PLAY_V100_0_153_AUDIT.md
+@@ -0,0 +1,21 @@
++# V100.0.153 — Downloads PLAY button audit
++
++## Requested change
++Add a button named `PLAY` to each Downloads item.
++
++## Implemented
++- Version incremented from 100.0.152 to 100.0.153.
++- Added `btn_play` to `item_download.xml` in the existing Downloads action row.
++- PLAY is enabled only when the item is `COMPLETED` and its stored URI is currently readable.
++- PLAY launches the existing SE Player through `PlayerLauncher` with `PlayerType.GENC_MEDIA3`, so it does not depend on any external player selection.
++- The stored local URI is passed unchanged to `PlayerActivity`.
++- Added local URI-aware Media3 data source selection: `content://`, `file://`, and resource-style local schemes use `DefaultDataSource.Factory`; normal IPTV HTTP/HTTPS sources continue to use the existing `DefaultHttpDataSource` path.
++- No APK/Gradle/GitHub build was run.
++
++## Verification
++- `versionCode` = 1000153.
++- `versionName` = 100.0.153.
++- `btn_play` exists in the layout and binding references compile to `btnPlay` by Android View Binding conventions.
++- Downloads adapter binds enabled state and click action.
++- PlayerLauncher receives `playerTypeOverride = PlayerType.GENC_MEDIA3`.
++- PlayerActivity's Genç playback path now selects a local-capable data source for local URIs.
+diff --git a/STORAGE_FILE_LOCATION_FIX_V100_0_152_AUDIT.md b/STORAGE_FILE_LOCATION_FIX_V100_0_152_AUDIT.md
+new file mode 100644
+index 0000000..67d3484
+--- /dev/null
++++ b/STORAGE_FILE_LOCATION_FIX_V100_0_152_AUDIT.md
+@@ -0,0 +1,36 @@
++# Storage / File Location Fix — V100.0.152
++
++## Root cause found
++- Downloads default destination used app-specific external storage:
++  `getExternalFilesDir(DIRECTORY_DOWNLOADS)/SE IPTV PLAYER`
++- Recordings used app-specific external storage:
++  `getExternalFilesDirs(null)/SE IPTV PLAYER/Recordings`
++- Android 11+ restricts ACTION_OPEN_DOCUMENT_TREE from accessing Android/data and its subdirectories, so opening the app-specific folder through DocumentsUI can land in an empty/unusable location.
++
++## New default destinations on Android 10+
++- Downloads: `Download/SE IPTV PLAYER/` via `MediaStore.Downloads` + `RELATIVE_PATH`
++- Recordings: `Movies/SE IPTV PLAYER/Recordings/` via `MediaStore.Video` + `RELATIVE_PATH`
++- `IS_PENDING=1` is used while a new MediaStore file is being written, then published with `IS_PENDING=0` on completion.
++
++## Legacy migration
++- Completed legacy Downloads in the app-specific directory are migrated to MediaStore on opening Downloads.
++- Completed legacy Recordings in the app-specific directory are migrated to MediaStore on opening Records and also when a new recording completes.
++- If migration fails, the original file path is kept so the file is not lost.
++
++## File operations
++- Open File Location uses the public shared folder tree for MediaStore files.
++- Copy/Move from MediaStore sources uses stream-copy fallback, avoiding provider-specific DocumentsContract copy/move behavior.
++- Move deletes the MediaStore source after a successful copy.
++- SAF-selected files/folders keep their existing tree-URI handling.
++
++## Version
++- versionCode: 1000152
++- versionName: 100.0.152
++
++## Build
++- No Gradle build was run.
++- No GitHub build was run.
++
++## Open File Location UX
++- First attempts `ACTION_VIEW` on a `Document.MIME_TYPE_DIR` URI for the exact shared folder.
++- Falls back to `ACTION_OPEN_DOCUMENT_TREE` with `EXTRA_INITIAL_URI` when the device's file manager does not expose direct folder viewing.
+diff --git a/app/build.gradle b/app/build.gradle
+index ca02e2c..417b0c0 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -17,8 +17,8 @@ android {
+         applicationId "com.se.iptv.player"
+         minSdk 23
+         targetSdk 34
+-        versionCode 1000150
+-        versionName "100.0.150"
++        versionCode 1000155
++        versionName "100.0.155"
+ 
+         ndk {
+             abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 660b1e8..4559f8b 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -13,6 +13,13 @@
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+ 
++    <queries>
++        <intent>
++            <action android:name="android.intent.action.VIEW" />
++            <data android:mimeType="video/*" />
++        </intent>
++    </queries>
++
+     <uses-feature android:name="android.software.leanback" android:required="false" />
+     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+ 
+
+diff --git a/app/src/main/java/com/orbital/iptv/recording/RecordingDao.kt b/app/src/main/java/com/orbital/iptv/recording/RecordingDao.kt
+index 3972cb0..c64ced2 100644
+--- a/app/src/main/java/com/orbital/iptv/recording/RecordingDao.kt
++++ b/app/src/main/java/com/orbital/iptv/recording/RecordingDao.kt
+@@ -15,6 +15,9 @@ interface RecordingDao {
+     @Query("SELECT * FROM recordings WHERE id = :id")
+     suspend fun byId(id: Int): RecordingEntity?
+ 
++    @Query("SELECT * FROM recordings ORDER BY scheduledStart DESC")
++    suspend fun allSync(): List<RecordingEntity>
++
+     @Query("UPDATE recordings SET status = :status WHERE id = :id")
+     suspend fun updateStatus(id: Int, status: RecordingStatus)
+ 
+
+diff --git a/app/src/main/java/com/orbital/iptv/recording/RecordingFileOperations.kt b/app/src/main/java/com/orbital/iptv/recording/RecordingFileOperations.kt
+index 3aa38c2..9102799 100644
+--- a/app/src/main/java/com/orbital/iptv/recording/RecordingFileOperations.kt
++++ b/app/src/main/java/com/orbital/iptv/recording/RecordingFileOperations.kt
+@@ -4,6 +4,7 @@ import android.content.Context
+ import android.net.Uri
+ import android.os.Build
+ import android.provider.DocumentsContract
++import com.orbital.iptv.utils.PublicMediaStorage
+ import java.io.File
+ import java.io.FileInputStream
+ import java.io.IOException
+@@ -39,7 +40,7 @@ object RecordingFileOperations {
+         val sourceUri = sourceUri(record)
+         val name = uniqueName(context, targetParent, displayName(context, record))
+ 
+-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && sourceUri != null) {
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && sourceUri != null && !PublicMediaStorage.isMediaStoreUri(sourceUri)) {
+             val copied = runCatching {
+                 DocumentsContract.copyDocument(context.contentResolver, sourceUri, targetParent)
+             }.getOrNull()
+@@ -54,7 +55,7 @@ object RecordingFileOperations {
+         val sourceParent = sourceUri?.let { parentTreeUri(context, it) }
+         val name = uniqueName(context, targetParent, displayName(context, record))
+ 
+-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && sourceUri != null && sourceParent != null) {
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && sourceUri != null && sourceParent != null && !PublicMediaStorage.isMediaStoreUri(sourceUri)) {
+             val moved = runCatching {
+                 DocumentsContract.moveDocument(
+                     context.contentResolver,
+@@ -74,7 +75,8 @@ object RecordingFileOperations {
+     fun deleteSource(context: Context, record: RecordingEntity) {
+         val uri = sourceUri(record)
+         if (uri != null) {
+-            if (!DocumentsContract.deleteDocument(context.contentResolver, uri)) {
