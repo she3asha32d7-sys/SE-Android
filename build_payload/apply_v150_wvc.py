@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 ROOT = Path(__file__).resolve().parent
 
@@ -180,8 +181,9 @@ import base64
 import gzip
 import subprocess
 
+payload_root = Path(os.environ.get("GITHUB_WORKSPACE", Path.cwd()))
 patch_b64 = "".join(
-    (ROOT / "build_payload" / name).read_text(encoding="utf-8").strip()
+    (payload_root / "build_payload" / name).read_text(encoding="utf-8").strip()
     for name in (
         "v150_to_v155.patch.gz.b64.00",
         "v150_to_v155.patch.gz.b64.01",
