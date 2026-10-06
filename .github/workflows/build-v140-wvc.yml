@@ -47,7 +47,16 @@ jobs:
           patch -p1 --forward --batch < /tmp/v137_to_v138.diff
 
           cp "${GITHUB_WORKSPACE}/build_payload/v138_to_v139_dlna.patch.xz.b64" /tmp/v138_to_v139.b64
-          base64 -d /tmp/v138_to_v139.b64 > /tmp/v138_to_v139.xz
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          p = Path("/tmp/v138_to_v139.b64")
+          raw = "".join(p.read_text(encoding="utf-8").split()).rstrip("=")
+          raw += "=" * ((4 - (len(raw) % 4)) % 4)
+          data = base64.b64decode(raw, validate=True)
+          Path("/tmp/v138_to_v139.xz").write_bytes(data)
+          print("Normalized V138->V139 patch base64:", len(raw), "chars;", len(data), "bytes")
+          PY
           xz -t /tmp/v138_to_v139.xz
           xz -dc /tmp/v138_to_v139.xz > /tmp/v138_to_v139.diff
           patch -p1 --forward --batch < /tmp/v138_to_v139.diff
