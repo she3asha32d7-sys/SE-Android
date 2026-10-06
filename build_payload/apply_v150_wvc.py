@@ -79,9 +79,10 @@ new = '''    private fun showCastChooser() {
                 )
             }
         } catch (e: Exception) {
+            val detail = e.message ?: "UNKNOWN ERROR"
             Toast.makeText(
                 this,
-                "WEB VIDEO CASTER FAILED: \${e.message ?: "UNKNOWN ERROR"}",
+                "WEB VIDEO CASTER FAILED: $detail",
                 Toast.LENGTH_LONG
             ).show()
         }
