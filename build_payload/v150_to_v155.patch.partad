@@ -1,0 +1,197 @@
+         val source = GencMediaPlayer.buildMediaSource(
+             streamUrl,
+-            GencMediaPlayer.buildDataSourceFactory(),
++            GencMediaPlayer.buildDataSourceFactoryFor(this, streamUrl),
+             forceProgressive = false,
+         )
+         localPlayer.stop()
+@@ -2853,7 +2853,7 @@ class PlayerActivity : AppCompatActivity {
+ 
+         if (gencFallbackUrl != streamUrl) resetGencFallback()
+ 
+-        val dataSourceFactory = GencMediaPlayer.buildDataSourceFactory()
++        val dataSourceFactory = GencMediaPlayer.buildDataSourceFactoryFor(this, streamUrl)
+         when (gencFallbackStage) {
+             0 -> {
+                 // Stage 1: force ProgressiveMediaSource against the exact same URL.
+diff --git a/app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt b/app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+index 8b0ab8b..8ea76c9 100644
+--- a/app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
++++ b/app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+@@ -1,6 +1,7 @@
+ package com.orbital.iptv.ui.series
+ 
+ import android.content.Intent
++import android.content.pm.PackageManager
+ import android.graphics.Typeface
+ import android.os.Bundle
+ import android.view.Gravity
+@@ -21,6 +22,8 @@ import com.orbital.iptv.databinding.ActivitySeriesDetailBinding
+ import com.orbital.iptv.utils.FavouritesManager
+ import com.orbital.iptv.utils.DownloadStore
+ import com.orbital.iptv.utils.PlayerLauncher
++import com.orbital.iptv.utils.PlayerType
++import com.orbital.iptv.utils.SeriesPlayerPreference
+ import com.orbital.iptv.utils.PrefsManager
+ import com.orbital.iptv.utils.PosterCache
+ import com.orbital.iptv.utils.SubtitlePicker
+@@ -107,19 +110,7 @@ class SeriesDetailActivity : AppCompatActivity() {
+             binding.posterLoading.visibility = View.GONE
+         }
+ 
+-        binding.btnPlayerForSeries.setOnClickListener {
+-            val ep = allEpisodes[selectedSeason]?.firstOrNull()
+-            if (ep == null) { Toast.makeText(this,"SELECT AN EPISODE",Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+-            val url = repository.buildSeriesEpisodeUrl(serverUrl, username, password, ep.id, ep.containerExtension ?: "mp4")
+-            AlertDialog.Builder(this, ThemeManager.dialogStyle())
+-                .setTitle("PLAYER FOR THIS SERIES")
+-                .setItems(arrayOf("SE PLAYER", "OPEN WITH")) { _, which ->
+-                    if (which == 0) onPlayEpisode(ep) else {
+-                        try { startActivity(Intent(Intent.ACTION_VIEW).apply { setDataAndType(android.net.Uri.parse(url), "video/*"); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }) }
+-                        catch (_: Exception) { Toast.makeText(this,"NO PLAYER FOUND",Toast.LENGTH_SHORT).show() }
+-                    }
+-                }.show()
+-        }
++        binding.btnPlayerForSeries.setOnClickListener { showSeriesPlayerChooser() }
+         com.orbital.iptv.utils.DownloadUi.bindButton(this, binding.btnDownload) {
+             val ep = allEpisodes[selectedSeason]?.firstOrNull()
+             ep?.let { repository.buildSeriesEpisodeUrl(serverUrl, username, password, it.id, it.containerExtension ?: "mp4") to episodeDisplayTitle(it) }
+@@ -128,6 +119,64 @@ class SeriesDetailActivity : AppCompatActivity() {
+         loadSeriesInfo(seriesId, seriesName)
+     }
+ 
++    private fun showSeriesPlayerChooser() {
++        val dialog = AlertDialog.Builder(this, R.style.Theme_SE_SeriesPlayerDialog)
++            .setTitle("PLAYER FOR THIS SERIES")
++            .setItems(arrayOf("SE PLAYER", "OPEN WITH")) { _, which ->
++                when (which) {
++                    0 -> {
++                        SeriesPlayerPreference.setSePlayer(this, seriesId)
++                        Toast.makeText(this, "SE PLAYER SET FOR THIS SERIES", Toast.LENGTH_SHORT).show()
++                    }
++                    1 -> showExternalSeriesPlayerChooser()
++                }
++            }
++            .setNegativeButton("CANCEL", null)
++            .create()
++        dialog.setOnShowListener {
++            dialog.listView?.post {
++                dialog.listView?.getChildAt(0)?.requestFocus()
++            }
++        }
++        dialog.show()
++    }
++
++    private fun showExternalSeriesPlayerChooser() {
++        val probe = Intent(Intent.ACTION_VIEW).apply {
++            setDataAndType(android.net.Uri.parse("https://example.com/video.mp4"), "video/*")
++        }
++        val activities = packageManager.queryIntentActivities(probe, PackageManager.MATCH_DEFAULT_ONLY)
++            .asSequence()
++            .filter { it.activityInfo?.packageName != packageName }
++            .distinctBy { it.activityInfo?.packageName }
++            .sortedBy { it.loadLabel(packageManager).toString().lowercase() }
++            .toList()
++
++        if (activities.isEmpty()) {
++            Toast.makeText(this, "NO EXTERNAL VIDEO PLAYER FOUND", Toast.LENGTH_LONG).show()
++            return
++        }
++
++        val labels = activities.map { it.loadLabel(packageManager).toString().ifBlank { it.activityInfo.packageName } }
++        val dialog = AlertDialog.Builder(this, R.style.Theme_SE_SeriesPlayerDialog)
++            .setTitle("OPEN WITH")
++            .setItems(labels.toTypedArray()) { _, which ->
++                val info = activities.getOrNull(which) ?: return@setItems
++                val chosenPackage = info.activityInfo.packageName
++                val chosenLabel = labels.getOrNull(which) ?: chosenPackage
++                SeriesPlayerPreference.setExternalPlayer(this, seriesId, chosenPackage, chosenLabel)
++                Toast.makeText(this, "$chosenLabel SET FOR THIS SERIES", Toast.LENGTH_SHORT).show()
++            }
++            .setNegativeButton("CANCEL", null)
++            .create()
++        dialog.setOnShowListener {
++            dialog.listView?.post {
++                dialog.listView?.getChildAt(0)?.requestFocus()
++            }
++        }
++        dialog.show()
++    }
++
+     private fun setupDetailBackButton() {
+         val button = binding.btnDetailBack
+         val p = ThemeManager.palette()
+@@ -467,7 +516,14 @@ class SeriesDetailActivity : AppCompatActivity {
+             nextEpSeason = nextSeasonKey,
+             nextEpId     = next?.id ?: "",
+             subtitlePath = subtitlePath,
+-            resumeMs     = resumeMs
++            resumeMs     = resumeMs,
++            playerTypeOverride = SeriesPlayerPreference.get(this, seriesId).let { selection ->
++                when (selection.choice) {
++                    SeriesPlayerPreference.Choice.SE_PLAYER -> PlayerType.GENC_MEDIA3
++                    SeriesPlayerPreference.Choice.EXTERNAL -> PlayerType.EXTERNAL
++                }
++            },
++            externalPlayerPackage = SeriesPlayerPreference.get(this, seriesId).packageName
+         )
+     }
+ 
+diff --git a/app/src/main/java/com/orbital/iptv/utils/DownloadFileOperations.kt b/app/src/main/java/com/orbital/iptv/utils/DownloadFileOperations.kt
+index 09bc27b..a1d48ab 100644
+--- a/app/src/main/java/com/orbital/iptv/utils/DownloadFileOperations.kt
++++ b/app/src/main/java/com/orbital/iptv/utils/DownloadFileOperations.kt
+@@ -43,6 +43,7 @@ object DownloadFileOperations {
+     fun parentTreeUri(uriString: String): Uri? {
+         if (uriString.isBlank()) return null
+         val uri = Uri.parse(uriString)
++        if (PublicMediaStorage.isMediaStoreUri(uri)) return PublicMediaStorage.downloadFolderTreeUri()
+         if (uri.scheme != "content") return null
+         return runCatching {
+             val isTree = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && DocumentsContract.isTreeUri(uri)
+@@ -67,7 +68,7 @@ object DownloadFileOperations {
+             ?: throw IOException("SOURCE FILE NOT FOUND")
+         val targetName = uniqueName(context, targetParent, info.name)
+ 
+-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && sourceUri.scheme == "content") {
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && sourceUri.scheme == "content" && !PublicMediaStorage.isMediaStoreUri(sourceUri)) {
+             val copied = runCatching {
+                 DocumentsContract.copyDocument(context.contentResolver, sourceUri, targetParent)
+             }.getOrNull()
+@@ -89,7 +90,7 @@ class DownloadFileOperations {
+             val sourceParent = parentTreeUri(source.uri)?.let {
+                 DocumentsContract.buildDocumentUriUsingTree(it, DocumentsContract.getTreeDocumentId(it))
+             }
+-            if (sourceParent != null && sourceParent.authority == targetParent.authority) {
++            if (sourceParent != null && sourceParent.authority == targetParent.authority && !PublicMediaStorage.isMediaStoreUri(sourceUri)) {
+                 val moved = runCatching {
+                     DocumentsContract.moveDocument(context.contentResolver, sourceUri, sourceParent, targetParent)
+                 }.getOrNull()
+diff --git a/app/src/main/java/com/orbital/iptv/utils/DownloadWorker.kt b/app/src/main/java/com/orbital/iptv/utils/DownloadWorker.kt
+index 4cc7b54..d119795 100644
+--- a/app/src/main/java/com/orbital/iptv/utils/DownloadWorker.kt
++++ b/app/src/main/java/com/orbital/iptv/utils/DownloadWorker.kt
+@@ -126,6 +126,9 @@ class DownloadWorker(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx: WorkerParameters) {
+ 
+             if (total <= 0L || downloaded >= total) {
+                 DownloadStore.updateProgress(app, id, downloaded, total, 0L)
++                if (currentUri.startsWith("content://media/")) {
++                    PublicMediaStorage.publishMediaStoreItem(app, Uri.parse(currentUri))
++                }
+                 DownloadStore.set(app, id, "COMPLETED", currentUri)
+                 return Result.success()
+             }
+@@ -154,8 +157,11 @@ class DownloadWorker(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx: WorkerParameters) {
+                 ?: throw IllegalStateException("Could not create download file")
+             return uri.toString()
+         }
+-        val dir = File(c.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "SE IPTV PLAYER").apply { mkdirs() }
+-        return Uri.fromFile(File(dir, name)).toString()
++        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
++            return (PublicMediaStorage.createDownloadDestination(c, name, PublicMediaStorage.mimeForName(name))
++                ?: throw IllegalStateException("Could not create shared download file")).toString()
++        }
++        return Uri.fromFile(PublicMediaStorage.createLegacyDownloadFile(c, name)).toString()
+     }
+
+     private fun existingLength(c: Context, uriString: String): Long = runCatching {
