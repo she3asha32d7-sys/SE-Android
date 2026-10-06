@@ -1,89 +1,164 @@
-name: Build SEAndroid v100.0.23
+name: Build SEAndroid V100.0.158 Final
 
 on:
-  push:
+  pull_request:
     branches:
-      - v100.0.23
+      - main
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     steps:
-      - name: Checkout
+      - name: Checkout V158 build payloads
         uses: actions/checkout@v4
 
-      - name: Restore missing base files from v100.0.17
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10834906043/zip" -o /tmp/v17.zip
-          mkdir -p /tmp/v17 /tmp/base
-          unzip -q /tmp/v17.zip -d /tmp/v17
-          SRC="$(find /tmp/v17 -type f -name 'SEAndroid_v100.0.17-source.zip' | head -1)"
-          test -n "${SRC}"
-          unzip -q "${SRC}" -d /tmp/base
-          rsync -a --ignore-existing /tmp/base/ ./
-          test -f gradlew
-          chmod +x gradlew
+      - name: Download V150 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.150-WVC
+          path: /tmp/base
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 37530935752
 
-      - name: Prepare v100.0.23
+      - name: Reconstruct V158 source
+        shell: bash
         run: |
-          set -e
-          perl -0pi -e 's/versionCode\s+\d+/versionCode 1000023/' app/build.gradle
-          perl -0pi -e 's/versionName\s+"[^"]+"/versionName "100.0.23"/' app/build.gradle
-          cat > settings.gradle <<'EOF'
-rootProject.name = "SEAndroid_v100.0.23"
-include ':app'
-EOF
-          sed -E -i 's/V100\.0\.[0-9]+/V100.0.23/g' app/src/main/res/layout/activity_settings.xml 2>/dev/null || true
-          rm -f app/src/main/res/drawable/se_logo_full.png app/src/main/res/drawable/se_launcher.png app/src/main/res/drawable/se_launcher_foreground.xml
-          cp build_payload/app_logo.webp app/src/main/res/drawable/app_logo.webp
-          cp build_payload/xtream_logo.webp app/src/main/res/drawable/xtream_logo.webp
-          grep -q 'versionCode 1000023' app/build.gradle
-          grep -q 'versionName "100.0.23"' app/build.gradle
-          grep -q 'SEAndroid_v100.0.23' settings.gradle
+          set -euo pipefail
+          rm -rf /tmp/src
+          mkdir -p /tmp/src
 
-      - name: Verify v22 features
+          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.150-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+          cat build_payload/v150_to_v155.patch.gz.b64.00 \
+              build_payload/v150_to_v155.patch.gz.b64.01 \
+              build_payload/v150_to_v155.patch.gz.b64.02 > /tmp/v150_to_v155.patch.gz.b64
+          base64 -d /tmp/v150_to_v155.patch.gz.b64 > /tmp/v150_to_v155.patch.gz
+          gzip -t /tmp/v150_to_v155.patch.gz
+          gzip -dc /tmp/v150_to_v155.patch.gz > /tmp/v150_to_v155.patch
+
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v150_to_v155.patch
+
+          cp "$GITHUB_WORKSPACE/build_payload/apply_v158_part1.py" "$ROOT/apply_v158_part1.py"
+          cp "$GITHUB_WORKSPACE/build_payload/apply_v158_part2.py" "$ROOT/apply_v158_part2.py"
+          python3 "$ROOT/apply_v158_part1.py"
+          python3 "$ROOT/apply_v158_part2.py"
+          rm -f "$ROOT/apply_v158_part1.py" "$ROOT/apply_v158_part2.py"
+
+          perl -0pi -e 's/versionCode\s+\d+/versionCode 1000158/' app/build.gradle
+          perl -0pi -e 's/versionName\s+"[^"]+"/versionName "100.0.158"/' app/build.gradle
+          printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.158"' "include ':app'" > settings.gradle
+
+      - name: Verify V158 source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
         run: |
-          set -e
-          grep -q 'PopupWindow' app/src/main/java/com/orbital/iptv/utils/SEKeyboardController.kt
-          grep -q 'android.widget.ScrollView' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
-          grep -q 'R.layout.item_vod_movie' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
-          grep -q 'R.layout.item_series_show' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
-          grep -q 'heartView.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt
-          grep -q 'heartView.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt
-          grep -q 'heartView.setOnClickListener' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
+          set -euo pipefail
+          grep -q 'versionCode 1000158' app/build.gradle
+          grep -q 'versionName "100.0.158"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.158' settings.gradle
+
+          grep -q 'configurePlayerEdgeToEdge' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'RESIZE_MODE_ZOOM' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'setColor(Color.BLACK)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+
+          grep -q 'ACTION_PICK_ACTIVITY' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'externalPlayerPicker' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+
+          grep -q 'MANAGE_EXTERNAL_STORAGE' app/src/main/AndroidManifest.xml
+          grep -q 'requestLegacyExternalStorage' app/src/main/AndroidManifest.xml
+          grep -q 'SE IPTV PLAYER' app/src/main/java/com/orbital/iptv/utils/PublicMediaStorage.kt
+          grep -q 'DOWNLOADS' app/src/main/java/com/orbital/iptv/utils/PublicMediaStorage.kt
+          grep -q 'RECORDS' app/src/main/java/com/orbital/iptv/utils/PublicMediaStorage.kt
+
+          grep -q 'FileProvider' app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt
+          grep -q 'SE IPTV PLAYER/' app/src/main/res/xml/provider_paths.xml
+
+          test -f app/src/main/java/com/orbital/iptv/recording/RecordingPublicStorage.kt
+          test -f app/src/main/java/com/orbital/iptv/recording/RecordingRepository.kt
+          test -f app/src/main/java/com/orbital/iptv/recording/RecordingService.kt
+          test -f app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt
 
       - name: Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v6
+
       - name: Build APK
-        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
-
-      - name: Package outputs
+        working-directory: ${{ env.ROOT }}
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer -perm -111 2>/dev/null | head -n 1 || true)"
+          if [ -n "$APKANALYZER" ]; then
+            test "$("$APKANALYZER" manifest version-name "$APK")" = "100.0.158"
+            test "$("$APKANALYZER" manifest version-code "$APK")" = "1000158"
+          else
+            AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -perm -111 2>/dev/null | sort -V | tail -n 1 || true)"
+            test -n "$AAPT"
+            "$AAPT" dump badging "$APK" | grep -q "versionName='100.0.158'"
+            "$AAPT" dump badging "$APK" | grep -q "versionCode='1000158'"
+          fi
+
+      - name: Package APK and source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf out source-export
           mkdir -p out source-export
-          cp app/build/outputs/apk/debug/app-debug.apk out/SEAndroid_v100.0.23.apk
-          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-export' --exclude='build_payload' ./ source-export/
-          (cd source-export && zip -qr ../out/SEAndroid_v100.0.23-source.zip .)
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.158-debug.apk
+          rsync -a ./ source-export/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-export' \
+            --exclude='build_payload' \
+            --exclude='.github'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.158-source.zip .)
+          unzip -t out/SE-Android-v100.0.158-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.158-debug.apk out/SE-Android-v100.0.158-source.zip
+          ls -lh out/
 
-      - name: Upload APK
+      - name: Upload final files
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid_v100.0.23-apk
-          path: out/SEAndroid_v100.0.23.apk
-          retention-days: 30
-
-      - name: Upload source
-        uses: actions/upload-artifact@v4
-        with:
-          name: SEAndroid_v100.0.23-source
-          path: out/SEAndroid_v100.0.23-source.zip
+          name: SEAndroid-v100.0.158-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.158-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.158-source.zip
+          if-no-files-found: error
           retention-days: 30
