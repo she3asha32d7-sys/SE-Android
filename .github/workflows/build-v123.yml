@@ -1,0 +1,256 @@
+name: SEAndroid v100.0.123 Build
+# Build source 122 -> 123 with verified metadata
+
+on:
+  push:
+    branches:
+      - v100.0.123
+  pull_request:
+    branches:
+      - v100.0.122
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout V122 build branch
+        uses: actions/checkout@v4
+
+      - name: Download successful V112 source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base /tmp/source
+          curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11060581322/zip" \
+            -o /tmp/v112-artifact.zip
+          unzip -q /tmp/v112-artifact.zip -d /tmp/base
+          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.112-source.zip' -print -quit)
+          test -n "${SRCZIP}"
+          unzip -q "${SRCZIP}" -d /tmp/source
+          ROOT=$(find /tmp/source -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "${ROOT}"
+          echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
+
+      - name: Reconstruct and validate V112 to V122 source patch
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v112_to_v122_parts
+          for p in partaa partab partac partad partae; do
+            curl -fL --retry 8 --retry-delay 2 --retry-all-errors \
+              "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/6cb452e0abe4c9595c3833ac241fa5456ab17b8a/build_payload/v112_to_v122_parts/${p}.b64" \
+              -o "/tmp/v112_to_v122_parts/${p}.b64"
+          done
+
+          cat \
+            /tmp/v112_to_v122_parts/partaa.b64 \
+            /tmp/v112_to_v122_parts/partab.b64 \
+            /tmp/v112_to_v122_parts/partac.b64 \
+            /tmp/v112_to_v122_parts/partad.b64 \
+            /tmp/v112_to_v122_parts/partae.b64 \
+            | tr -d '\r\n' > /tmp/v112_to_v122.patch.xz.b64
+
+          test "$(wc -c < /tmp/v112_to_v122.patch.xz.b64)" -eq 23880
+          echo "a00ec9b1b48aff18018cf92252f60ba1cf141bf20d4c8ca0b46291ba6ce993de  /tmp/v112_to_v122.patch.xz.b64" | sha256sum -c -
+          base64 -d /tmp/v112_to_v122.patch.xz.b64 > /tmp/v112_to_v122.patch.xz
+          xz -t /tmp/v112_to_v122.patch.xz
+          echo "b60a0db9c99e47daa10838e85390e070c727c5bd9345d6eabfc1484e39995454  /tmp/v112_to_v122.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v112_to_v122.patch.xz > /tmp/v112_to_v122.patch
+          cd "${ROOT}"
+          patch -p1 --dry-run --forward < /tmp/v112_to_v122.patch
+          patch -p1 --forward < /tmp/v112_to_v122.patch
+
+      - name: Verify reconstructed V122 source
+        run: |
+          set -euo pipefail
+          cd "${ROOT}"
+          grep -q 'versionCode 1000122' app/build.gradle
+          grep -q 'versionName "100.0.122"' app/build.gradle
+          test -s settings.gradle
+          test -s app/src/main/AndroidManifest.xml
+
+      - name: Bump reconstructed V122 source to V123
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+
+          root = Path(os.environ["ROOT"])
+
+          gradle = root / "app/build.gradle"
+          s = gradle.read_text(encoding="utf-8")
+          s2 = re.sub(r'(?m)^(\s*versionCode\s+)\d+', r'\g<1>1000123', s)
+          s2 = re.sub(r'(?m)^(\s*versionName\s+)"[^"]+"', r'\g<1>"100.0.123"', s2)
+          if s2 == s:
+              raise SystemExit("Could not locate versionCode/versionName in app/build.gradle")
+          gradle.write_text(s2, encoding="utf-8")
+
+          settings = root / "settings.gradle"
+          t = settings.read_text(encoding="utf-8")
+          t = t.replace("100.0.122", "100.0.123")
+          t = t.replace("1000122", "1000123")
+          t = t.replace("V100.0.122", "V100.0.123")
+          if "rootProject.name" in t:
+              t = re.sub(r'(?m)^\\s*rootProject\\.name\\s*=\\s*["\\\'][^"\\\']+["\\\']\\s*
+          PY
+
+          echo "---- app/build.gradle version ----"
+          grep -nE 'versionCode|versionName' "${ROOT}/app/build.gradle"
+          echo "---- settings.gradle project name ----"
+          grep -nE 'rootProject.name|100\.0\.(122|123)' "${ROOT}/settings.gradle" || true
+          echo "---- settings.xml version ----"
+          grep -nE 'V100\.0\.(122|123)|100\.0\.123' "${ROOT}/app/src/main/res/layout/activity_settings.xml" || true
+
+          grep -q 'versionCode 1000123' "${ROOT}/app/build.gradle"
+          grep -q 'versionName "100.0.123"' "${ROOT}/app/build.gradle"
+          grep -q '100.0.123' "${ROOT}/settings.gradle"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build V123 debug APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify built APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "${APK}"
+          unzip -t "${APK}" >/dev/null
+          ls -lh "${APK}"
+
+      - name: Package GitHub-built APK and matching source
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          rm -rf out source-package
+          mkdir -p out source-package
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.123-debug.apk
+          rsync -a ./ source-package/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-package' \
+            --exclude='build_payload' \
+            --exclude='.github'
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.123-source.zip .)
+          unzip -t out/SE-Android-v100.0.122-source.zip >/dev/null
+          test -s out/SE-Android-v100.0.122-source.zip
+          ls -lh out/*
+
+      - name: Upload APK and source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.123
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.122-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.122-source.zip
+          if-no-files-found: error
+          retention-days: 30
+,
+                         'rootProject.name = "SEAndroid_v100.0.123"', t)
+          else:
+              t += '\\nrootProject.name = "SEAndroid_v100.0.123"\\n'
+          settings.write_text(t, encoding="utf-8")
+
+          for rel in (
+              "SE_BUILD_MANIFEST.txt",
+              "app/src/main/res/layout/activity_settings.xml",
+          ):
+              p = root / rel
+              if p.exists():
+                  t = p.read_text(encoding="utf-8")
+                  t = t.replace("100.0.122", "100.0.123")
+                  t = t.replace("1000122", "1000123")
+                  t = t.replace("V100.0.122", "V100.0.123")
+                  p.write_text(t, encoding="utf-8")
+          PY
+
+          echo "---- app/build.gradle version ----"
+          grep -nE 'versionCode|versionName' "${ROOT}/app/build.gradle"
+          echo "---- settings.gradle project name ----"
+          grep -nE 'rootProject.name|100\.0\.(122|123)' "${ROOT}/settings.gradle" || true
+          echo "---- settings.xml version ----"
+          grep -nE 'V100\.0\.(122|123)|100\.0\.123' "${ROOT}/app/src/main/res/layout/activity_settings.xml" || true
+
+          grep -q 'versionCode 1000123' "${ROOT}/app/build.gradle"
+          grep -q 'versionName "100.0.123"' "${ROOT}/app/build.gradle"
+          grep -q '100.0.123' "${ROOT}/settings.gradle"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build V123 debug APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify built APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "${APK}"
+          unzip -t "${APK}" >/dev/null
+          ls -lh "${APK}"
+
+      - name: Package GitHub-built APK and matching source
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          rm -rf out source-package
+          mkdir -p out source-package
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.123-debug.apk
+          rsync -a ./ source-package/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-package' \
+            --exclude='build_payload' \
+            --exclude='.github'
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.123-source.zip .)
+          unzip -t out/SE-Android-v100.0.122-source.zip >/dev/null
+          test -s out/SE-Android-v100.0.122-source.zip
+          ls -lh out/*
+
+      - name: Upload APK and source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.123
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.122-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.122-source.zip
+          if-no-files-found: error
+          retention-days: 30
