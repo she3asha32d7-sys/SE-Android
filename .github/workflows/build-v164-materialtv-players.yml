@@ -1,0 +1,174 @@
+name: SEAndroid V100.0.164 MaterialTV Player Build
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout V164 build recipe and MaterialTV v3.2 engine sources
+        uses: actions/checkout@v4
+
+      - name: Download verified V163 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.163-FINAL
+          path: /tmp/base
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 38023857774
+
+      - name: Reconstruct V164 source and import MaterialTV v3.2 engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src
+          mkdir -p /tmp/src
+
+          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.163-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+          cat build_payload/v163_to_v164.patch.gz.b64.00 > /tmp/v163_to_v164.patch.gz.b64
+          base64 -d /tmp/v163_to_v164.patch.gz.b64 > /tmp/v163_to_v164.patch.gz
+          gzip -t /tmp/v163_to_v164.patch.gz
+          gzip -dc /tmp/v163_to_v164.patch.gz > /tmp/v163_to_v164.patch
+
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v163_to_v164.patch
+
+          ENGINE_SRC="$GITHUB_WORKSPACE/build_payload/materialtv-engine-src"
+          ENGINE_DST="$ROOT/app/src/main/java/com/orbital/iptv/playerengine"
+          test -s "$ENGINE_SRC/PlayerEngine.kt"
+          test -s "$ENGINE_SRC/ExoPlayerEngine.kt"
+          test -s "$ENGINE_SRC/LibVlcEngine.kt"
+          test -s "$ENGINE_SRC/LibMpvEngine.kt"
+          test -s "$ENGINE_SRC/StringUtils.kt"
+          mkdir -p "$ENGINE_DST"
+          cp "$ENGINE_SRC/"*.kt "$ENGINE_DST/"
+
+      - name: Verify V164 source version and engine integration
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f gradlew
+          test -f app/build.gradle
+          grep -q 'versionCode 1000164' app/build.gradle
+          grep -q 'versionName "100.0.164"' app/build.gradle
+          grep -q 'org.videolan.android:libvlc-all:3.5.1' app/build.gradle
+          grep -q 'dev.jdtech.mpv:libmpv:1.0.0' app/build.gradle
+          grep -q 'enum class BuiltInPlayer { SE_PLAYER, EXOPLAYER, VLC_PLAYER, MPV_PLAYER }' app/src/main/java/com/orbital/iptv/utils/PrefsManager.kt
+          grep -q 'btn_genc_change_player' app/src/main/res/layout/layout_genc_player_overlay.xml
+          grep -q 'btnDefaultLivePlayer' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
+          grep -q 'PLAYER FOR THIS MOVIE' app/src/main/java/com/orbital/iptv/ui/vod/MovieDetailActivity.kt
+          grep -q 'PLAYER FOR THIS SERIES' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'class MaterialTvPlayerActivity' app/src/main/java/com/orbital/iptv/ui/player/MaterialTvPlayerActivity.kt
+          grep -q 'class ExoPlayerEngine' app/src/main/java/com/orbital/iptv/playerengine/ExoPlayerEngine.kt
+          grep -q 'class LibVlcEngine' app/src/main/java/com/orbital/iptv/playerengine/LibVlcEngine.kt
+          grep -q 'class LibMpvEngine' app/src/main/java/com/orbital/iptv/playerengine/LibMpvEngine.kt
+          grep -q 'versionName "100.0.164"' <(grep -E 'versionName ' app/build.gradle)
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android API 36 platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build V164 ABI APKs
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -printf '%f %s bytes\n' | sort
+
+      - name: Verify ARM64 APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*arm64-v8a*debug.apk' -print -quit)"
+          test -n "$APK"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer -perm -111 2>/dev/null | head -n 1 || true)"
+          if [ -n "$APKANALYZER" ]; then
+            test "$("$APKANALYZER" manifest version-name "$APK")" = "100.0.164"
+            test "$("$APKANALYZER" manifest version-code "$APK")" = "1000164"
+            echo "applicationId=$("$APKANALYZER" manifest application-id "$APK")"
+          else
+            AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -perm -111 2>/dev/null | sort -V | tail -n 1 || true)"
+            test -n "$AAPT"
+            "$AAPT" dump badging "$APK" | grep -q "versionName='100.0.164'"
+            "$AAPT" dump badging "$APK" | grep -q "versionCode='1000164'"
+          fi
+          sha256sum "$APK"
+          ls -lh "$APK"
+
+      - name: Package ARM64 APK and exact V164 source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf out source-export
+          mkdir -p out source-export
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*arm64-v8a*debug.apk' -print -quit)"
+          test -n "$APK"
+          cp "$APK" out/SE-Android-v100.0.164-arm64-v8a-debug.apk
+
+          rsync -a ./ source-export/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.kotlin' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-export' \
+            --exclude='build_payload' \
+            --exclude='.github'
+
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.164-source.zip .)
+          unzip -t out/SE-Android-v100.0.164-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.164-arm64-v8a-debug.apk out/SE-Android-v100.0.164-source.zip
+          ls -lh out/
+
+      - name: Upload final V164 files
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.164-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.164-arm64-v8a-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.164-source.zip
+          if-no-files-found: error
+          retention-days: 30
