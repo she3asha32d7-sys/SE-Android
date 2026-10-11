@@ -1,0 +1,238 @@
+name: SEAndroid v100.0.129 Build
+
+on:
+  push:
+    branches:
+      - v100.0.129-build
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct clean V123 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base /tmp/source
+          curl -fL --retry 10 --retry-delay 2 --retry-all-errors \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/11060581322/zip" \
+            -o /tmp/v112-artifact.zip
+          unzip -q /tmp/v112-artifact.zip -d /tmp/base
+          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.112-source.zip' -print -quit)
+          test -n "${SRCZIP}"
+          unzip -q "${SRCZIP}" -d /tmp/source
+          ROOT=$(find /tmp/source -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "${ROOT}"
+          echo "ROOT=${ROOT}" >> "${GITHUB_ENV}"
+
+      - name: Apply V112 to V122 reconstruction patch
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v112_to_v122_parts
+          for p in partaa partab partac partad partae; do
+            curl -fL --retry 8 --retry-delay 2 --retry-all-errors \
+              "https://raw.githubusercontent.com/she3asha32d7-sys/SE-Android/6cb452e0abe4c9595c3833ac241fa5456ab17b8a/build_payload/v112_to_v122_parts/${p}.b64" \
+              -o "/tmp/v112_to_v122_parts/${p}.b64"
+          done
+          cat /tmp/v112_to_v122_parts/partaa.b64 \
+              /tmp/v112_to_v122_parts/partab.b64 \
+              /tmp/v112_to_v122_parts/partac.b64 \
+              /tmp/v112_to_v122_parts/partad.b64 \
+              /tmp/v112_to_v122_parts/partae.b64 \
+            | tr -d '\r\n' > /tmp/v112_to_v122.patch.xz.b64
+          base64 -d /tmp/v112_to_v122.patch.xz.b64 > /tmp/v112_to_v122.patch.xz
+          xz -t /tmp/v112_to_v122.patch.xz
+          xz -dc /tmp/v112_to_v122.patch.xz > /tmp/v112_to_v122.patch
+          cd "${ROOT}"
+          patch -p1 --forward < /tmp/v112_to_v122.patch
+
+      - name: Set reconstructed source to V123
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          root = Path(os.environ["ROOT"])
+          p = root / "app/build.gradle"
+          s = p.read_text(encoding="utf-8")
+          s = re.sub(r'(?m)^\s*versionCode\s+\d+', '        versionCode 1000123', s)
+          s = re.sub(r'(?m)^\s*versionName\s+"[^"]+"', '        versionName "100.0.123"', s)
+          p.write_text(s, encoding="utf-8")
+          p = root / "settings.gradle"
+          t = p.read_text(encoding="utf-8")
+          t = re.sub(r'(?m)^\s*rootProject\.name\s*=\s*"[^"]+"', 'rootProject.name = "SEAndroid_v100.0.123"', t)
+          p.write_text(t, encoding="utf-8")
+          PY
+          grep -q 'versionCode 1000123' "${ROOT}/app/build.gradle"
+          grep -q 'versionName "100.0.123"' "${ROOT}/app/build.gradle"
+
+      - name: Apply V123 to V128 source patch
+        run: |
+          set -euo pipefail
+          base64 -d build_payload/v123_to_v128_build.patch.xz.b64 > /tmp/v123_to_v128.patch.xz
+          xz -t /tmp/v123_to_v128.patch.xz
+          xz -dc /tmp/v123_to_v128.patch.xz > /tmp/v123_to_v128.patch
+          cd "${ROOT}"
+          patch -p1 --forward < /tmp/v123_to_v128.patch
+
+      - name: Harden launcher logo resource graph
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/res/mipmap-anydpi app/src/main/res/mipmap-anydpi-v26
+          cat > app/src/main/res/mipmap-anydpi/ic_launcher.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+              android:src="@drawable/app_logo"
+              android:gravity="fill" />
+          EOF
+          cp app/src/main/res/mipmap-anydpi/ic_launcher.xml app/src/main/res/mipmap-anydpi/ic_launcher_round.xml
+          cp app/src/main/res/mipmap-anydpi/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          cp app/src/main/res/mipmap-anydpi/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          cat > app/src/main/res/drawable/tv_banner.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+              android:src="@drawable/app_logo"
+              android:gravity="fill" />
+          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/src/main/AndroidManifest.xml")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace('android:banner="@drawable/tv_banner"', 'android:banner="@drawable/tv_banner"')
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: Bump source to V129
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path(".")
+          p = root / "app/build.gradle"
+          s = p.read_text(encoding="utf-8")
+          s = re.sub(r'(?m)^\s*versionCode\s+\d+', '        versionCode 1000129', s)
+          s = re.sub(r'(?m)^\s*versionName\s+"[^"]+"', '        versionName "100.0.129"', s)
+          p.write_text(s, encoding="utf-8")
+
+          p = root / "settings.gradle"
+          s = p.read_text(encoding="utf-8")
+          s = re.sub(r'(?m)^\s*rootProject\.name\s*=\s*"[^"]+"', 'rootProject.name = "SEAndroid_v100.0.129"', s)
+          p.write_text(s, encoding="utf-8")
+
+          p = root / "app/src/main/res/layout/activity_settings.xml"
+          if p.exists():
+              s = p.read_text(encoding="utf-8").replace("100.0.128", "100.0.129").replace("100.0.127", "100.0.129").replace("100.0.126", "100.0.129").replace("100.0.125", "100.0.129").replace("100.0.124", "100.0.129").replace("100.0.123", "100.0.129")
+              p.write_text(s, encoding="utf-8")
+
+          p = root / "SE_BUILD_MANIFEST.txt"
+          if p.exists():
+              s = p.read_text(encoding="utf-8")
+              s = re.sub(r'(?m)^SE IPTV PLAYER — SEAndroid v\S+', 'SE IPTV PLAYER — SEAndroid v100.0.129', s)
+              s += "\nGitHub build V100.0.129 generated from V128 source changes.\n"
+              p.write_text(s, encoding="utf-8")
+          PY
+          grep -q 'versionCode 1000129' app/build.gradle
+          grep -q 'versionName "100.0.129"' app/build.gradle
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+
+      - name: Fix V128 compile issues
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          fixes = {
+              "app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt": ("            text = liveSearchQuery", "            text = liveSearchQuery"),
+              "app/src/main/java/com/orbital/iptv/ui/series/SeriesActivity.kt": ("            text = categorySearchQuery", "            text = categorySearchQuery"),
+              "app/src/main/java/com/orbital/iptv/ui/vod/VodActivity.kt": ("            text = categorySearchQuery", "            text = categorySearchQuery"),
+          }
+          # EditText.text is Editable on this compile toolchain; use setText for the
+          # three dynamic category/live search fields.
+          for rel in fixes:
+              p = Path(rel)
+              s = p.read_text(encoding="utf-8")
+              s = s.replace("            text = liveSearchQuery\n", "            setText(liveSearchQuery)\n")
+              s = s.replace("            text = categorySearchQuery\n", "            setText(categorySearchQuery)\n")
+              p.write_text(s, encoding="utf-8")
+
+          p = Path("app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt")
+          s = p.read_text(encoding="utf-8")
+          if "import android.view.ViewGroup" not in s:
+              marker = "import android.view.View\n"
+              if marker not in s:
+                  raise SystemExit("PlayerActivity import marker not found")
+              s = s.replace(marker, marker + "import android.view.ViewGroup\n", 1)
+              p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: Build V129 debug APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify built APK
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "${APK}"
+          unzip -t "${APK}" >/dev/null
+          ls -lh "${APK}"
+
+      - name: Package matching APK and source
+        working-directory: ${{ env.ROOT }}
+        run: |
+          set -euo pipefail
+          rm -rf out source-package
+          mkdir -p out source-package
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.129-debug.apk
+          rsync -a ./ source-package/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-package' \
+            --exclude='build_payload' \
+            --exclude='.github'
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.129-source.zip .)
+          unzip -t out/SE-Android-v100.0.129-source.zip >/dev/null
+          test -s out/SE-Android-v100.0.129-source.zip
+          ls -lh out/*
+
+      - name: Upload APK and source artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.129
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.129-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.129-source.zip
+          if-no-files-found: error
+          retention-days: 30
