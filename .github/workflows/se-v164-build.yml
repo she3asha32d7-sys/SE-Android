@@ -193,13 +193,25 @@ jobs:
           test -n "$APK"
           test -s "$APK"
           unzip -t "$APK" >/dev/null
-          unzip -Z1 "$APK" > /tmp/apk-contents.txt
-          grep -q '^lib/arm64-v8a/' /tmp/apk-contents.txt
-          grep -q '^lib/arm64-v8a/libmpv.so$' /tmp/apk-contents.txt
-          grep -q '^lib/arm64-v8a/libplayer.so$' /tmp/apk-contents.txt
-          grep -E '^lib/arm64-v8a/.*\\.so$' /tmp/apk-contents.txt | sort > /tmp/arm64-libraries.txt
-          echo "ARM64 native libraries packaged:"
-          cat /tmp/arm64-libraries.txt
+          APK="$APK" python3 - <<'PY'
+          from zipfile import ZipFile
+          import os
+          apk = os.environ["APK"]
+          with ZipFile(apk) as z:
+              names = sorted(z.namelist())
+          arm64 = [name for name in names if name.startswith("lib/arm64-v8a/") and name.endswith(".so")]
+          print("ARM64 native libraries packaged:")
+          print("\\n".join(arm64) if arm64 else "(none found)")
+          required = [
+              "lib/arm64-v8a/libmpv.so",
+              "lib/arm64-v8a/libplayer.so",
+              "lib/arm64-v8a/libvlc.so",
+              "lib/arm64-v8a/libvlcjni.so",
+          ]
+          missing = [name for name in required if name not in names]
+          if not arm64 or missing:
+              raise SystemExit("APK is missing required ARM64 native libraries: " + ", ".join(missing))
+          PY
 
           rm -rf out source-package
           mkdir -p out source-package
