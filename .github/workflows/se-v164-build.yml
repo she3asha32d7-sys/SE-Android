@@ -76,6 +76,15 @@ jobs:
           app_text, sdk_replaced = re.subn(r'compileSdk 35', 'compileSdk 36', app_text, count=1)
           if sdk_replaced != 1:
               raise SystemExit("Could not update app compileSdk from 35 to 36")
+          # Keep Room runtime/ktx/compiler aligned and use a Room release that fixes the KSP "unexpected jvm signature V" failure.
+          for old_dep, new_dep in [
+              ("androidx.room:room-runtime:2.6.1", "androidx.room:room-runtime:2.7.2"),
+              ("androidx.room:room-ktx:2.6.1", "androidx.room:room-ktx:2.7.2"),
+              ("androidx.room:room-compiler:2.6.1", "androidx.room:room-compiler:2.7.2"),
+          ]:
+              if old_dep not in app_text:
+                  raise SystemExit(f"Expected Room dependency not found: {old_dep}")
+              app_text = app_text.replace(old_dep, new_dep)
           app_gradle.write_text(app_text)
 
           top_gradle = root / "build.gradle"
