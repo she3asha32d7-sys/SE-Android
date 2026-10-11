@@ -68,7 +68,10 @@ jobs:
           grep -q 'class MpvEmbeddedVideoEngine' app/src/main/java/com/orbital/iptv/ui/player/EmbeddedVideoEngines.kt
           grep -q 'class EmbeddedEngineMedia3Player' app/src/main/java/com/orbital/iptv/ui/player/EmbeddedVideoEngines.kt
           grep -q 'Build.VERSION.SDK_INT >= Build.VERSION_CODES.O' app/src/main/java/com/orbital/iptv/ui/player/EmbeddedVideoEngines.kt
-          ! grep -q 'tls-verify.*no' app/src/main/java/com/orbital/iptv/ui/player/EmbeddedVideoEngines.kt
+          if grep -Eq '"tls-verify"[[:space:]]*,[[:space:]]*"no"|"tls-verify=no"' app/src/main/java/com/orbital/iptv/ui/player/EmbeddedVideoEngines.kt; then
+            echo "Refusing to disable HTTPS certificate validation for MPV." >&2
+            exit 1
+          fi
           grep -q 'switchPlaybackEngine("EXO")' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           grep -q 'gencScaleLeftMm' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           grep -q 'DisplayCutout' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
@@ -98,7 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "APK outputs:"
-          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -printf '%f %s bytes\n'
+          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -printf '%f %s bytes\\n'
           APK=$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*arm64-v8a*.apk' -print -quit)
           if [ -z "$APK" ]; then
             APK=$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)
@@ -110,18 +113,18 @@ jobs:
           grep -q '^lib/arm64-v8a/' /tmp/apk-contents.txt
           grep -q '^lib/arm64-v8a/libmpv.so$' /tmp/apk-contents.txt
           grep -q '^lib/arm64-v8a/libplayer.so$' /tmp/apk-contents.txt
-          grep -E '^lib/arm64-v8a/.*\.so$' /tmp/apk-contents.txt | sort > /tmp/arm64-libraries.txt
+          grep -E '^lib/arm64-v8a/.*\\.so$' /tmp/apk-contents.txt | sort > /tmp/arm64-libraries.txt
           echo "ARM64 native libraries packaged:"
           cat /tmp/arm64-libraries.txt
 
           rm -rf out source-package
           mkdir -p out source-package
-          cp "$APK" out/SE-Android-v100.0.164-arm64-v8a-debug.apk
           rsync -a ./ source-package/ \
             --exclude='.git' --exclude='.gradle' --exclude='.idea' \
             --exclude='app/build' --exclude='out' --exclude='source-package' \
             --exclude='build_payload' --exclude='.github'
           (cd source-package && zip -qr ../out/SE-Android-v100.0.164-source.zip .)
+          cp "$APK" out/SE-Android-v100.0.164-arm64-v8a-debug.apk
           unzip -t out/SE-Android-v100.0.164-arm64-v8a-debug.apk >/dev/null
           unzip -t out/SE-Android-v100.0.164-source.zip >/dev/null
           sha256sum out/SE-Android-v100.0.164-arm64-v8a-debug.apk out/SE-Android-v100.0.164-source.zip
