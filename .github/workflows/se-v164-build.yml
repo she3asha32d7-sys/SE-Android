@@ -1,0 +1,237 @@
+name: SEAndroid V100.0.164 MaterialTV engines build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout build payloads
+        uses: actions/checkout@v4
+
+      - name: Download last verified source build (V158)
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.158-FINAL
+          path: /tmp/base
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 37544161929
+
+      - name: Reconstruct SE source V164 from verified baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base -type f -name 'SE-Android-v100.0.158-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+          cat "$GITHUB_WORKSPACE"/build_payload/v158_to_v164.patch.xz.b64.00 \
+              "$GITHUB_WORKSPACE"/build_payload/v158_to_v164.patch.xz.b64.01 \
+              "$GITHUB_WORKSPACE"/build_payload/v158_to_v164.patch.xz.b64.02 \
+              "$GITHUB_WORKSPACE"/build_payload/v158_to_v164.patch.xz.b64.03 \
+              "$GITHUB_WORKSPACE"/build_payload/v158_to_v164.patch.xz.b64.04 \
+              "$GITHUB_WORKSPACE"/build_payload/v158_to_v164.patch.xz.b64.05 \
+              "$GITHUB_WORKSPACE"/build_payload/v158_to_v164.patch.xz.b64.06 \
+              "$GITHUB_WORKSPACE"/build_payload/v158_to_v164.patch.xz.b64.07 > /tmp/v158_to_v164.patch.xz.b64
+          base64 -d /tmp/v158_to_v164.patch.xz.b64 > /tmp/v158_to_v164.patch.xz
+          xz -t /tmp/v158_to_v164.patch.xz
+          xz -dc /tmp/v158_to_v164.patch.xz > /tmp/v158_to_v164.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v158_to_v164.patch
+
+          # Android Gradle Plugin does not allow abiFilters and ABI splits at the same time.
+          # Splits are retained to publish the intended per-ABI APKs.
+          ROOT="$ROOT" python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          root = Path(os.environ["ROOT"])
+
+          # The AGP forbids abiFilters alongside ABI splits; the splits handle per-ABI packaging.
+          app_gradle = root / "app/build.gradle"
+          app_text = app_gradle.read_text()
+          app_text, abi_removed = re.subn(
+              r'\n[ \t]*ndk[ \t]*\{[ \t\r\n]*abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"[ \t\r\n]*\}[ \t]*\n',
+              '\n', app_text, count=1
+          )
+          if abi_removed != 1:
+              raise SystemExit(f"Expected exactly one conflicting ndk.abiFilters block; removed={abi_removed}")
+
+          # MPV 1.0.0 declares compileSdk 36; use the official compatible toolchain.
+          app_text, sdk_replaced = re.subn(r'compileSdk 35', 'compileSdk 36', app_text, count=1)
+          if sdk_replaced != 1:
+              raise SystemExit("Could not update app compileSdk from 35 to 36")
+          # Keep Room runtime/ktx/compiler aligned and use a Room release that fixes the KSP "unexpected jvm signature V" failure.
+          for old_dep, new_dep in [
+              ("androidx.room:room-runtime:2.6.1", "androidx.room:room-runtime:2.7.2"),
+              ("androidx.room:room-ktx:2.6.1", "androidx.room:room-ktx:2.7.2"),
+              ("androidx.room:room-compiler:2.6.1", "androidx.room:room-compiler:2.7.2"),
+          ]:
+              if old_dep not in app_text:
+                  raise SystemExit(f"Expected Room dependency not found: {old_dep}")
+              app_text = app_text.replace(old_dep, new_dep)
+          app_gradle.write_text(app_text)
+
+          top_gradle = root / "build.gradle"
+          top_text = top_gradle.read_text()
+          top_text, agp_replaced = re.subn(
+              r'com\.android\.tools\.build:gradle:8\.6\.0',
+              'com.android.tools.build:gradle:8.9.1',
+              top_text, count=1
+          )
+          if agp_replaced != 1:
+              raise SystemExit("Could not update Android Gradle Plugin 8.6.0 to 8.9.1")
+          top_gradle.write_text(top_text)
+
+          wrapper = root / "gradle/wrapper/gradle-wrapper.properties"
+          wrapper_text = wrapper.read_text()
+          wrapper_text, gradle_replaced = re.subn(
+              r'distributionUrl=https\\://services\.gradle\.org/distributions/gradle-8\.7-bin\.zip',
+              'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.11.1-bin.zip',
+              wrapper_text, count=1
+          )
+          if gradle_replaced != 1:
+              raise SystemExit("Could not update Gradle wrapper from 8.7 to 8.11.1")
+          wrapper.write_text(wrapper_text)
+
+          manifest_lines = [
+              "SE IPTV PLAYER — SE Android v100.0.164",
+              "Source baseline: verified V100.0.163 project state reconstructed from the previously verified source archive and audited changes.",
+              "Changes: embedded VLC and MPV engine options integrated into the existing SE player; AUTO fallback SE/Media3 to VLC to MPV; native track selection and lifecycle/scale integration; existing Google Cast path retained.",
+              "Version metadata: 1000164 / 100.0.164.",
+              "Toolchain: Android Gradle Plugin 8.9.1, Gradle 8.11.1, compileSdk 36.",
+              "Build output: ABI-specific debug APKs and exact source ZIP generated by GitHub Actions."
+          ]
+          (root / "SE_BUILD_MANIFEST.txt").write_text("\n".join(manifest_lines) + "\n")
+          PY
+      - name: Verify source and embedded engines
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000164' app/build.gradle
+          grep -q 'versionName "100.0.164"' app/build.gradle
+          grep -q 'SEAndroid_v100.0.164' settings.gradle
+          grep -q "org.videolan.android:libvlc-all:3.5.1" app/build.gradle
+          grep -q "dev.jdtech.mpv:libmpv:1.0.0" app/build.gradle
+          grep -q 'class VlcEmbeddedVideoEngine' app/src/main/java/com/orbital/iptv/ui/player/EmbeddedVideoEngines.kt
+          grep -q 'class MpvEmbeddedVideoEngine' app/src/main/java/com/orbital/iptv/ui/player/EmbeddedVideoEngines.kt
+          grep -q 'class EmbeddedEngineMedia3Player' app/src/main/java/com/orbital/iptv/ui/player/EmbeddedVideoEngines.kt
+          grep -q 'Build.VERSION.SDK_INT >= Build.VERSION_CODES.O' app/src/main/java/com/orbital/iptv/ui/player/EmbeddedVideoEngines.kt
+          if grep -Eq '"tls-verify"[[:space:]]*,[[:space:]]*"no"|"tls-verify=no"' app/src/main/java/com/orbital/iptv/ui/player/EmbeddedVideoEngines.kt; then
+            echo "Refusing to disable HTTPS certificate validation for MPV." >&2
+            exit 1
+          fi
+          grep -q 'switchPlaybackEngine("EXO")' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'gencScaleLeftMm' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'DisplayCutout' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'buildPlayerRecordingFilename' app/src/main/java/com/orbital/iptv/recording/RecordingRepository.kt
+          grep -q '100.0.164' MATERIALTV_ENGINES_V100_0_164_AUDIT.md
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android API 36 platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -path '*/bin/sdkmanager' -print -quit 2>/dev/null || true)"
+          fi
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "Could not locate sdkmanager under $SDK_ROOT/cmdline-tools" >&2
+            exit 1
+          fi
+          set +o pipefail
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-36" "build-tools;36.0.0"
+          sdk_status=${PIPESTATUS[1]}
+          set -o pipefail
+          exit "$sdk_status"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build Android app
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify ARM64 APK and package source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "APK outputs:"
+          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -printf '%f %s bytes\\n'
+          APK=$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*arm64-v8a*.apk' -print -quit)
+          if [ -z "$APK" ]; then
+            APK=$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)
+          fi
+          test -n "$APK"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APK="$APK" python3 - <<'PY'
+          from zipfile import ZipFile
+          import os
+          apk = os.environ["APK"]
+          with ZipFile(apk) as z:
+              names = sorted(z.namelist())
+          arm64 = [name for name in names if name.startswith("lib/arm64-v8a/") and name.endswith(".so")]
+          print("ARM64 native libraries packaged:")
+          print("\\n".join(arm64) if arm64 else "(none found)")
+          required = [
+              "lib/arm64-v8a/libmpv.so",
+              "lib/arm64-v8a/libplayer.so",
+              "lib/arm64-v8a/libvlc.so",
+              "lib/arm64-v8a/libvlcjni.so",
+          ]
+          missing = [name for name in required if name not in names]
+          if not arm64 or missing:
+              raise SystemExit("APK is missing required ARM64 native libraries: " + ", ".join(missing))
+          PY
+
+          rm -rf out source-package
+          mkdir -p out source-package
+          rsync -a ./ source-package/ \
+            --exclude='.git' --exclude='.gradle' --exclude='.idea' \
+            --exclude='app/build' --exclude='out' --exclude='source-package' \
+            --exclude='build_payload' --exclude='.github'
+          (cd source-package && zip -qr ../out/SE-Android-v100.0.164-source.zip .)
+          cp "$APK" out/SE-Android-v100.0.164-arm64-v8a-debug.apk
+          unzip -t out/SE-Android-v100.0.164-arm64-v8a-debug.apk >/dev/null
+          unzip -t out/SE-Android-v100.0.164-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.164-arm64-v8a-debug.apk out/SE-Android-v100.0.164-source.zip
+          ls -lh out/*
+
+      - name: Upload final APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.164-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.164-arm64-v8a-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.164-source.zip
+          if-no-files-found: error
+          retention-days: 30
