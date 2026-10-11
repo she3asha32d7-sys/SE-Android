@@ -92,6 +92,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Install Android API 36 platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+
       - name: Gradle
         uses: gradle/actions/setup-gradle@v6
 
