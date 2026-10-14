@@ -40,7 +40,7 @@ jobs:
           test -n "$ROOT"
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
 
-          cat build_payload/v158_to_v164.patch.gz.b64.00 build_payload/v158_to_v164.patch.gz.b64.01 > /tmp/v158_to_v164.patch.gz.b64
+          cat build_payload/v158_to_v164.patch.gz.b64.00 build_payload/v158_to_v164.patch.gz.b64.01 build_payload/v158_to_v164.patch.gz.b64.02 build_payload/v158_to_v164.patch.gz.b64.03 build_payload/v158_to_v164.patch.gz.b64.04 build_payload/v158_to_v164.patch.gz.b64.05 build_payload/v158_to_v164.patch.gz.b64.06 build_payload/v158_to_v164.patch.gz.b64.07 build_payload/v158_to_v164.patch.gz.b64.08 > /tmp/v158_to_v164.patch.gz.b64
           base64 -d /tmp/v158_to_v164.patch.gz.b64 > /tmp/v158_to_v164.patch.gz
           gzip -t /tmp/v158_to_v164.patch.gz
           gzip -dc /tmp/v158_to_v164.patch.gz > /tmp/v158_to_v164.patch
