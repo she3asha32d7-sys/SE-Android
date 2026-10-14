@@ -1,0 +1,118 @@
+name: SEAndroid V100.0.164 GitHub Build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    if: startsWith(github.head_ref, 'v100.0.164-build')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout pull request source
+        uses: actions/checkout@v4
+
+      - name: Download verified V158 build source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.158-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 37544161929
+
+      - name: Reconstruct V164 source from the uploaded V163 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.158-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+          cat build_payload/v158_to_v164.patch.gz.b64.00 build_payload/v158_to_v164.patch.gz.b64.01 > /tmp/v158_to_v164.patch.gz.b64
+          base64 -d /tmp/v158_to_v164.patch.gz.b64 > /tmp/v158_to_v164.patch.gz
+          gzip -t /tmp/v158_to_v164.patch.gz
+          gzip -dc /tmp/v158_to_v164.patch.gz > /tmp/v158_to_v164.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v158_to_v164.patch
+
+          # The uploaded V163 source intentionally omits the old backup copy.
+          rm -f app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt.orig
+          printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.164"' "include ':app'" > settings.gradle
+          cat > SE_BUILD_MANIFEST.txt <<'EOF'
+          SE IPTV PLAYER — SE-Android V100.0.164
+          Base source: SE-Android-v100.0.163-source.zip
+          Changes: Back arrows on Episodes and Video Quality sheets; preserve/restore Next Episode after switching and resolve missing successor metadata on startup/resume; add Open Records Folder shortcut.
+          GitHub Actions build requested; source changes are packaged in the V100.0.164 source ZIP.
+          EOF
+
+      - name: Verify V164 source and requested changes
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000164' app/build.gradle
+          grep -q 'versionName "100.0.164"' app/build.gradle
+          grep -q 'showGencOptionSheet("VIDEO QUALITY", labels, "Auto", showBackButton = true)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'createGencSheet("EPISODES", showBackButton = true)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'nextEpisodeListResolved: Boolean = false' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'resolveNextEpisodeForCurrentEpisode' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'btn_open_records_folder' app/src/main/res/layout/activity_recordings.xml
+          grep -q 'OPEN RECORDS FOLDER' app/src/main/res/layout/activity_recordings.xml
+          grep -q 'btnOpenRecordsFolder.setOnClickListener' app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt
+          test ! -e app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt.orig
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Verify and package APK plus source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          rm -rf out source-export
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.164-debug.apk
+          rsync -a ./ source-export/ --exclude='.git' --exclude='.gradle' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-export' --exclude='build_payload' --exclude='.github'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.164-source.zip .)
+          unzip -t out/SE-Android-v100.0.164-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.164-debug.apk out/SE-Android-v100.0.164-source.zip
+          ls -lh out/*
+
+      - name: Upload V164 deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.164-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.164-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.164-source.zip
+          if-no-files-found: error
+          retention-days: 30
