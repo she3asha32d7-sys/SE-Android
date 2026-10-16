@@ -46,6 +46,8 @@ jobs:
           gzip -dc /tmp/v165_to_v166.patch.gz > /tmp/v165_to_v166.patch
           cd "$ROOT"
           patch -p1 --forward --batch < /tmp/v165_to_v166.patch
+          # Preserve the FavouriteItem record and pass the SharedPreferences context into the helper.
+          sed -i 's/addOrUpdate(base.copy(/addOrUpdate(ctx, base.copy(/' app/src/main/java/com/orbital/iptv/utils/FavouritesManager.kt
           cat > SE_BUILD_MANIFEST.txt <<'EOF'
           SE IPTV PLAYER — SE-Android V100.0.166
           Base source: successful V100.0.165 MaterialTV v3.2 ARM64 source artifact.
@@ -74,6 +76,7 @@ jobs:
           grep -q 'downloadAllSeriesEpisodes()' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
           grep -q 'isFavourite: Boolean? = null' app/src/main/java/com/orbital/iptv/data/model/FavouriteItem.kt
           grep -q 'isFavouriteEntry' app/src/main/java/com/orbital/iptv/utils/FavouritesManager.kt
+          grep -q 'addOrUpdate(ctx, base.copy(' app/src/main/java/com/orbital/iptv/utils/FavouritesManager.kt
           grep -q 'FavouritesManager.setFavourite(this, fav' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
           test ! -e app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt.orig
 
