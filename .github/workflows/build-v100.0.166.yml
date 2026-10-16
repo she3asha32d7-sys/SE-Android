@@ -1,0 +1,149 @@
+name: SEAndroid V100.0.166 Build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    if: startsWith(github.head_ref, 'v100.0.166-build')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout patch recipe
+        uses: actions/checkout@v4
+
+      - name: Download successful V165 MaterialTV source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.165-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 38108503273
+
+      - name: Reconstruct V166 source from V165 and apply changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.165-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+          base64 -d build_payload/v165_to_v166.patch.gz.b64 > /tmp/v165_to_v166.patch.gz
+          gzip -t /tmp/v165_to_v166.patch.gz
+          gzip -dc /tmp/v165_to_v166.patch.gz > /tmp/v165_to_v166.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v165_to_v166.patch
+          cat > SE_BUILD_MANIFEST.txt <<'EOF'
+          SE IPTV PLAYER — SE-Android V100.0.166
+          Base source: successful V100.0.165 MaterialTV v3.2 ARM64 source artifact.
+          Preserved: built-in SE/Exo/VLC/MPV player routing and ARM64 native player engines.
+          V166 changes: temporary Speed Playing speed label over the upper-right video area; hide centered seek-time HUD and player controls during seeking; tap video outside controls to hide the overlay; download all episodes across every season from Series Details; fix favorite heart state on Continue Watching items.
+          Carried forward: Episodes/Quality sheet back arrows, Next Episode metadata restoration, and Open Records Folder shortcut.
+          Output: ARM64 debug APK and matching source ZIP.
+          EOF
+
+      - name: Verify requested changes and preserved features
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000166' app/build.gradle
+          grep -q 'versionName "100.0.166"' app/build.gradle
+          grep -q 'abiFilters "arm64-v8a"' app/build.gradle
+          grep -q 'showGencOptionSheet("VIDEO QUALITY", labels, "Auto", showBackButton = true)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'createGencSheet("EPISODES", showBackButton = true)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'resolveNextEpisodeForCurrentEpisode' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'nextEpisodeListResolved = true' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'tv_speed_playing_indicator' app/src/main/res/layout/activity_player.xml
+          grep -q 'tvSpeedPlayingIndicator.visibility = if (speedPlaying) View.VISIBLE else View.GONE' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'btn_open_records_folder' app/src/main/res/layout/activity_recordings.xml
+          grep -q 'btnOpenRecordsFolder.setOnClickListener' app/src/main/java/com/orbital/iptv/recording/RecordingsActivity.kt
+          grep -q 'downloadAllSeriesEpisodes()' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'isFavourite: Boolean? = null' app/src/main/java/com/orbital/iptv/data/model/FavouriteItem.kt
+          grep -q 'isFavouriteEntry' app/src/main/java/com/orbital/iptv/utils/FavouritesManager.kt
+          grep -q 'FavouritesManager.setFavourite(this, fav' app/src/main/java/com/orbital/iptv/ui/home/HomeActivity.kt
+          test ! -e app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt.orig
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build ARM64 debug APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libmpv.so'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libvlc.so'
+          if unzip -l "$APK" | grep -qE 'lib/(armeabi-v7a|x86|x86_64)/'; then
+            echo "Unexpected non-ARM64 native libraries were packaged" >&2
+            exit 1
+          fi
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer -perm -111 2>/dev/null | head -n 1 || true)"
+          if [ -n "$APKANALYZER" ]; then
+            test "$("$APKANALYZER" manifest version-name "$APK")" = "100.0.166"
+            test "$("$APKANALYZER" manifest version-code "$APK")" = "1000166"
+          else
+            AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -perm -111 2>/dev/null | sort -V | tail -n 1 || true)"
+            test -n "$AAPT"
+            "$AAPT" dump badging "$APK" | grep -q "versionName='100.0.166'"
+            "$AAPT" dump badging "$APK" | grep -q "versionCode='1000166'"
+          fi
+          sha256sum "$APK"
+          ls -lh "$APK"
+
+      - name: Package APK and matching source ZIP
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf out source-export
+          mkdir -p out source-export
+          cp app/build/outputs/apk/debug/app-debug.apk out/SE-Android-v100.0.166-arm64-v8a-debug.apk
+          rsync -a ./ source-export/ \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.kotlin' \
+            --exclude='.idea' \
+            --exclude='app/build' \
+            --exclude='out' \
+            --exclude='source-export' \
+            --exclude='build_payload' \
+            --exclude='.github'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.166-source.zip .)
+          unzip -t out/SE-Android-v100.0.166-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.166-arm64-v8a-debug.apk out/SE-Android-v100.0.166-source.zip
+          ls -lh out/
+
+      - name: Upload V166 deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.166-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.166-arm64-v8a-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.166-source.zip
+          if-no-files-found: error
+          retention-days: 30
