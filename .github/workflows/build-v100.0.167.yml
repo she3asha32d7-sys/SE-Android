@@ -1,0 +1,117 @@
+name: SEAndroid V100.0.167 GitHub Build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    if: startsWith(github.head_ref, 'v100.0.167-build')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout V167 patch payload
+        uses: actions/checkout@v4
+
+      - name: Download verified V166 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.166-SEASON-PICKER-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 38984767069
+
+      - name: Reconstruct V167 source from V166
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.166-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          base64 -d build_payload/v166_to_v167.patch.gz.b64 > /tmp/v166_to_v167.patch.gz
+          gzip -t /tmp/v166_to_v167.patch.gz
+          gzip -dc /tmp/v166_to_v167.patch.gz > /tmp/v166_to_v167.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v166_to_v167.patch
+
+      - name: Verify V167 changes
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000167' app/build.gradle
+          grep -q 'versionName "100.0.167"' app/build.gradle
+          grep -q 'btn_copy_link' app/src/main/res/layout/item_download.xml
+          grep -q 'COPY LINK' app/src/main/res/layout/item_download.xml
+          grep -q 'copyDownloadLink' app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt
+          grep -q 'DOWNLOAD LINK COPIED' app/src/main/java/com/orbital/iptv/ui/downloads/DownloadsActivity.kt
+          grep -q 'DOWNLOAD WITH' app/src/main/java/com/orbital/iptv/utils/DownloadUi.kt
+          grep -q 'openWithStream' app/src/main/java/com/orbital/iptv/utils/DownloadUi.kt
+          grep -q 'showDownloadWithDialog' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'showEpisodeOpenWithDialog' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'btn_simultaneous_downloads' app/src/main/res/layout/activity_settings.xml
+          grep -q 'showSimultaneousDownloadsDialog' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
+          grep -q 'addControl("MAX")' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
+          grep -q 'setMaxSimultaneousDownloads' app/src/main/java/com/orbital/iptv/utils/DownloadStore.kt
+          grep -q 'scheduleQueuedDownloads' app/src/main/java/com/orbital/iptv/utils/DownloadStore.kt
+          grep -q 'status = "SCHEDULED"' app/src/main/java/com/orbital/iptv/utils/DownloadStore.kt
+          grep -q 'MAX_RETRIES = 4' app/src/main/java/com/orbital/iptv/utils/DownloadWorker.kt
+          grep -q 'RETRY_DELAY_MS = 5_000L' app/src/main/java/com/orbital/iptv/utils/DownloadWorker.kt
+          grep -q 'delay(RETRY_DELAY_MS)' app/src/main/java/com/orbital/iptv/utils/DownloadWorker.kt
+          grep -q 'scheduleQueuedDownloads(this)' app/src/main/java/com/orbital/iptv/OrbitalApp.kt
+          grep -q 'rootProject.name = "SEAndroid_v100.0.167"' settings.gradle
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate and package APK plus source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          rm -rf out source-export
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.167-debug.apk
+          rsync -a ./ source-export/ --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-export' --exclude='build_payload' --exclude='.github'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.167-source.zip .)
+          unzip -t out/SE-Android-v100.0.167-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.167-debug.apk out/SE-Android-v100.0.167-source.zip
+          ls -lh out/*
+
+      - name: Upload V167 deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.167-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.167-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.167-source.zip
+          if-no-files-found: error
+          retention-days: 30
