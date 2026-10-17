@@ -1,0 +1,176 @@
+name: SEAndroid V100.0.171 Release Build
+
+on:
+  push:
+    branches:
+      - v100.0.171-build
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-release:
+    # Push builds require SE_RELEASE_READY=true; workflow_dispatch can be used for a manual signed build.
+    if: github.event_name == 'workflow_dispatch' || vars.SE_RELEASE_READY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Release workflow and patch payload
+        uses: actions/checkout@v4
+
+      - name: Download verified V170 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.170-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 39056511858
+
+      - name: Reconstruct V171 source from V170
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.170-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          base64 --decode build_payload/v170_to_v171_release.patch.gz.b64 > /tmp/v170_to_v171.patch.gz
+          gzip -t /tmp/v170_to_v171.patch.gz
+          gzip -dc /tmp/v170_to_v171.patch.gz > /tmp/v170_to_v171.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v170_to_v171.patch
+
+      - name: Verify Release configuration and version
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000171' app/build.gradle
+          grep -q 'versionName "100.0.171"' app/build.gradle
+          grep -q 'rootProject.name = "SEAndroid_v100.0.171"' settings.gradle
+          grep -q 'signingConfig signingConfigs.release' app/build.gradle
+          grep -q 'SE_RELEASE_KEYSTORE_PATH' app/build.gradle
+          grep -q 'debuggable false' app/build.gradle
+          if grep -q 'signingConfig signingConfigs.debug' app/build.gradle; then
+            echo 'ERROR: Release must not use the Debug signing certificate.'
+            exit 1
+          fi
+          test -f RELEASE_SIGNING_CERT_SHA256.txt
+          test "$(tr -d '[:space:]' < RELEASE_SIGNING_CERT_SHA256.txt)" = "6ed6c6e55155dabd81931911227b9e544605b489c1b2a931f7659255eb1ea021"
+          grep -q 'SE_RELEASE_KEYSTORE_BASE64' RELEASE_SIGNING_SETUP_V100_0_171.md
+          echo "Release version and expected certificate fingerprint validated."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Prepare protected Release Keystore
+        shell: bash
+        env:
+          SE_RELEASE_KEYSTORE_BASE64: ${{ secrets.SE_RELEASE_KEYSTORE_BASE64 }}
+          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }}
+          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }}
+          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_BASE64" || { echo "Missing Actions secret: SE_RELEASE_KEYSTORE_BASE64"; exit 1; }
+          test -n "$SE_RELEASE_STORE_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_STORE_PASSWORD"; exit 1; }
+          test -n "$SE_RELEASE_KEY_ALIAS" || { echo "Missing Actions secret: SE_RELEASE_KEY_ALIAS"; exit 1; }
+          test -n "$SE_RELEASE_KEY_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_KEY_PASSWORD"; exit 1; }
+          KEYFILE="$RUNNER_TEMP/se-iptv-release.jks"
+          printf '%s' "$SE_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          keytool -list -keystore "$KEYFILE" -storepass "$SE_RELEASE_STORE_PASSWORD" -alias "$SE_RELEASE_KEY_ALIAS" >/dev/null
+          echo "SE_RELEASE_KEYSTORE_PATH=$KEYFILE" >> "$GITHUB_ENV"
+          echo "Protected signing material loaded and alias verified."
+
+      - name: Build signed Release APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        env:
+          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }}
+          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }}
+          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_PATH"
+          chmod +x gradlew
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK signature and fixed certificate fingerprint
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          SDK="${ANDROID_HOME:-}"
+          if [ -z "$SDK" ]; then SDK="${ANDROID_SDK_ROOT:-}"; fi
+          if [ -z "$SDK" ]; then SDK=/usr/local/lib/android/sdk; fi
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          test -x "$APKSIGNER"
+          mkdir -p out
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > out/apksigner-verify.txt
+          ACTUAL=$(grep -Eio 'certificate SHA-256 digest:[[:space:]]*[0-9a-f:]+' out/apksigner-verify.txt | sed -E 's/.*digest:[[:space:]]*//' | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n 1 || true)
+          EXPECTED=$(tr -d '[:space:]' < RELEASE_SIGNING_CERT_SHA256.txt)
+          if [ -z "$ACTUAL" ]; then
+            echo "ERROR: Could not parse signer fingerprint from apksigner output."
+            cat out/apksigner-verify.txt
+            exit 1
+          fi
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "ERROR: Release certificate fingerprint mismatch."
+            echo "Expected fingerprint from source: $EXPECTED"
+            echo "Actual signer fingerprint: $ACTUAL"
+            exit 1
+          fi
+          unzip -t "$APK" >/dev/null
+          echo "APK signature verified and matches the fixed release certificate."
+
+      - name: Package Release APK plus source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.171-release.apk
+          rsync -a ./ source-export/ \
+            --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' \
+            --exclude='app/build' --exclude='out' --exclude='source-export' \
+            --exclude='build_payload' --exclude='.github' \
+            --exclude='*.jks' --exclude='*.keystore' --exclude='*.p12' --exclude='*.pfx' \
+            --exclude='SE_RELEASE_KEYSTORE_BASE64.txt' --exclude='release-signing.properties'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.171-source.zip .)
+          unzip -t out/SE-Android-v100.0.171-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.171-release.apk out/SE-Android-v100.0.171-source.zip
+          ls -lh out/*
+
+      - name: Clean signing material
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          rm -f "$RUNNER_TEMP/se-iptv-release.jks"
+
+      - name: Upload V171 Release deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.171-RELEASE-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.171-release.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.171-source.zip
+          if-no-files-found: error
+          retention-days: 30
