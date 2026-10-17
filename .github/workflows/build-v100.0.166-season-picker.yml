@@ -1,0 +1,113 @@
+name: SEAndroid V100.0.166 Season Download Picker Build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    if: startsWith(github.head_ref, 'v100.0.166-season-picker')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout source patch
+        uses: actions/checkout@v4
+
+      - name: Download verified V165 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.165-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 38982901953
+
+      - name: Apply multi-season download-picker changes to V165
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.165-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          base64 -d build_payload/v165_to_v166.patch.gz.b64 > /tmp/v165_to_v166.patch.gz
+          gzip -t /tmp/v165_to_v166.patch.gz
+          gzip -dc /tmp/v165_to_v166.patch.gz > /tmp/v165_to_v166.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v165_to_v166.patch
+          printf '%s\n' 'rootProject.name = "SEAndroid_v100.0.166"' "include ':app'" > settings.gradle
+          cat > SE_BUILD_MANIFEST.txt <<'EOF'
+          SE IPTV PLAYER — V100.0.166
+          Base source: verified SE-Android-v100.0.165-source.zip
+          Changes: when Download All is pressed for a multi-season series, show a RESUME-style season list and queue only the selected season; single-season series download directly.
+          Existing download-state handling is preserved: completed/queued/downloading episodes are not duplicated, and paused/stopped/failed items are resumed.
+          Output: SE-Android-v100.0.166-debug.apk and SE-Android-v100.0.166-source.zip
+          EOF
+
+      - name: Verify season picker and source version
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000166' app/build.gradle
+          grep -q 'versionName "100.0.166"' app/build.gradle
+          grep -q 'private fun seasonKeysForDownload()' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'private fun showSeasonDownloadDialog(seasons: List<String>)' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'CHOOSE SEASON TO DOWNLOAD' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'queueSeasonDownloads(seasons.first())' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'queueSeasonDownloads(it)' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'Theme_SE_ResumeDialog' app/src/main/java/com/orbital/iptv/ui/series/SeriesDetailActivity.kt
+          grep -q 'SEASON_DOWNLOAD_PICKER_V100_0_166_AUDIT.md' <(find . -type f -printf '%f\n')
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate and package APK plus source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          rm -rf out source-export
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.166-debug.apk
+          rsync -a ./ source-export/ --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-export' --exclude='build_payload' --exclude='.github'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.166-source.zip .)
+          unzip -t out/SE-Android-v100.0.166-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.166-debug.apk out/SE-Android-v100.0.166-source.zip
+          ls -lh out/*
+
+      - name: Upload V166 deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.166-SEASON-PICKER-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.166-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.166-source.zip
+          if-no-files-found: error
+          retention-days: 30
