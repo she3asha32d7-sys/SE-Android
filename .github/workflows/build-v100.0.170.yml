@@ -1,0 +1,110 @@
+name: SEAndroid V100.0.170 GitHub Build
+
+on:
+  push:
+    branches:
+      - v100.0.170-build
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    if: github.event_name == 'push' || startsWith(github.head_ref, 'v100.0.170-build')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout V170 patch payload
+        uses: actions/checkout@v4
+
+      - name: Download verified V169 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.169-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 39051062376
+
+      - name: Reconstruct V170 source from V169
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.169-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          base64 -d build_payload/v169_to_v170.patch.gz.b64 > /tmp/v169_to_v170.patch.gz
+          gzip -t /tmp/v169_to_v170.patch.gz
+          gzip -dc /tmp/v169_to_v170.patch.gz > /tmp/v169_to_v170.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v169_to_v170.patch
+
+      - name: Verify V170 label and spacing changes
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000170' app/build.gradle
+          grep -q 'versionName "100.0.170"' app/build.gradle
+          grep -q 'rootProject.name = "SEAndroid_v100.0.170"' settings.gradle
+          FILE=app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          test "$(grep -Fc 'XTREAM EXPIRATION DATE' "$FILE")" -eq 2
+          grep -q '      XTREAM EXPIRATION DATE: LOADING...' "$FILE"
+          grep -q 'maxLines = 3' "$FILE"
+          grep -q 'SimpleDateFormat("dd:MM:yyyy"' "$FILE"
+          grep -q 'R.color.sky_cyan' "$FILE"
+          grep -q 'LIST_USERS_XTREAM_EXPIRATION_DATE_SPACING_V100_0_170_AUDIT.md' <(find . -maxdepth 1 -type f -printf '%f\n')
+          echo "V170 label, spacing, layout allowance, and original date/color behavior validated."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate and package APK plus source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          rm -rf out source-export
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.170-debug.apk
+          rsync -a ./ source-export/ --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-export' --exclude='build_payload' --exclude='.github'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.170-source.zip .)
+          unzip -t out/SE-Android-v100.0.170-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.170-debug.apk out/SE-Android-v100.0.170-source.zip
+          ls -lh out/*
+
+      - name: Upload V170 deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.170-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.170-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.170-source.zip
+          if-no-files-found: error
+          retention-days: 30
