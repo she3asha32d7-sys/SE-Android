@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build-release:
-    # A push before signing secrets are configured is skipped, not built with Debug signing.
+    # Push builds require SE_RELEASE_READY=true; workflow_dispatch can be used for a manual signed build.
     if: github.event_name == 'workflow_dispatch' || vars.SE_RELEASE_READY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
