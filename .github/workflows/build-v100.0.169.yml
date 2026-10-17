@@ -1,0 +1,111 @@
+name: SEAndroid V100.0.169 GitHub Build
+
+on:
+  push:
+    branches:
+      - v100.0.169-build
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    if: github.event_name == 'push' || startsWith(github.head_ref, 'v100.0.169-build')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout V169 patch payload
+        uses: actions/checkout@v4
+
+      - name: Download verified V168 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.168-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 39048001175
+
+      - name: Reconstruct V169 source from V168
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.168-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          base64 -d build_payload/v168_to_v169.patch.gz.b64 > /tmp/v168_to_v169.patch.gz
+          gzip -t /tmp/v168_to_v169.patch.gz
+          gzip -dc /tmp/v168_to_v169.patch.gz > /tmp/v168_to_v169.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v168_to_v169.patch
+
+      - name: Verify V169 expiration-date changes
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000169' app/build.gradle
+          grep -q 'versionName "100.0.169"' app/build.gradle
+          grep -q 'rootProject.name = "SEAndroid_v100.0.169"' settings.gradle
+          grep -q 'XtreamRepository' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -q 'getServerInfo' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -q 'userInfo?.expDate' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -q 'EXPIRATION DATE: LOADING' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -q 'EXPIRATION DATE: \$expirationLabel' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -q 'SimpleDateFormat("dd:MM:yyyy"' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -q 'R.color.sky_cyan' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -q 'UNLIMITED' app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt
+          grep -q 'LIST_USERS_XTREAM_EXPIRATION_DATE_V100_0_169_AUDIT.md' <(find . -maxdepth 1 -type f -printf '%f\n')
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate and package APK plus source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          rm -rf out source-export
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.169-debug.apk
+          rsync -a ./ source-export/ --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-export' --exclude='build_payload' --exclude='.github'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.169-source.zip .)
+          unzip -t out/SE-Android-v100.0.169-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.169-debug.apk out/SE-Android-v100.0.169-source.zip
+          ls -lh out/*
+
+      - name: Upload V169 deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.169-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.169-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.169-source.zip
+          if-no-files-found: error
+          retention-days: 30
