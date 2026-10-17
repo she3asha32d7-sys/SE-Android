@@ -1,0 +1,125 @@
+name: SEAndroid V100.0.168 GitHub Build
+
+on:
+  push:
+    branches:
+      - v100.0.168-build
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    if: github.event_name == 'push' || startsWith(github.head_ref, 'v100.0.168-build')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout V168 patch payload
+        uses: actions/checkout@v4
+
+      - name: Download verified V167 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.167-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 39046168848
+
+      - name: Reconstruct V168 source from V167
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.167-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          cat build_payload/v167_to_v168.patch.gz.b64.00 build_payload/v167_to_v168.patch.gz.b64.01 build_payload/v167_to_v168.patch.gz.b64.02 > /tmp/v167_to_v168.patch.gz.b64
+          base64 -d /tmp/v167_to_v168.patch.gz.b64 > /tmp/v167_to_v168.patch.gz
+          gzip -t /tmp/v167_to_v168.patch.gz
+          gzip -dc /tmp/v167_to_v168.patch.gz > /tmp/v167_to_v168.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v167_to_v168.patch
+
+      - name: Verify V168 settings changes
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000168' app/build.gradle
+          grep -q 'versionName "100.0.168"' app/build.gradle
+          grep -q 'rootProject.name = "SEAndroid_v100.0.168"' settings.gradle
+          grep -q 'tv_downloads_header' app/src/main/res/layout/activity_settings.xml
+          grep -q 'text="DOWNLOADS"' app/src/main/res/layout/activity_settings.xml
+          grep -q 'btn_simultaneous_downloads' app/src/main/res/layout/activity_settings.xml
+          grep -q 'tvDownloadsHeader' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
+          grep -q 'b.switchAutoRotate.setTextColor(p.accent)' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
+          grep -q 'b.switchPip.setTextColor(p.accent)' app/src/main/java/com/orbital/iptv/ui/settings/SettingsActivity.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          p = Path("app/src/main/res/layout/activity_settings.xml")
+          root = ET.parse(p).getroot()
+          text = p.read_text()
+          player = text.index('tv_player_settings_header')
+          download = text.index('tv_downloads_header')
+          button = text.index('btn_simultaneous_downloads')
+          history = text.index('tv_history_header')
+          assert player < download < button < history
+          assert 'android:textColor="@color/sky_cyan"' in text[text.index('switch_auto_rotate'):text.index('switch_pip')]
+          assert 'android:textColor="@color/sky_cyan"' in text[text.index('switch_pip'):text.index('tv_downloads_header')]
+          assert root is not None
+          print("Settings XML and category ordering validated.")
+          PY
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate and package APK plus source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          rm -rf out source-export
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.168-debug.apk
+          rsync -a ./ source-export/ --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' --exclude='app/build' --exclude='out' --exclude='source-export' --exclude='build_payload' --exclude='.github'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.168-source.zip .)
+          unzip -t out/SE-Android-v100.0.168-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.168-debug.apk out/SE-Android-v100.0.168-source.zip
+          ls -lh out/*
+
+      - name: Upload V168 deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.168-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.168-debug.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.168-source.zip
+          if-no-files-found: error
+          retention-days: 30
