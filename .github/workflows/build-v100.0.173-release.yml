@@ -42,9 +42,9 @@ jobs:
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
           base64 --decode build_payload/v172_to_v173.patch.gz.b64 > /tmp/v172_to_v173.patch.gz
           gzip -t /tmp/v172_to_v173.patch.gz
-          gzip -dc /tmp/v171_to_v172.patch.gz > /tmp/v171_to_v172.patch
+          gzip -dc /tmp/v172_to_v173.patch.gz > /tmp/v172_to_v173.patch
           cd "$ROOT"
-          patch -p1 --forward --batch < /tmp/v171_to_v172.patch
+          patch -p1 --forward --batch < /tmp/v172_to_v173.patch
 
       - name: Verify Release configuration and version
         working-directory: ${{ env.ROOT }}
