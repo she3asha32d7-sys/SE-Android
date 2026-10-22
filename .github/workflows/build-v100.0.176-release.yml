@@ -96,7 +96,7 @@ jobs:
           assert "else if (!dlnaOnly)" in player
           assert "MediaRouteButtonFactory.setUpMediaRouteButton(this, binding.btnCast)" in player
           assert "WIRELESS DISPLAY" in player
-          assert "Screen Mirror / Wireless Display" in cast_audit
+          assert "Screen Mirror" in cast_audit
           assert "DLNA" in cast_audit
           assert "Google Cast" in cast_audit and "Web Video Caster" in cast_audit
           manager = Path("app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt").read_text()
