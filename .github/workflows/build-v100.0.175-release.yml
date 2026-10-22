@@ -1,0 +1,218 @@
+name: SEAndroid V100.0.175 Release Build
+
+on:
+  push:
+    branches:
+      - v100.0.175-build
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-release:
+    # Push builds require SE_RELEASE_READY=true; workflow_dispatch can be used for a manual signed build.
+    if: github.event_name == 'workflow_dispatch' || vars.SE_RELEASE_READY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Release workflow and patch payload
+        uses: actions/checkout@v4
+
+      - name: Download verified V174 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.174-RELEASE-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 39853497418
+
+      - name: Reconstruct V175 source from V174
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.174-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          base64 --decode build_payload/v175_to_v174.patch.gz.b64 > /tmp/v175_to_v174.patch.gz
+          gzip -t /tmp/v175_to_v174.patch.gz
+          gzip -dc /tmp/v175_to_v174.patch.gz > /tmp/v175_to_v174.patch
+          cd "$ROOT"
+          patch -p1 --forward --batch < /tmp/v175_to_v174.patch
+
+      - name: Verify Release configuration and version
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000175' app/build.gradle
+          grep -q 'versionName "100.0.175"' app/build.gradle
+          grep -q 'rootProject.name = "SEAndroid_v100.0.175"' settings.gradle
+          grep -q 'signingConfig signingConfigs.release' app/build.gradle
+          grep -q 'SE_RELEASE_KEYSTORE_PATH' app/build.gradle
+          grep -q 'debuggable false' app/build.gradle
+          if grep -q 'signingConfig signingConfigs.debug' app/build.gradle; then
+            echo 'ERROR: Release must not use the Debug signing certificate.'
+            exit 1
+          fi
+          test -f RELEASE_SIGNING_CERT_SHA256.txt
+          test "$(tr -d '[:space:]' < RELEASE_SIGNING_CERT_SHA256.txt)" = "6ed6c6e55155dabd81931911227b9e544605b489c1b2a931f7659255eb1ea021"
+          grep -q 'SE_RELEASE_KEYSTORE_BASE64' RELEASE_SIGNING_SETUP_V100_0_171.md
+          python3 - <<'PY'
+          from pathlib import Path
+          login = Path("app/src/main/java/com/orbital/iptv/ui/login/LoginActivity.kt").read_text()
+          login_xml = Path("app/src/main/res/layout/activity_login.xml").read_text()
+          picker = Path("app/src/main/java/com/orbital/iptv/ui/files/PhoneFilesPickerActivity.kt").read_text()
+          player = Path("app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt").read_text()
+          cast_audit = Path("CAST_TDM_DLNA_V100_0_175_AUDIT.md").read_text()
+          sidebar = Path("app/src/main/res/layout/layout_main_sidebar.xml").read_text()
+          users = Path("app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt").read_text()
+          controller = Path("app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt").read_text()
+          assert "btn_phone_files_offline" in login_xml and "PHONE FILES (OFFLINE)" in login_xml
+          assert "hasValidatedInternetConnection()" in login and "NET_CAPABILITY_VALIDATED" in login
+          assert "PhoneFilesPickerActivity::class.java" in login
+          assert "ActivityResultContracts.StartActivityForResult()" in picker and 'type = "video/*"' in picker
+          assert "DocumentsContract.EXTRA_INITIAL_URI" in picker and "takePersistableUriPermission" in picker
+          assert "playLocalFileWithoutNetwork()" in player
+          assert 'DefaultDataSource.Factory(applicationContext, FileDataSource.Factory())' in player
+          assert '"content", "file", "android.resource", "asset", "rawresource"' in player
+          assert "castPlayer = null" in player and "player = localPlayer" in player
+          cast_choices = 'arrayOf("TV", "DLNA", "Screen Mirror / Wireless Display", "Web Video Caster", "Google Cast")'
+          assert cast_choices in player
+          assert "0 -> showTvCastChooser(mediaUri)" in player
+          assert "1 -> showDlnaCastChooser(mediaUri)" in player
+          assert "2 -> openWirelessDisplaySettings()" in player
+          assert "3 -> launchWebVideoCaster(mediaUri)" in player
+          assert "4 -> binding.btnCast.performClick()" in player
+          assert "showCastDeviceChooser(mediaUri, dlnaOnly = false)" in player
+          assert "showCastDeviceChooser(mediaUri, dlnaOnly = true)" in player
+          assert "discovered.filter { it.protocol == UniversalCastManager.Protocol.DLNA }" in player
+          assert "else if (!dlnaOnly)" in player
+          assert "MediaRouteButtonFactory.setUpMediaRouteButton(this, binding.btnCast)" in player
+          assert "WIRELESS DISPLAY" in player
+          assert "Screen Mirror / Wireless Display" in cast_audit
+          assert "DLNA" in cast_audit
+          assert "Google Cast" in cast_audit and "Web Video Caster" in cast_audit
+          assert "if (!isLocalFile) MediaRouteButtonFactory.setUpMediaRouteButton" in player
+          assert "LOCAL FILE ERROR — REOPEN FILE" in player
+          assert "nav_phone_files" in sidebar and sidebar.index("nav_phone_files") < sidebar.index("nav_exit")
+          assert users.count("            XTREAM EXPIRATION DATE:") == 2
+          assert "PhoneFilesPickerActivity" in controller
+          print("Offline login entry, local-only datasource, no-Cast route, local-only errors, sidebar order and expiration spacing validated.")
+          PY
+          echo "Release version and expected certificate fingerprint validated."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Prepare protected Release Keystore
+        shell: bash
+        env:
+          SE_RELEASE_KEYSTORE_BASE64: ${{ secrets.SE_RELEASE_KEYSTORE_BASE64 }}
+          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }}
+          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }}
+          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_BASE64" || { echo "Missing Actions secret: SE_RELEASE_KEYSTORE_BASE64"; exit 1; }
+          test -n "$SE_RELEASE_STORE_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_STORE_PASSWORD"; exit 1; }
+          test -n "$SE_RELEASE_KEY_ALIAS" || { echo "Missing Actions secret: SE_RELEASE_KEY_ALIAS"; exit 1; }
+          test -n "$SE_RELEASE_KEY_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_KEY_PASSWORD"; exit 1; }
+          KEYFILE="$RUNNER_TEMP/se-iptv-release.jks"
+          printf '%s' "$SE_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          keytool -list -keystore "$KEYFILE" -storepass "$SE_RELEASE_STORE_PASSWORD" -alias "$SE_RELEASE_KEY_ALIAS" >/dev/null
+          echo "SE_RELEASE_KEYSTORE_PATH=$KEYFILE" >> "$GITHUB_ENV"
+          echo "Protected signing material loaded and alias verified."
+
+      - name: Build signed Release APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        env:
+          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }}
+          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }}
+          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_PATH"
+          chmod +x gradlew
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK signature and fixed certificate fingerprint
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          SDK="${ANDROID_HOME:-}"
+          if [ -z "$SDK" ]; then SDK="${ANDROID_SDK_ROOT:-}"; fi
+          if [ -z "$SDK" ]; then SDK=/usr/local/lib/android/sdk; fi
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          test -x "$APKSIGNER"
+          mkdir -p out
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > out/apksigner-verify.txt
+          ACTUAL=$(grep -Eio 'certificate SHA-256 digest:[[:space:]]*[0-9a-f:]+' out/apksigner-verify.txt | sed -E 's/.*digest:[[:space:]]*//' | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n 1 || true)
+          EXPECTED=$(tr -d '[:space:]' < RELEASE_SIGNING_CERT_SHA256.txt)
+          if [ -z "$ACTUAL" ]; then
+            echo "ERROR: Could not parse signer fingerprint from apksigner output."
+            cat out/apksigner-verify.txt
+            exit 1
+          fi
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "ERROR: Release certificate fingerprint mismatch."
+            echo "Expected fingerprint from source: $EXPECTED"
+            echo "Actual signer fingerprint: $ACTUAL"
+            exit 1
+          fi
+          unzip -t "$APK" >/dev/null
+          echo "APK signature verified and matches the fixed release certificate."
+
+      - name: Package Release APK plus source
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.175-release.apk
+          rsync -a ./ source-export/ \
+            --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' \
+            --exclude='app/build' --exclude='out' --exclude='source-export' \
+            --exclude='build_payload' --exclude='.github' \
+            --exclude='*.jks' --exclude='*.keystore' --exclude='*.p12' --exclude='*.pfx' \
+            --exclude='SE_RELEASE_KEYSTORE_BASE64.txt' --exclude='release-signing.properties'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.175-source.zip .)
+          unzip -t out/SE-Android-v100.0.175-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.175-release.apk out/SE-Android-v100.0.175-source.zip
+          ls -lh out/*
+
+      - name: Clean signing material
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          rm -f "$RUNNER_TEMP/se-iptv-release.jks"
+
+      - name: Upload V174 Release deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.175-RELEASE-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.175-release.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.175-source.zip
+          if-no-files-found: error
+          retention-days: 30
