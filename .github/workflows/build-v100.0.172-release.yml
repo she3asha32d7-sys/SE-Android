@@ -23,7 +23,7 @@ jobs:
       - name: Download verified V171 source artifact
         uses: actions/download-artifact@v4
         with:
-          name: SEAndroid-v100.0.172-RELEASE-FINAL
+          name: SEAndroid-v100.0.171-RELEASE-FINAL
           path: /tmp/base-artifact
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -34,17 +34,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/src
-          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.172-source.zip' -print -quit)
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.171-source.zip' -print -quit)
           test -n "$SRCZIP"
           unzip -q "$SRCZIP" -d /tmp/src
           ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
           test -n "$ROOT"
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
-          base64 --decode build_payload/v171_to_v172.patch.gz.b64 > /tmp/v170_to_v171.patch.gz
-          gzip -t /tmp/v170_to_v171.patch.gz
-          gzip -dc /tmp/v170_to_v171.patch.gz > /tmp/v170_to_v171.patch
+          base64 --decode build_payload/v171_to_v172.patch.gz.b64 > /tmp/v171_to_v172.patch.gz
+          gzip -t /tmp/v171_to_v172.patch.gz
+          gzip -dc /tmp/v171_to_v172.patch.gz > /tmp/v171_to_v172.patch
           cd "$ROOT"
-          patch -p1 --forward --batch < /tmp/v170_to_v171.patch
+          patch -p1 --forward --batch < /tmp/v171_to_v172.patch
 
       - name: Verify Release configuration and version
         working-directory: ${{ env.ROOT }}
