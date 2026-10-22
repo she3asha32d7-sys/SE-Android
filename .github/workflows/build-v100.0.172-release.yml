@@ -71,7 +71,8 @@ jobs:
           assert "nav_phone_files" in sidebar and "nav_exit" in sidebar
           assert sidebar.index("nav_phone_files") < sidebar.index("nav_exit"), "PHONE FILES must be immediately before EXIT"
           picker = Path("app/src/main/java/com/orbital/iptv/ui/files/PhoneFilesPickerActivity.kt").read_text()
-          assert "ActivityResultContracts.OpenDocument()" in picker and 'arrayOf("video/*")' in picker
+          assert "ActivityResultContracts.StartActivityForResult()" in picker and 'type = "video/*"' in picker
+          assert "DocumentsContract.EXTRA_INITIAL_URI" in picker, "Picker should start at internal storage when supported"
           assert "takePersistableUriPermission" in picker
           player = Path("app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt").read_text()
           assert "EXTRA_LOCAL_FILE" in player and "isLocalFile || PrefsManager.getPlayerType(this) == PlayerType.GENC_MEDIA3" in player
