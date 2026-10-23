@@ -148,7 +148,7 @@ object OpenSourceDlnaAdapters {
                     val headers = parseHeaders(response)
                     val location = headers["location"]
                     if (!location.isNullOrBlank() && location.startsWith("http", true)) {
-                        found.putIfAbsent(location, headers["st"].orEmpty())
+                        if (!found.containsKey(location)) found[location] = headers["st"].orEmpty()
                     }
                 } catch (_: SocketTimeoutException) {
                     // Continue collecting delayed renderer responses until the search window ends.
@@ -207,7 +207,7 @@ object OpenSourceDlnaAdapters {
                     val response = String(packet.data, packet.offset, packet.length, StandardCharsets.UTF_8)
                     val location = parseHeaders(response)["location"]
                     if (!location.isNullOrBlank() && location.startsWith("http", true)) {
-                        found.putIfAbsent(location, response)
+                        if (!found.containsKey(location)) found[location] = response
                     }
                 } catch (_: SocketTimeoutException) {
                     // Continue until the Vega-style discovery timeout expires.
@@ -253,7 +253,7 @@ object OpenSourceDlnaAdapters {
                             val response = String(packet.data, packet.offset, packet.length, StandardCharsets.UTF_8)
                             val location = parseHeaders(response)["location"] ?: continue
                             val parsed = parsePullDescription(location, Engine.NEKOVIDEO)
-                            results.putIfAbsent(parsed.id, parsed)
+                            if (!results.containsKey(parsed.id)) results[parsed.id] = parsed
                         } catch (_: SocketTimeoutException) {
                             // Keep receiving for the whole four-second window.
                         }
