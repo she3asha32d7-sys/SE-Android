@@ -181,7 +181,7 @@ object NekoVideoDlnaEngine {
         val envelope = """<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:$action xmlns:u="${receiver.serviceType}"><InstanceID>0</InstanceID>$arguments</u:$action></s:Body></s:Envelope>"""
         val request = Request.Builder().url(receiver.controlUrl)
             .header("User-Agent", "NekoVideo/1.x UPnP/1.0")
-            .header("SOAPAction", "\" ${receiver.serviceType}#$action \"".trim().replace("\" ", "\"").replace(" \"", "\""))
+            .header("SOAPAction", "\"${receiver.serviceType}#$action\"")
             .post(envelope.toRequestBody("text/xml; charset=utf-8".toMediaType()))
             .build()
         http.newCall(request).execute().use { response ->
