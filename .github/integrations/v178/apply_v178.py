@@ -27,7 +27,7 @@ for n in ("CastLab","Vega","NekoVideo","YAACC"):
 
 # Compile YAACC's original Cling model/binders and ActionCallback SOAP pipeline in the native SE app.
 y=up/"YAACC/yaacc/src/main/java"
-for sub in ("org/fourthline/cling/model","org/fourthline/cling/binding","org/fourthline/cling/support/model","org/seamless"):
+for sub in ("org/fourthline/cling/model","org/fourthline/cling/binding","org/fourthline/cling/support","org/seamless"):
     assert (y/sub).is_dir(),sub
     target=java/sub
     if target.exists(): shutil.rmtree(target)
@@ -42,6 +42,7 @@ for rel in ("org/fourthline/cling/transport/impl/SOAPActionProcessorImpl.java",
             "de/yaacc/upnp/protocol/SendingSync.java",
             "de/yaacc/upnp/protocol/sync/SendingAction.java",
             "de/yaacc/upnp/server/http/HttpRequestSender.java",
+            "de/yaacc/upnp/model/message/header/ContentLengthHeader.java",
             "de/yaacc/util/YaaccLogger.java"):
     src=y/rel
     assert src.is_file(),str(src)
