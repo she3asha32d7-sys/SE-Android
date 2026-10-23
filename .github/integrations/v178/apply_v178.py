@@ -146,10 +146,12 @@ helper=helper.replace("DOLLAR{","$")
 p=p.replace(marker,helper+marker,1)
 player.write_text(p)
 
-lic=(root/"LICENSE").read_text(errors="replace")
+lic_src=repo/"LICENSE"
+lic=lic_src.read_text(errors="replace")
 assert "GNU GENERAL PUBLIC LICENSE" in lic
+shutil.copy2(lic_src,root/"LICENSE")
 lp=root/"THIRD_PARTY_LICENSES"; lp.mkdir(exist_ok=True)
-for n in ("CASTLAB-GPL-3.0.txt","NEKOVIDEO-GPL-3.0.txt","YAACC-GPL-3.0.txt"): shutil.copy2(root/"LICENSE",lp/n)
+for n in ("CASTLAB-GPL-3.0.txt","NEKOVIDEO-GPL-3.0.txt","YAACC-GPL-3.0.txt"): shutil.copy2(lic_src,lp/n)
 vega_lic=repo/".github/integrations/v177/VEGA-APACHE-2.0.txt"
 assert vega_lic.is_file(); shutil.copy2(vega_lic,lp/"VEGA-APACHE-2.0.txt")
 (root/"THIRD_PARTY_NOTICES.md").write_text("""SE IPTV PLAYER V100.0.178 — Open-source DLNA integrations
