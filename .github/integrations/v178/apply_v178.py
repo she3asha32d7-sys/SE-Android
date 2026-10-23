@@ -55,10 +55,15 @@ if "org.apache.httpcomponents.client5:httpclient5:5.2.1" not in g:
     assert at>=0
     g=g[:at]+"\n    // YAACC original HTTP sender. Keep pinned to Android-compatible 5.2.x.\n    implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.1'\n    implementation 'org.apache.httpcomponents.core5:httpcore5:5.2'\n"+g[at:]
 g=g.replace("versionCode 1000176","versionCode 1000178",1).replace('versionName "100.0.176"','versionName "100.0.178"',1)
-pack_old="packagingOptions {\\n        pickFirst '**/libc++_shared.so'\\n    }"
-pack_new="packagingOptions {\\n        pickFirst '**/libc++_shared.so'\\n        exclude 'META-INF/DEPENDENCIES'\\n        exclude 'META-INF/LICENSE'\\n        exclude 'META-INF/LICENSE.txt'\\n        exclude 'META-INF/NOTICE'\\n        exclude 'META-INF/NOTICE.txt'\\n    }"
-assert pack_old in g, "Could not locate packagingOptions block"
-g=g.replace(pack_old,pack_new,1)
+pack_match = re.search(r"(?ms)^([ \\t]*packagingOptions[ \\t]*\\{[ \\t]*\\r?\\n)(.*?)(^[ \\t]*\\})", g)
+assert pack_match, "Could not locate packagingOptions block"
+pack_body = pack_match.group(2)
+for resource in ("META-INF/DEPENDENCIES", "META-INF/LICENSE", "META-INF/LICENSE.txt",
+                 "META-INF/NOTICE", "META-INF/NOTICE.txt"):
+    directive = "        exclude '" + resource + "'"
+    if directive not in pack_body:
+        pack_body += directive + "\\n"
+g = g[:pack_match.start()] + pack_match.group(1) + pack_body + pack_match.group(3) + g[pack_match.end():]
 gradle.write_text(g)
 s=settings.read_text()
 assert 'rootProject.name = "SEAndroid_v100.0.176"' in s
