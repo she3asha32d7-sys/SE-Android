@@ -299,7 +299,7 @@ object OpenSourceDlnaAdapters {
                     val headers = parseHeaders(response)
                     val location = headers["location"]
                     if (!location.isNullOrBlank() && location.startsWith("http", true)) {
-                        found.putIfAbsent(location, headers["st"].orEmpty())
+                        if (!found.containsKey(location)) found[location] = headers["st"].orEmpty()
                     }
                 } catch (_: SocketTimeoutException) {
                     // Continue until YAACC-style control point discovery finishes.
