@@ -187,7 +187,7 @@ object CastLabDlnaEngine {
         val request = Request.Builder()
             .url(receiver.controlUrl)
             .header("User-Agent", "CastLab/1.5 UPnP/1.0")
-            .header("SOAPAction", "\" ${receiver.serviceType}#$name \"".trim().replace("\" ", "\"").replace(" \"", "\""))
+            .header("SOAPAction", "\"${receiver.serviceType}#$name\"")
             .post(envelope.toRequestBody("text/xml; charset=utf-8".toMediaType()))
             .build()
         http.newCall(request).execute().use { response ->
