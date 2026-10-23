@@ -110,7 +110,7 @@ jobs:
           assert "private fun discoverCastLab" in adapters and "private fun castLab" in adapters
           assert "CASTLAB" in adapters and "VEGA" in adapters and "NEKOVIDEO" in adapters and "YAACC" in adapters
           assert "TDM" in cast_audit and "CastLab" in cast_audit and "Vega" in cast_audit and "NekoVideo" in cast_audit and "YAACC" in cast_audit
-          assert "GPL v3" in notices and "9ccc0c8" in notices and "NOT embedded" in notices
+          assert "GPL v3.0" in notices and "9ccc0c8" in notices and "NOT been embedded" in notices
           assert "GNU GENERAL PUBLIC LICENSE" in license_text and "WITHOUT ANY WARRANTY" in license_text
           assert "Apache License" in vega_license and "Version 2.0" in vega_license
           assert "if (!isLocalFile) MediaRouteButtonFactory.setUpMediaRouteButton" in player
