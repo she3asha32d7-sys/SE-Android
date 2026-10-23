@@ -95,7 +95,7 @@ chooser = '''    // The pre-existing DLNA 2 choice is deliberately preserved and
             if (devices.isEmpty()) {
                 AlertDialog.Builder(this@PlayerActivity, ThemeManager.dialogStyle())
                     .setTitle(dialogLabel)
-                    .setMessage("NO DLNA TVs FOUND.\\\\n\\\\nMake sure the TV and phone are on the same Wi-Fi network and that DLNA is enabled on the TV.")
+                    .setMessage("NO DLNA TVs FOUND.\\n\\nMake sure the TV and phone are on the same Wi-Fi network and that DLNA is enabled on the TV.")
                     .setPositiveButton("OK", null)
                     .show()
                 return@launch
@@ -103,7 +103,7 @@ chooser = '''    // The pre-existing DLNA 2 choice is deliberately preserved and
 
             AlertDialog.Builder(this@PlayerActivity, ThemeManager.dialogStyle())
                 .setTitle("$dialogLabel — SELECT TV")
-                .setItems(devices.map { "\${it.name}  (\${it.host})" }.toTypedArray()) { _, selected ->
+                .setItems(devices.map { "${it.name}  (${it.host})" }.toTypedArray()) { _, selected ->
                     val device = devices[selected]
                     lifecycleScope.launch {
                         val result = TdmCompatibleDlnaManager.cast(
@@ -114,12 +114,12 @@ chooser = '''    // The pre-existing DLNA 2 choice is deliberately preserved and
                         )
                         if (result.isSuccess) {
                             if (::localPlayer.isInitialized) localPlayer.pause()
-                            Toast.makeText(this@PlayerActivity, "$dialogLabel CASTING TO \${device.name}", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@PlayerActivity, "$dialogLabel CASTING TO ${device.name}", Toast.LENGTH_SHORT).show()
                             showGencOverlay()
                         } else {
                             Toast.makeText(
                                 this@PlayerActivity,
-                                "$dialogLabel FAILED: \${result.exceptionOrNull()?.message ?: "UNKNOWN ERROR"}",
+                                "$dialogLabel FAILED: ${result.exceptionOrNull()?.message ?: "UNKNOWN ERROR"}",
                                 Toast.LENGTH_LONG
                             ).show()
                         }
@@ -166,7 +166,7 @@ chooser = '''    // The pre-existing DLNA 2 choice is deliberately preserved and
 
             AlertDialog.Builder(this@PlayerActivity, ThemeManager.dialogStyle())
                 .setTitle("$label — SELECT TV")
-                .setItems(devices.map { "\${it.name}  (\${it.host})" }.toTypedArray()) { _, selected ->
+                .setItems(devices.map { "${it.name}  (${it.host})" }.toTypedArray()) { _, selected ->
                     val device = devices[selected]
                     lifecycleScope.launch {
                         val result = OpenSourceDlnaAdapters.cast(
@@ -179,12 +179,12 @@ chooser = '''    // The pre-existing DLNA 2 choice is deliberately preserved and
                         )
                         if (result.isSuccess) {
                             if (::localPlayer.isInitialized) localPlayer.pause()
-                            Toast.makeText(this@PlayerActivity, "$label CASTING TO \${device.name}", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@PlayerActivity, "$label CASTING TO ${device.name}", Toast.LENGTH_SHORT).show()
                             showGencOverlay()
                         } else {
                             Toast.makeText(
                                 this@PlayerActivity,
-                                "$label FAILED: \${result.exceptionOrNull()?.message ?: "UNKNOWN ERROR"}",
+                                "$label FAILED: ${result.exceptionOrNull()?.message ?: "UNKNOWN ERROR"}",
                                 Toast.LENGTH_LONG
                             ).show()
                         }
@@ -203,7 +203,7 @@ license_helper = '''    private fun showOpenSourceDlnaLicenseDialog() {
                 "This release includes an adapted NekoVideo DLNA discovery component under GNU GPL v3.0. " +
                     "Vega's native DLNA approach is adapted from Apache-2.0 revision 9ccc0c8. " +
                     "CastLab and YAACC are listed as separate compatibility adapters. " +
-                    "TDM's proprietary source is not copied.\n\n" +
+                    "TDM's proprietary source is not copied.\\n\\n" +
                     "These components are provided WITHOUT WARRANTY. The full GPLv3 text, third-party " +
                     "notices, and source references are included in the Source Code ZIP."
             )
