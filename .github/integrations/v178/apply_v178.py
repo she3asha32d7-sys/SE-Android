@@ -134,7 +134,7 @@ helper='''    private enum class OriginalDlnaEngine(val label: String) {
                             Toast.makeText(this@PlayerActivity, "DOLLAR{engine.label} CASTING TO DOLLAR{device.name}", Toast.LENGTH_SHORT).show()
                             showGencOverlay()
                         } else {
-                            Toast.makeText(this@PlayerActivity, "DOLLAR{engine.label} FAILED: DOLLAR{result.exceptionOrNull()?.message ?: "UNKNOWN ERROR"}", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@PlayerActivity, engine.label + " FAILED: " + (result.exceptionOrNull()?.message ?: "UNKNOWN ERROR"), Toast.LENGTH_LONG).show()
                         }
                     }
                 }.setNegativeButton("CANCEL", null).show()
