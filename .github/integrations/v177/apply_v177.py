@@ -26,6 +26,7 @@ third_party = root / "THIRD_PARTY_LICENSES"
 third_party.mkdir(exist_ok=True)
 shutil.copy2(workspace / ".github/integrations/v177/VEGA-APACHE-2.0.txt", third_party / "VEGA-APACHE-2.0.txt")
 shutil.copy2(workspace / ".github/integrations/v177/THIRD_PARTY_NOTICES.md", root / "THIRD_PARTY_NOTICES.md")
+shutil.copy2(workspace / ".github/integrations/v177/CAST_OPEN_SOURCE_DLNA_V100_0_177_AUDIT.md", root / "CAST_OPEN_SOURCE_DLNA_V100_0_177_AUDIT.md")
 
 text = player.read_text(encoding="utf-8")
 if "import com.orbital.iptv.utils.OpenSourceDlnaAdapters" not in text:
@@ -50,6 +51,20 @@ dispatch_new = '''                    5 -> binding.btnCast.performClick()
                 }'''
 assert dispatch in text, "Could not find original CAST dispatch; stop rather than risk changing old choices"
 text = text.replace(dispatch, dispatch_new, 1)
+
+# GPL-required notice is reachable from the cast dialog, without removing an existing cast choice.
+cast_end = '''                    10 -> showOpenSourceDlnaChooser(mediaUri, OpenSourceDlnaAdapters.Engine.YAACC)
+                }
+            }
+            .setNegativeButton("CANCEL", null)
+            .show()
+'''
+cast_end_new = cast_end.replace(
+    '            .setNegativeButton("CANCEL", null)',
+    '            .setNeutralButton("OPEN-SOURCE LICENSES") { showOpenSourceDlnaLicenseDialog() }\\n            .setNegativeButton("CANCEL", null)'
+)
+assert cast_end in text, "Could not locate CAST dialog footer for license notice"
+text = text.replace(cast_end, cast_end_new, 1)
 
 start = text.find("    private fun showDlna2Chooser(mediaUri: String) {")
 end = text.find("    private fun showCastDeviceChooser(mediaUri: String, dlnaOnly: Boolean) {", start)
@@ -181,6 +196,23 @@ chooser = '''    // The pre-existing DLNA 2 choice is deliberately preserved and
     }
 
 '''
+license_helper = '''    private fun showOpenSourceDlnaLicenseDialog() {
+        AlertDialog.Builder(this, ThemeManager.dialogStyle())
+            .setTitle("OPEN-SOURCE DLNA LICENSES")
+            .setMessage(
+                "This release includes an adapted NekoVideo DLNA discovery component under GNU GPL v3.0. " +
+                    "Vega's native DLNA approach is adapted from Apache-2.0 revision 9ccc0c8. " +
+                    "CastLab and YAACC are listed as separate compatibility adapters. " +
+                    "TDM's proprietary source is not copied.\n\n" +
+                    "These components are provided WITHOUT WARRANTY. The full GPLv3 text, third-party " +
+                    "notices, and source references are included in the Source Code ZIP."
+            )
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+'''
+chooser = chooser.replace("    private fun showOpenSourceDlnaChooser(", license_helper + "    private fun showOpenSourceDlnaChooser(", 1)
 text = text[:start] + chooser + text[end:]
 
 player.write_text(text, encoding="utf-8")
