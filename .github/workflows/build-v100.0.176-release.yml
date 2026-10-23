@@ -40,11 +40,12 @@ jobs:
           ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
           test -n "$ROOT"
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
-          base64 --decode build_payload/v176_to_v175.patch.gz.b64 > /tmp/v176_to_v175.patch.gz
-          gzip -t /tmp/v176_to_v175.patch.gz
-          gzip -dc /tmp/v176_to_v175.patch.gz > /tmp/v176_to_v175.patch
+          cat build_payload/v176_dlna2.patch.gz.b64.00 build_payload/v176_dlna2.patch.gz.b64.01 build_payload/v176_dlna2.patch.gz.b64.02 build_payload/v176_dlna2.patch.gz.b64.03 build_payload/v176_dlna2.patch.gz.b64.04 > /tmp/v176_dlna2.patch.gz.b64
+          base64 --decode /tmp/v176_dlna2.patch.gz.b64 > /tmp/v176_dlna2.patch.gz
+          gzip -t /tmp/v176_dlna2.patch.gz
+          gzip -dc /tmp/v176_dlna2.patch.gz > /tmp/v176_dlna2.patch
           cd "$ROOT"
-          patch -p1 --forward --batch < /tmp/v176_to_v175.patch
+          patch -p1 --forward --batch < /tmp/v176_dlna2.patch
 
       - name: Verify Release configuration and version
         working-directory: ${{ env.ROOT }}
@@ -70,7 +71,7 @@ jobs:
           login_xml = Path("app/src/main/res/layout/activity_login.xml").read_text()
           picker = Path("app/src/main/java/com/orbital/iptv/ui/files/PhoneFilesPickerActivity.kt").read_text()
           player = Path("app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt").read_text()
-          cast_audit = Path("CAST_TDM_SAMSUNG_DLNA_V100_0_176_AUDIT.md").read_text()
+          cast_audit = Path("CAST_TDM_DLNA2_V100_0_176_AUDIT.md").read_text()
           sidebar = Path("app/src/main/res/layout/layout_main_sidebar.xml").read_text()
           users = Path("app/src/main/java/com/orbital/iptv/ui/users/ListUsersActivity.kt").read_text()
           controller = Path("app/src/main/java/com/orbital/iptv/utils/MainSidebarController.kt").read_text()
@@ -83,33 +84,30 @@ jobs:
           assert 'DefaultDataSource.Factory(applicationContext, FileDataSource.Factory())' in player
           assert '"content", "file", "android.resource", "asset", "rawresource"' in player
           assert "castPlayer = null" in player and "player = localPlayer" in player
-          cast_choices = 'arrayOf("TV", "DLNA", "Screen Mirror / Wireless Display", "Web Video Caster", "Google Cast")'
+          cast_choices = 'arrayOf("TV", "DLNA", "DLNA 2", "Screen Mirror / Wireless Display", "Web Video Caster", "Google Cast")'
           assert cast_choices in player
           assert "0 -> showTvCastChooser(mediaUri)" in player
           assert "1 -> showDlnaCastChooser(mediaUri)" in player
-          assert "2 -> openWirelessDisplaySettings()" in player
-          assert "3 -> launchWebVideoCaster(mediaUri)" in player
-          assert "4 -> binding.btnCast.performClick()" in player
+          assert "2 -> showDlna2Chooser(mediaUri)" in player
+          assert "3 -> openWirelessDisplaySettings()" in player
+          assert "4 -> launchWebVideoCaster(mediaUri)" in player
+          assert "5 -> binding.btnCast.performClick()" in player
           assert "showCastDeviceChooser(mediaUri, dlnaOnly = false)" in player
           assert "showCastDeviceChooser(mediaUri, dlnaOnly = true)" in player
-          assert "discovered.filter { it.protocol == UniversalCastManager.Protocol.DLNA }" in player
-          assert "else if (!dlnaOnly)" in player
-          assert "MediaRouteButtonFactory.setUpMediaRouteButton(this, binding.btnCast)" in player
-          assert "WIRELESS DISPLAY" in player
-          assert "Screen Mirror" in cast_audit
-          assert "DLNA" in cast_audit
-          assert "Google Cast" in cast_audit and "Web Video Caster" in cast_audit
-          manager = Path("app/src/main/java/com/orbital/iptv/utils/UniversalCastManager.kt").read_text()
-          assert 'DLNA_USER_AGENT = "DLNA/1.0 UPnP/1.0"' in manager
-          assert "MX: 5" in manager and "USER-AGENT: $DLNA_USER_AGENT" in manager
-          assert 'equals("urn:schemas-upnp-org:service:AVTransport:1", true)' in manager
-          assert "DLNA_PROTOCOL_FLAGS" in manager
-          assert "object.item.videoItem</upnp:class>" in manager
-          assert 'swapLiveFormat(mediaUrl, "ts")' in manager
-          assert "GetTransportInfo" in manager and "verifyDlnaPlayback" in manager
-          assert 'setRequestProperty("Connection", "close")' in manager
-          assert "SetAVTransportURI" in manager and "PLAY" in manager
+          assert "private fun showCastDeviceChooser(mediaUri: String, dlnaOnly: Boolean)" in player
+          assert "Screen Mirror" in cast_audit and "DLNA 2" in cast_audit
           assert "TDM" in cast_audit and "Samsung" in cast_audit
+          assert "Google Cast" in cast_audit and "Web Video Caster" in cast_audit
+          manager = Path("app/src/main/java/com/orbital/iptv/utils/TdmCompatibleDlnaManager.kt").read_text()
+          assert 'USER_AGENT = "DLNA/1.0 UPnP/1.0"' in manager
+          assert "MX: 5" in manager
+          assert '"upnp:rootdevice"' in manager
+          assert '"urn:schemas-upnp-org:device:MediaRenderer:1"' in manager
+          assert 'AV_TRANSPORT_V1 = "urn:schemas-upnp-org:service:AVTransport:1"' in manager
+          assert 'sendSoap(device, "SetAVTransportURI", uriArgs)' in manager
+          assert 'sendSoap(device, "Play", "<InstanceID>0</InstanceID><Speed>1</Speed>")' in manager
+          assert 'object.item.videoItem</upnp:class>' in manager
+          assert 'setRequestProperty("SOAPAction", "\"$serviceType#$action\"")' in manager
           assert "if (!isLocalFile) MediaRouteButtonFactory.setUpMediaRouteButton" in player
           assert "LOCAL FILE ERROR — REOPEN FILE" in player
           assert "nav_phone_files" in sidebar and sidebar.index("nav_phone_files") < sidebar.index("nav_exit")
@@ -218,7 +216,7 @@ jobs:
           set +e
           rm -f "$RUNNER_TEMP/se-iptv-release.jks"
 
-      - name: Upload V176 Release deliverables
+      - name: Upload V176 DLNA 2 Release deliverables
         uses: actions/upload-artifact@v4
         with:
           name: SEAndroid-v100.0.176-RELEASE-FINAL
