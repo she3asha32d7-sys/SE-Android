@@ -8,7 +8,7 @@ if len(sys.argv) != 2:
     raise SystemExit("Usage: apply_v177.py <source-project-root>")
 
 root = Path(sys.argv[1]).resolve()
-workspace = Path(__file__).resolve().parents[2]
+workspace = Path(__file__).resolve().parents[3]
 player = root / "app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt"
 gradle = root / "app/build.gradle"
 settings = root / "settings.gradle"
@@ -61,7 +61,7 @@ cast_end = '''                    10 -> showOpenSourceDlnaChooser(mediaUri, Open
 '''
 cast_end_new = cast_end.replace(
     '            .setNegativeButton("CANCEL", null)',
-    '            .setNeutralButton("OPEN-SOURCE LICENSES") { showOpenSourceDlnaLicenseDialog() }\n            .setNegativeButton("CANCEL", null)'
+    '            .setNeutralButton("OPEN-SOURCE LICENSES") { _, _ -> showOpenSourceDlnaLicenseDialog() }\n            .setNegativeButton("CANCEL", null)'
 )
 assert cast_end in text, "Could not locate CAST dialog footer for license notice"
 text = text.replace(cast_end, cast_end_new, 1)
