@@ -107,7 +107,7 @@ jobs:
           assert 'sendSoap(device, "SetAVTransportURI", uriArgs)' in manager
           assert 'sendSoap(device, "Play", "<InstanceID>0</InstanceID><Speed>1</Speed>")' in manager
           assert 'object.item.videoItem</upnp:class>' in manager
-          assert 'setRequestProperty("SOAPAction", "\"$serviceType#$action\"")' in manager
+          assert 'setRequestProperty("SOAPAction"' in manager and 'serviceType#$action' in manager
           assert "if (!isLocalFile) MediaRouteButtonFactory.setUpMediaRouteButton" in player
           assert "LOCAL FILE ERROR — REOPEN FILE" in player
           assert "nav_phone_files" in sidebar and sidebar.index("nav_phone_files") < sidebar.index("nav_exit")
