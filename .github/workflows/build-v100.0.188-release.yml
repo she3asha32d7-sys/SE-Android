@@ -11,7 +11,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: seandroid-v188-phone-files-cast-${{github.ref}
+  group: seandroid-v188-phone-files-cast-${{  github.ref  }}
   cancel-in-progress: true
 
 jobs:
@@ -27,8 +27,8 @@ jobs:
         with:
           name: SEAndroid-v100.0.187-RELEASE-FINAL
           path: /tmp/base-artifact
-          github-token: ${{ secrets.GITHUB_TOKEN }
-          repository: ${{ github.repository }
+          github-token: ${{  github.token  }}
+          repository: ${{  github.repository  }}
           run-id: 40120871585
 
       - name: Apply V188 cast routes to V187
@@ -45,7 +45,7 @@ jobs:
           python3 "$GITHUB_WORKSPACE/.github/integrations/v188/apply_v188.py" "$ROOT"
 
       - name: Validate PHONE FILES cast menu and all routes
-        working-directory: ${{ env.ROOT }
+        working-directory: ${{  env.ROOT  }}
         shell: bash
         run: |
           set -euo pipefail
@@ -80,10 +80,10 @@ jobs:
       - name: Prepare protected Release Keystore
         shell: bash
         env:
-          SE_RELEASE_KEYSTORE_BASE64: ${{ secrets.SE_RELEASE_KEYSTORE_BASE64 }
-          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }
-          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }
-          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }
+          SE_RELEASE_KEYSTORE_BASE64: ${{  secrets.SE_RELEASE_KEYSTORE_BASE64  }}
+          SE_RELEASE_STORE_PASSWORD: ${{  secrets.SE_RELEASE_STORE_PASSWORD  }}
+          SE_RELEASE_KEY_ALIAS: ${{  secrets.SE_RELEASE_KEY_ALIAS  }}
+          SE_RELEASE_KEY_PASSWORD: ${{  secrets.SE_RELEASE_KEY_PASSWORD  }}
         run: |
           set -euo pipefail
           test -n "$SE_RELEASE_KEYSTORE_BASE64" || { echo "Missing Actions secret: SE_RELEASE_KEYSTORE_BASE64"; exit 1; }
@@ -98,12 +98,12 @@ jobs:
           echo "Protected Release keystore loaded and alias verified."
 
       - name: Build signed Release APK
-        working-directory: ${{ env.ROOT }
+        working-directory: ${{  env.ROOT  }}
         shell: bash
         env:
-          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }
-          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }
-          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }
+          SE_RELEASE_STORE_PASSWORD: ${{  secrets.SE_RELEASE_STORE_PASSWORD  }}
+          SE_RELEASE_KEY_ALIAS: ${{  secrets.SE_RELEASE_KEY_ALIAS  }}
+          SE_RELEASE_KEY_PASSWORD: ${{  secrets.SE_RELEASE_KEY_PASSWORD  }}
         run: |
           set -euo pipefail
           test -n "$SE_RELEASE_KEYSTORE_PATH"
@@ -111,7 +111,7 @@ jobs:
           ./gradlew clean assembleRelease --no-daemon --stacktrace
 
       - name: Verify APK signature and release certificate fingerprint
-        working-directory: ${{ env.ROOT }
+        working-directory: ${{  env.ROOT  }}
         shell: bash
         run: |
           set -euo pipefail
@@ -130,7 +130,7 @@ jobs:
           echo "APK signature and expected certificate fingerprint verified."
 
       - name: Package V188 APK and source ZIP
-        working-directory: ${{ env.ROOT }
+        working-directory: ${{  env.ROOT  }}
         shell: bash
         run: |
           set -euo pipefail
@@ -158,7 +158,7 @@ jobs:
         with:
           name: SEAndroid-v100.0.188-RELEASE-FINAL
           path: |
-            ${{ env.ROOT }/out/SE-Android-v100.0.188-release.apk
-            ${{ env.ROOT }/out/SE-Android-v100.0.188-source.zip
+            ${{  env.ROOT  }}/out/SE-Android-v100.0.188-release.apk
+            ${{  env.ROOT  }}/out/SE-Android-v100.0.188-source.zip
           if-no-files-found: error
           retention-days: 30
