@@ -18,7 +18,7 @@ class FongMiDlnaService : AndroidUpnpServiceImpl() {
     }
 
     override fun createConfiguration(): UpnpServiceConfiguration {
-        return object : FongMiDLNAServiceConfiguration() {
+        return object : DLNAServiceConfiguration() {
             override fun getExclusiveServiceTypes(): Array<ServiceType> =
                 arrayOf(UDAServiceType("AVTransport", 1))
         }
