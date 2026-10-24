@@ -151,7 +151,7 @@ helpers = '''    /**
                     player.addListener(playerListener)
                     mediaSession?.release()
                     mediaSession = MediaSession.Builder(this, player).build()
-                    if (playerType == PlayerType.GENC_MEDIA3) binding.gencPlayerView.player = player
+                    binding.gencPlayerView.player = player
                 }
                 if (localFileGoogleCastButtonReady) {
                     binding.btnCast.performClick()
