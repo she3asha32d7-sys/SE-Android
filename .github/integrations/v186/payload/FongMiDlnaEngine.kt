@@ -191,7 +191,7 @@ object FongMiDlnaEngine {
                     }
 
                     override fun failure(
-                        invocation: ActionInvocation,
+                        invocation: ActionInvocation<*>,
                         response: UpnpResponse,
                         message: String
                     ) {
@@ -213,7 +213,7 @@ object FongMiDlnaEngine {
                     }
 
                     override fun failure(
-                        invocation: ActionInvocation,
+                        invocation: ActionInvocation<*>,
                         response: UpnpResponse,
                         message: String
                     ) {
@@ -235,7 +235,7 @@ object FongMiDlnaEngine {
                     }
 
                     override fun failure(
-                        invocation: ActionInvocation,
+                        invocation: ActionInvocation<*>,
                         response: UpnpResponse,
                         message: String
                     ) {
