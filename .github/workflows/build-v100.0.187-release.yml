@@ -63,7 +63,7 @@ jobs:
           grep -Fq '.m3u8' app/src/main/java/com/orbital/iptv/utils/originalcast/OpenIptvCastCompatibility.kt
           test -s CAST_INTEGRATION_REVIEW_V100_0_186.md
           test -s DLNA7_FONGMI_CRASH_FIX_V100_0_187_AUDIT.md
-          grep -Fq 'FongMiDLNAServiceConfiguration' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiDlnaService.kt
+          grep -Fq 'DLNAServiceConfiguration' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiDlnaService.kt
           grep -Fq 'device.normalizeURI(av.controlURI)' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiDlnaEngine.kt
           grep -Fq 'createMulticastLock' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiDlnaEngine.kt
           grep -q 'android.permission.WAKE_LOCK' app/src/main/AndroidManifest.xml
