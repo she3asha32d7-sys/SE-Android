@@ -251,7 +251,7 @@ object CastLabMediaServer {
         verifyProxyServerUrl(localUrl)
         android.util.Log.i(
             "SE-CastLab-HTTP",
-            "Prepared VOD relay: local=$localUrl sourceHost=${upstream.host} sourcePath=${upstream.path}"
+            "Prepared VOD relay: local=$localUrl sourceHost=${upstream.host} mediaExt=${ext ?: "unknown"}"
         )
         return localUrl
     }
