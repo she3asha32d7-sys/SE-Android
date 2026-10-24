@@ -186,7 +186,7 @@ object FongMiDlnaEngine {
         withTimeout(18_000L) {
             suspendCancellableCoroutine<Unit> { continuation ->
                 control.execute(object : SetAVTransportURI(service, url, metadata) {
-                    override fun success(invocation: ActionInvocation<RemoteService>) {
+                    override fun success(invocation: ActionInvocation<*>) {
                         if (continuation.isActive) continuation.resume(Unit)
                     }
 
@@ -208,7 +208,7 @@ object FongMiDlnaEngine {
         withTimeout(18_000L) {
             suspendCancellableCoroutine<Unit> { continuation ->
                 control.execute(object : Play(service) {
-                    override fun success(invocation: ActionInvocation<RemoteService>) {
+                    override fun success(invocation: ActionInvocation<*>) {
                         if (continuation.isActive) continuation.resume(Unit)
                     }
 
@@ -230,7 +230,7 @@ object FongMiDlnaEngine {
         withTimeout(18_000L) {
             suspendCancellableCoroutine<Unit> { continuation ->
                 control.execute(object : Seek(service, SeekMode.REL_TIME, formatMs(positionMs)) {
-                    override fun success(invocation: ActionInvocation<RemoteService>) {
+                    override fun success(invocation: ActionInvocation<*>) {
                         if (continuation.isActive) continuation.resume(Unit)
                     }
 
