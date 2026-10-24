@@ -328,26 +328,26 @@ object CastLabDlnaEngine {
     private fun compatibilityDidl(title: String, url: String, mime: String): String {
         val safeTitle = xmlEscape(title.ifBlank { "SE IPTV PLAYER" })
         val safeUrl = xmlEscape(url)
-        return "<DIDL-Lite xmlns=\\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\\" " +
-            "xmlns:dc=\\"http://purl.org/dc/elements/1.1/\\" " +
-            "xmlns:upnp=\\"urn:schemas-upnp-org:metadata-1-0/upnp/\\">" +
-            "<item id=\\"0\\" parentID=\\"-1\\" restricted=\\"1\\">" +
+        return "<DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" " +
+            "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" " +
+            "xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\">" +
+            "<item id=\"0\" parentID=\"-1\" restricted=\"1\">" +
             "<dc:title>$safeTitle</dc:title><upnp:class>object.item.videoItem</upnp:class>" +
-            "<res protocolInfo=\\"http-get:*:$mime:*\\">$safeUrl</res></item></DIDL-Lite>"
+            "<res protocolInfo=\"http-get:*:$mime:*\">$safeUrl</res></item></DIDL-Lite>"
     }
 
     private fun compatibilitySoap(controlUrl: String, serviceType: String, action: String, arguments: String) {
-        val envelope = "<?xml version=\\"1.0\\" encoding=\\"utf-8\\"?>" +
-            "<s:Envelope xmlns:s=\\"http://schemas.xmlsoap.org/soap/envelope/\\" " +
-            "s:encodingStyle=\\"http://schemas.xmlsoap.org/soap/encoding/\\">" +
-            "<s:Body><u:$action xmlns:u=\\"$serviceType\\">$arguments</u:$action></s:Body></s:Envelope>"
+        val envelope = "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
+            "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
+            "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">" +
+            "<s:Body><u:$action xmlns:u=\"$serviceType\">$arguments</u:$action></s:Body></s:Envelope>"
         val bytes = envelope.toByteArray(StandardCharsets.UTF_8)
         val connection = (URL(controlUrl).openConnection() as java.net.HttpURLConnection).apply {
             connectTimeout = 9000
             readTimeout = 9000
             requestMethod = "POST"
             doOutput = true
-            setRequestProperty("Content-Type", "text/xml; charset=\\"utf-8\\"")
+            setRequestProperty("Content-Type", "text/xml; charset=\"utf-8\"")
             setRequestProperty("SOAPAction", "\"$serviceType#$action\"")
             setRequestProperty("User-Agent", "DLNA/1.0 UPnP/1.0")
             setRequestProperty("Accept", "*/*")
