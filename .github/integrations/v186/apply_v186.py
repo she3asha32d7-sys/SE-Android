@@ -148,6 +148,7 @@ fongmi_dir.mkdir(parents=True, exist_ok=True)
 cast_dir.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(base / "payload/FongMiDlnaService.kt", fongmi_dir / "FongMiDlnaService.kt")
 shutil.copyfile(base / "payload/FongMiDlnaEngine.kt", fongmi_dir / "FongMiDlnaEngine.kt")
+shutil.copyfile(base / "payload/FongMiActionExecutor.java", fongmi_dir / "FongMiActionExecutor.java")
 shutil.copyfile(base / "payload/OpenIptvCastCompatibility.kt", cast_dir / "OpenIptvCastCompatibility.kt")
 
 m = replace_once(
