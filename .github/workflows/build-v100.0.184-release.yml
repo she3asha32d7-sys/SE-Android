@@ -214,8 +214,8 @@ jobs:
             --exclude='*.jks' --exclude='*.keystore' --exclude='*.p12' --exclude='*.pfx' \
             --exclude='SE_RELEASE_KEYSTORE_BASE64.txt' --exclude='release-signing.properties'
           (cd source-export && zip -qr ../out/SE-Android-v100.0.184-source.zip .)
-          unzip -t out/SE-Android-v100.0.183-source.zip >/dev/null
-          sha256sum out/SE-Android-v100.0.183-release.apk out/SE-Android-v100.0.183-source.zip
+          unzip -t out/SE-Android-v100.0.184-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.184-release.apk out/SE-Android-v100.0.184-source.zip
           ls -lh out/*
 
       - name: Clean signing material
@@ -228,7 +228,7 @@ jobs:
         with:
           name: SEAndroid-v100.0.184-RELEASE-FINAL
           path: |
-            ${{ env.ROOT }}/out/SE-Android-v100.0.183-release.apk
-            ${{ env.ROOT }}/out/SE-Android-v100.0.183-source.zip
+            ${{ env.ROOT }}/out/SE-Android-v100.0.184-release.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.184-source.zip
           if-no-files-found: error
           retention-days: 30
