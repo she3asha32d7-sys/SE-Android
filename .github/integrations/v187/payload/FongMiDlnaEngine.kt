@@ -154,7 +154,7 @@ object FongMiDlnaEngine {
                     }
                     // controlURI is often relative to the renderer description; normalize it before use.
                     val controlUrl = runCatching {
-                        device.normalizeURI(av.controlURI).toURL().toString()
+                        device.normalizeURI(av.controlURI).toString()
                     }.getOrDefault("")
                     if (host.isBlank() || controlUrl.isBlank()) {
                         Log.w(TAG, "Skipping incomplete renderer descriptor: ${device.displayString}")
