@@ -59,7 +59,7 @@ public class OkHttpStreamClient extends AbstractStreamClient<OkHttpStreamClient.
                 return RequestBody.create(bytes, mediaType);
             }
         }
-        return requiresBody(method) ? RequestBody.create(new byte[0]) : null;
+        return requiresBody(method) ? RequestBody.create(new byte[0], null) : null;
     }
 
     @Override
