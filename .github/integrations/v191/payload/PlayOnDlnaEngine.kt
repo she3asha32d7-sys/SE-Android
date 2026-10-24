@@ -35,7 +35,6 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.TimeUnit
-import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
@@ -200,8 +199,6 @@ object PlayOnDlnaEngine {
             runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
             runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
             runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
-            runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
-            runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
         }
         val document = factory.newDocumentBuilder().parse(xml.byteInputStream(StandardCharsets.UTF_8))
         val root = document.documentElement ?: return null
