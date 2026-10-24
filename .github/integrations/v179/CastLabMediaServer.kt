@@ -245,7 +245,7 @@ object CastLabMediaServer {
                         line.substring(colon + 1).trim()
                 }
                 if (method != "GET" && method != "HEAD") {
-                    output.write("HTTP/1.1 405 Method Not Allowed\\r\\nAllow: GET, HEAD\\r\\nConnection: close\\r\\nContent-Length: 0\\r\\n\\r\\n".toByteArray(StandardCharsets.US_ASCII))
+                    output.write("HTTP/1.1 405 Method Not Allowed\r\nAllow: GET, HEAD\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".toByteArray(StandardCharsets.US_ASCII))
                     output.flush()
                     return
                 }
@@ -263,7 +263,7 @@ object CastLabMediaServer {
                 val range = if (rangeHeader.isNullOrBlank()) ByteRange(0L, total - 1L, false)
                     else parseRange(rangeHeader, total)
                 if (range == null) {
-                    val response = "HTTP/1.1 416 Range Not Satisfiable\\r\\nContent-Range: bytes */$total\\r\\nAccept-Ranges: bytes\\r\\nConnection: close\\r\\nContent-Length: 0\\r\\n\\r\\n"
+                    val response = "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$total\r\nAccept-Ranges: bytes\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
                     output.write(response.toByteArray(StandardCharsets.US_ASCII))
                     output.flush()
                     return
@@ -272,19 +272,19 @@ object CastLabMediaServer {
                 val length = range.end - range.start + 1L
                 val status = if (range.partial) "206 Partial Content" else "200 OK"
                 val responseHeaders = buildString {
-                    append("HTTP/1.1 $status\\r\\n")
-                    append("Content-Type: ${current.mimeType}\\r\\n")
-                    append("Content-Length: $length\\r\\n")
-                    append("Accept-Ranges: bytes\\r\\n")
-                    append("transferMode.dlna.org: Streaming\\r\\n")
-                    append("contentFeatures.dlna.org: DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=$DLNA_FLAGS\\r\\n")
-                    append("Access-Control-Allow-Origin: *\\r\\n")
-                    append("Access-Control-Allow-Methods: GET, HEAD, OPTIONS\\r\\n")
-                    append("Connection: close\\r\\n")
-                    if (range.partial) append("Content-Range: bytes ${range.start}-${range.end}/$total\\r\\n")
-                    append("Content-Disposition: inline; filename=\"${current.displayName.replace(Regex("[^A-Za-z0-9_. -]"), "_").take(120)}\"\\r\\n")
-                    append("Server: SE-CastLab/1.5 UPnP/1.0\\r\\n")
-                    append("\\r\\n")
+                    append("HTTP/1.1 $status\r\n")
+                    append("Content-Type: ${current.mimeType}\r\n")
+                    append("Content-Length: $length\r\n")
+                    append("Accept-Ranges: bytes\r\n")
+                    append("transferMode.dlna.org: Streaming\r\n")
+                    append("contentFeatures.dlna.org: DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=$DLNA_FLAGS\r\n")
+                    append("Access-Control-Allow-Origin: *\r\n")
+                    append("Access-Control-Allow-Methods: GET, HEAD, OPTIONS\r\n")
+                    append("Connection: close\r\n")
+                    if (range.partial) append("Content-Range: bytes ${range.start}-${range.end}/$total\r\n")
+                    append("Content-Disposition: inline; filename=\"${current.displayName.replace(Regex("[^A-Za-z0-9_. -]"), "_").take(120)}\"\r\n")
+                    append("Server: SE-CastLab/1.5 UPnP/1.0\r\n")
+                    append("\r\n")
                 }
                 output.write(responseHeaders.toByteArray(StandardCharsets.UTF_8))
                 output.flush()
@@ -342,8 +342,8 @@ object CastLabMediaServer {
     }
 
     private fun writeError(output: BufferedOutputStream, code: Int, text: String) {
-        val body = "$code $text\\n".toByteArray(StandardCharsets.UTF_8)
-        output.write("HTTP/1.1 $code $text\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: ${body.size}\\r\\nConnection: close\\r\\n\\r\\n".toByteArray(StandardCharsets.US_ASCII))
+        val body = "$code $text\n".toByteArray(StandardCharsets.UTF_8)
+        output.write("HTTP/1.1 $code $text\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray(StandardCharsets.US_ASCII))
         output.write(body)
         output.flush()
     }
