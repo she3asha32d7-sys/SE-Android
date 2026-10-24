@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -363,7 +364,17 @@ object CastLabMediaServer {
             }
 
             if (isPlaylist && status in 200..299) {
-                val sourceBytes = upstreamConnection.inputStream.use { input -> input.readNBytes(MAX_PLAYLIST_BYTES + 1) }
+                val sourceBytes = upstreamConnection.inputStream.use { input ->
+                    val buffer = ByteArrayOutputStream()
+                    val chunk = ByteArray(8192)
+                    while (buffer.size() <= MAX_PLAYLIST_BYTES) {
+                        val wanted = minOf(chunk.size, MAX_PLAYLIST_BYTES + 1 - buffer.size())
+                        val count = input.read(chunk, 0, wanted)
+                        if (count < 0) break
+                        if (count > 0) buffer.write(chunk, 0, count)
+                    }
+                    buffer.toByteArray()
+                }
                 if (sourceBytes.size <= MAX_PLAYLIST_BYTES) {
                     val originalText = String(sourceBytes, StandardCharsets.UTF_8).removePrefix("\uFEFF")
                     if (originalText.trimStart().startsWith("#EXTM3U")) {
