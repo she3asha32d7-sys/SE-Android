@@ -16,23 +16,18 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.jupnp.android.AndroidUpnpService
 import org.jupnp.controlpoint.ControlPoint
-import org.jupnp.model.action.ActionInvocation
-import org.jupnp.model.message.UpnpResponse
 import org.jupnp.model.message.header.STAllHeader
 import org.jupnp.model.meta.RemoteDevice
 import org.jupnp.model.meta.RemoteService
 import org.jupnp.model.types.UDADeviceType
 import org.jupnp.model.types.UDAServiceType
-import org.jupnp.support.avtransport.callback.Play
-import org.jupnp.support.avtransport.callback.Seek
-import org.jupnp.support.avtransport.callback.SetAVTransportURI
 import org.jupnp.support.contentdirectory.DIDLParser
 import org.jupnp.support.model.DIDLContent
 import org.jupnp.support.model.ProtocolInfo
 import org.jupnp.support.model.Res
-import org.jupnp.support.model.SeekMode
 import org.jupnp.support.model.item.VideoItem
 import java.net.URL
+import java.util.concurrent.CompletableFuture
 import java.util.Locale
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -177,76 +172,32 @@ object FongMiDlnaEngine {
         return runCatching { DIDLParser().generate(content) }.getOrElse { "" }
     }
 
+    private suspend fun awaitAction(future: CompletableFuture<Void>) {
+        withTimeout(18_000L) {
+            suspendCancellableCoroutine<Unit> { continuation ->
+                future.whenComplete { _, error ->
+                    if (continuation.isActive) {
+                        val cause = error?.cause ?: error
+                        if (cause == null) continuation.resume(Unit)
+                        else continuation.resumeWithException(cause)
+                    }
+                }
+            }
+        }
+    }
+
     private suspend fun setUri(
         control: ControlPoint,
         service: RemoteService,
         url: String,
         metadata: String
-    ) {
-        withTimeout(18_000L) {
-            suspendCancellableCoroutine<Unit> { continuation ->
-                control.execute(object : SetAVTransportURI(service, url, metadata) {
-                    override fun success(invocation: ActionInvocation<*>) {
-                        if (continuation.isActive) continuation.resume(Unit)
-                    }
+    ) = awaitAction(FongMiActionExecutor.setUri(control, service, url, metadata))
 
-                    override fun failure(
-                        invocation: ActionInvocation<*>,
-                        response: UpnpResponse,
-                        message: String
-                    ) {
-                        if (continuation.isActive) continuation.resumeWithException(
-                            IllegalStateException("FongMi SetAVTransportURI failed ($response): $message")
-                        )
-                    }
-                })
-            }
-        }
-    }
+    private suspend fun play(control: ControlPoint, service: RemoteService) =
+        awaitAction(FongMiActionExecutor.play(control, service))
 
-    private suspend fun play(control: ControlPoint, service: RemoteService) {
-        withTimeout(18_000L) {
-            suspendCancellableCoroutine<Unit> { continuation ->
-                control.execute(object : Play(service) {
-                    override fun success(invocation: ActionInvocation<*>) {
-                        if (continuation.isActive) continuation.resume(Unit)
-                    }
-
-                    override fun failure(
-                        invocation: ActionInvocation<*>,
-                        response: UpnpResponse,
-                        message: String
-                    ) {
-                        if (continuation.isActive) continuation.resumeWithException(
-                            IllegalStateException("FongMi Play failed ($response): $message")
-                        )
-                    }
-                })
-            }
-        }
-    }
-
-    private suspend fun seek(control: ControlPoint, service: RemoteService, positionMs: Long) {
-        withTimeout(18_000L) {
-            suspendCancellableCoroutine<Unit> { continuation ->
-                control.execute(object : Seek(service, SeekMode.REL_TIME, formatMs(positionMs)) {
-                    override fun success(invocation: ActionInvocation<*>) {
-                        if (continuation.isActive) continuation.resume(Unit)
-                    }
-
-                    override fun failure(
-                        invocation: ActionInvocation<*>,
-                        response: UpnpResponse,
-                        message: String
-                    ) {
-                        if (continuation.isActive) continuation.resumeWithException(
-                            IllegalStateException("FongMi Seek failed ($response): $message")
-                        )
-                    }
-                })
-            }
-        }
-    }
+    private suspend fun seek(control: ControlPoint, service: RemoteService, positionMs: Long) =
+        awaitAction(FongMiActionExecutor.seek(control, service, formatMs(positionMs)))
 
     private fun formatMs(ms: Long): String {
         val total = (ms / 1000L).coerceAtLeast(0L)
