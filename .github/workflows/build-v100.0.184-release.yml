@@ -1,4 +1,4 @@
-name: SEAndroid V100.0.184 TDM-Compatible Stream Release Build
+name: SEAndroid V100.0.184 TV-Route DLNA Release Build
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 100
     steps:
-      - name: Checkout V183 integration payload
+      - name: Checkout V184 integration payload
         uses: actions/checkout@v4
 
       - name: Download verified V176 source artifact
@@ -52,7 +52,7 @@ jobs:
             echo "YAACC_COMMIT=$(git -C /tmp/upstream/YAACC rev-parse HEAD)"
           } >> "$GITHUB_ENV"
 
-      - name: Reconstruct V183 source from verified V176
+      - name: Reconstruct V184 source from verified V176
         shell: bash
         run: |
           set -euo pipefail
@@ -71,7 +71,7 @@ jobs:
           UPSTREAM_ROOT=/tmp/upstream python3 "$GITHUB_WORKSPACE/.github/integrations/v183/apply_v183.py" "$ROOT"
           python3 "$GITHUB_WORKSPACE/.github/integrations/v184/apply_v184.py" "$ROOT"
 
-      - name: Validate V183 integration, original routes and license/source notices
+      - name: Validate V184 TV-route integration and license/source notices
         working-directory: ${{ env.ROOT }}
         shell: bash
         run: |
@@ -104,8 +104,8 @@ jobs:
           grep -Fq 'HTTP/1.1 502 Bad Gateway' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
           test -s CASTLAB_V100_0_183_AUDIT.md
           test -s CASTLAB_V100_0_184_AUDIT.md
-          grep -Fq 'TdmCompatibleDlnaManager.discover(this@PlayerActivity).map { tdm ->' "$PLAYER"
-          grep -Fq 'TdmCompatibleDlnaManager.cast(' "$PLAYER"
+          grep -Fq 'UniversalCastManager.discover(this@PlayerActivity)' "$PLAYER"
+          grep -Fq 'UniversalCastManager.cast(' "$PLAYER"
           grep -Fq 'OriginalDlnaEngine.CASTLAB -> if (isLocalFile)' "$PLAYER"
           grep -Fq 'setRequestProperty("Range", it)' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
           grep -Fq 'CastLabMediaServer.prepare(this@PlayerActivity, mediaUri, channelName, isLive)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
@@ -132,10 +132,10 @@ jobs:
           test -s app/src/main/java/org/fourthline/cling/binding/xml/UDA10DeviceDescriptorBinderSAXImpl.java
           test -s app/src/main/java/org/fourthline/cling/transport/impl/SOAPActionProcessorImpl.java
           if grep -q 'OpenSourceDlnaAdapters' "$PLAYER"; then
-            echo "V183 must not route the four engines through V177's common adapter."
+            echo "V184 must not route the four engines through V177's common adapter."
             exit 1
           fi
-          echo "V183 static integration and source checks passed."
+          echo "V184 static integration and source checks passed."
           printf '%s\n' "CastLab $CASTLAB_COMMIT" "Vega $VEGA_COMMIT" "NekoVideo $NEKOVIDEO_COMMIT" "YAACC $YAACC_COMMIT" > upstream-source-commits.txt
 
       - name: Set up JDK 17
@@ -223,7 +223,7 @@ jobs:
         shell: bash
         run: rm -f "$RUNNER_TEMP/se-iptv-release.jks"
 
-      - name: Upload V183 APK and source deliverables
+      - name: Upload V184 APK and source deliverables
         uses: actions/upload-artifact@v4
         with:
           name: SEAndroid-v100.0.184-RELEASE-FINAL
