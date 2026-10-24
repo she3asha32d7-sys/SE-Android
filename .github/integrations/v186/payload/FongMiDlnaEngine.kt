@@ -116,7 +116,7 @@ object FongMiDlnaEngine {
             .mapNotNull { raw ->
                 val device = raw as? RemoteDevice ?: return@mapNotNull null
                 val av = device.findService(avTransportType) ?: return@mapNotNull null
-                val description = device.descriptorURL?.toString().orEmpty()
+                val description = device.identity.descriptorURL?.toString().orEmpty()
                 val host = runCatching { URL(description).host }.getOrDefault("")
                 val name = device.details?.friendlyName.orEmpty().ifBlank {
                     host.ifBlank { "DLNA TV" }
@@ -186,7 +186,7 @@ object FongMiDlnaEngine {
         withTimeout(18_000L) {
             suspendCancellableCoroutine<Unit> { continuation ->
                 control.execute(object : SetAVTransportURI(service, url, metadata) {
-                    override fun success(invocation: ActionInvocation) {
+                    override fun success(invocation: ActionInvocation<RemoteService>) {
                         if (continuation.isActive) continuation.resume(Unit)
                     }
 
@@ -208,7 +208,7 @@ object FongMiDlnaEngine {
         withTimeout(18_000L) {
             suspendCancellableCoroutine<Unit> { continuation ->
                 control.execute(object : Play(service) {
-                    override fun success(invocation: ActionInvocation) {
+                    override fun success(invocation: ActionInvocation<RemoteService>) {
                         if (continuation.isActive) continuation.resume(Unit)
                     }
 
@@ -230,7 +230,7 @@ object FongMiDlnaEngine {
         withTimeout(18_000L) {
             suspendCancellableCoroutine<Unit> { continuation ->
                 control.execute(object : Seek(service, SeekMode.REL_TIME, formatMs(positionMs)) {
-                    override fun success(invocation: ActionInvocation) {
+                    override fun success(invocation: ActionInvocation<RemoteService>) {
                         if (continuation.isActive) continuation.resume(Unit)
                     }
 
