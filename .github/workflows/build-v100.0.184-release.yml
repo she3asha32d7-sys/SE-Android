@@ -1,0 +1,234 @@
+name: SEAndroid V100.0.184 TDM-Compatible Stream Release Build
+
+on:
+  push:
+    branches:
+      - v100.0.184-build
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: seandroid-v184-tdm-stream-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: Checkout V183 integration payload
+        uses: actions/checkout@v4
+
+      - name: Download verified V176 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.176-RELEASE-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 40032341663
+
+      - name: Clone pinned upstream source projects
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/upstream
+          git clone --filter=blob:none https://codeberg.org/tom79/CastLab.git /tmp/upstream/CastLab
+          git -C /tmp/upstream/CastLab checkout d9afa0d47bc899886e25cc9332da5e41b4cbee71
+          git clone --filter=blob:none https://github.com/vega-org/vega-app.git /tmp/upstream/Vega
+          git -C /tmp/upstream/Vega checkout 9ccc0c8fc9f92702fd021f1b6f67e26e30988362
+          git clone --filter=blob:none https://github.com/FellipitoPV/NekoVideo.git /tmp/upstream/NekoVideo
+          git -C /tmp/upstream/NekoVideo checkout a0bfd5f36d44d4ce761fa19652f54eed18c911bb
+          git clone --filter=blob:none https://github.com/tobexyz/yaacc-code.git /tmp/upstream/YAACC
+          git -C /tmp/upstream/YAACC checkout 247e0eee72811b074d2adda30482e9f3c7b567e6
+          {
+            echo "UPSTREAM_ROOT=/tmp/upstream"
+            echo "CASTLAB_COMMIT=$(git -C /tmp/upstream/CastLab rev-parse HEAD)"
+            echo "VEGA_COMMIT=$(git -C /tmp/upstream/Vega rev-parse HEAD)"
+            echo "NEKOVIDEO_COMMIT=$(git -C /tmp/upstream/NekoVideo rev-parse HEAD)"
+            echo "YAACC_COMMIT=$(git -C /tmp/upstream/YAACC rev-parse HEAD)"
+          } >> "$GITHUB_ENV"
+
+      - name: Reconstruct V183 source from verified V176
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.176-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          UPSTREAM_ROOT=/tmp/upstream python3 "$GITHUB_WORKSPACE/.github/integrations/v178/apply_v178.py" "$ROOT"
+          UPSTREAM_ROOT=/tmp/upstream python3 "$GITHUB_WORKSPACE/.github/integrations/v179/apply_v179.py" "$ROOT"
+          UPSTREAM_ROOT=/tmp/upstream python3 "$GITHUB_WORKSPACE/.github/integrations/v180/apply_v180.py" "$ROOT"
+          UPSTREAM_ROOT=/tmp/upstream python3 "$GITHUB_WORKSPACE/.github/integrations/v181/apply_v181.py" "$ROOT"
+          UPSTREAM_ROOT=/tmp/upstream python3 "$GITHUB_WORKSPACE/.github/integrations/v182/apply_v182.py" "$ROOT"
+          UPSTREAM_ROOT=/tmp/upstream python3 "$GITHUB_WORKSPACE/.github/integrations/v183/apply_v183.py" "$ROOT"
+          python3 "$GITHUB_WORKSPACE/.github/integrations/v184/apply_v184.py" "$ROOT"
+
+      - name: Validate V183 integration, original routes and license/source notices
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000184' app/build.gradle
+          grep -q 'versionName "100.0.184"' app/build.gradle
+          grep -q 'rootProject.name = "SEAndroid_v100.0.184"' settings.gradle
+          grep -q 'signingConfig signingConfigs.release' app/build.gradle
+          grep -q 'SE_RELEASE_KEYSTORE_PATH' app/build.gradle
+          grep -q 'debuggable false' app/build.gradle
+          test -s THIRD_PARTY_NOTICES.md
+          test -s THIRD_PARTY_LICENSES/VEGA-APACHE-2.0.txt
+          test -s third_party_sources/CastLab/LICENSE
+          test -s third_party_sources/Vega/LICENSE
+          test -s third_party_sources/NekoVideo/LICENSE
+          test -s third_party_sources/YAACC/LICENSE.txt
+          PLAYER=app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -q 'arrayOf("TV", "DLNA", "DLNA 2", "Screen Mirror / Wireless Display", "Web Video Caster", "Google Cast", "DLNA 3 (CastLab)", "DLNA 4 (Vega)", "DLNA 5 (NekoVideo)", "DLNA 6 (YAACC)")' "$PLAYER"
+          for route in '0 -> showTvCastChooser(mediaUri)' '1 -> showDlnaCastChooser(mediaUri)' '2 -> showDlna2Chooser(mediaUri)' '3 -> openWirelessDisplaySettings()' '4 -> launchWebVideoCaster(mediaUri)' '5 -> binding.btnCast.performClick()'; do
+            grep -Fq "$route" "$PLAYER"
+          done
+          test -s app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
+          test -s app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          test -s CASTLAB_V100_0_182_VOD_RELAY_AUDIT.md
+
+          test -s CASTLAB_V100_0_182_VOD_RELAY_AUDIT.md
+          grep -Fq 'return@withContext prepareNetworkProxy(app, source, titleHint, isLive)' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          ! grep -Fq 'if (isLive) return@withContext source' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          grep -Fq 'if (!pathLooksLikePlaylist)' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          grep -Fq 'HTTP/1.1 502 Bad Gateway' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          test -s CASTLAB_V100_0_183_AUDIT.md
+          test -s CASTLAB_V100_0_184_AUDIT.md
+          grep -Fq 'TdmCompatibleDlnaManager.discover(this@PlayerActivity).map { tdm ->' "$PLAYER"
+          grep -Fq 'TdmCompatibleDlnaManager.cast(' "$PLAYER"
+          grep -Fq 'OriginalDlnaEngine.CASTLAB -> if (isLocalFile)' "$PLAYER"
+          grep -Fq 'setRequestProperty("Range", it)' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          grep -Fq 'CastLabMediaServer.prepare(this@PlayerActivity, mediaUri, channelName, isLive)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -Fq 'check(isProxyServing(localUrl))' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          grep -Fq 'networkProxy) 10000L else 2600L' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
+          grep -Fq 'probe.status >= 400' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
+          grep -Fq 'proxyMedia.entries.toList()' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          grep -Fq 'awaitReceiverBytes(if (CastLabMediaServer.isProxyServing(mediaUrl)) 6000L else 1800L, 4096L)' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
+          grep -Fq 'method == "OPTIONS"' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          grep -Fq 'CASTLAB DIAGNOSTICS — FAILED' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          test -s CASTLAB_V100_0_182_VOD_RELAY_AUDIT.md
+          grep -Fq 'verifyServerUrl(mediaUrl, target.length())' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          grep -Fq 'castSamsungCompatibleFallback' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
+          grep -Fq 'TdmCompatibleDlnaManager.discover(app)' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
+          test -s CASTLAB_V100_0_182_VOD_RELAY_AUDIT.md
+          grep -Fq 'CastLabMediaServer.prepare(this@PlayerActivity, mediaUri, channelName, isLive)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          ! grep -Fq 'b.btnGencCast.visibility = if (isLocalFile) View.GONE else View.VISIBLE' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          test -s app/src/main/java/com/orbital/iptv/utils/originaldlna/VegaDlnaEngine.kt
+          test -s app/src/main/java/com/orbital/iptv/utils/originaldlna/NekoVideoDlnaEngine.kt
+          test -s app/src/main/java/com/orbital/iptv/utils/originaldlna/YaaccDlnaEngine.kt
+          test -s app/src/main/java/de/yaacc/upnp/callback/avtransport/SetAVTransportURI.java
+          test -s app/src/main/java/de/yaacc/upnp/callback/avtransport/Play.java
+          test -s app/src/main/java/de/yaacc/upnp/server/http/HttpRequestSender.java
+          test -s app/src/main/java/org/fourthline/cling/binding/xml/UDA10DeviceDescriptorBinderSAXImpl.java
+          test -s app/src/main/java/org/fourthline/cling/transport/impl/SOAPActionProcessorImpl.java
+          if grep -q 'OpenSourceDlnaAdapters' "$PLAYER"; then
+            echo "V183 must not route the four engines through V177's common adapter."
+            exit 1
+          fi
+          echo "V183 static integration and source checks passed."
+          printf '%s\n' "CastLab $CASTLAB_COMMIT" "Vega $VEGA_COMMIT" "NekoVideo $NEKOVIDEO_COMMIT" "YAACC $YAACC_COMMIT" > upstream-source-commits.txt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Prepare protected Release Keystore
+        shell: bash
+        env:
+          SE_RELEASE_KEYSTORE_BASE64: ${{ secrets.SE_RELEASE_KEYSTORE_BASE64 }}
+          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }}
+          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }}
+          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_BASE64" || { echo "Missing Actions secret: SE_RELEASE_KEYSTORE_BASE64"; exit 1; }
+          test -n "$SE_RELEASE_STORE_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_STORE_PASSWORD"; exit 1; }
+          test -n "$SE_RELEASE_KEY_ALIAS" || { echo "Missing Actions secret: SE_RELEASE_KEY_ALIAS"; exit 1; }
+          test -n "$SE_RELEASE_KEY_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_KEY_PASSWORD"; exit 1; }
+          KEYFILE="$RUNNER_TEMP/se-iptv-release.jks"
+          printf '%s' "$SE_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          keytool -list -keystore "$KEYFILE" -storepass "$SE_RELEASE_STORE_PASSWORD" -alias "$SE_RELEASE_KEY_ALIAS" >/dev/null
+          echo "SE_RELEASE_KEYSTORE_PATH=$KEYFILE" >> "$GITHUB_ENV"
+          echo "Protected Release keystore loaded and alias verified."
+
+      - name: Build signed Release APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        env:
+          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }}
+          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }}
+          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_PATH"
+          chmod +x gradlew
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK signature and release certificate fingerprint
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          test -x "$APKSIGNER"
+          mkdir -p out
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > out/apksigner-verify.txt
+          ACTUAL=$(grep -Eio 'certificate SHA-256 digest:[[:space:]]*[0-9a-f:]+' out/apksigner-verify.txt | sed -E 's/.*digest:[[:space:]]*//' | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n 1 || true)
+          EXPECTED=$(tr -d '[:space:]' < RELEASE_SIGNING_CERT_SHA256.txt)
+          test -n "$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED" || { echo "Release certificate fingerprint mismatch"; exit 1; }
+          unzip -t "$APK" >/dev/null
+          echo "APK signature and expected certificate fingerprint verified."
+
+      - name: Package Release APK and source ZIP
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.184-release.apk
+          rsync -a ./ source-export/ \
+            --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' \
+            --exclude='app/build' --exclude='out' --exclude='source-export' \
+            --exclude='build_payload' --exclude='.github' \
+            --exclude='*.jks' --exclude='*.keystore' --exclude='*.p12' --exclude='*.pfx' \
+            --exclude='SE_RELEASE_KEYSTORE_BASE64.txt' --exclude='release-signing.properties'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.184-source.zip .)
+          unzip -t out/SE-Android-v100.0.183-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.183-release.apk out/SE-Android-v100.0.183-source.zip
+          ls -lh out/*
+
+      - name: Clean signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/se-iptv-release.jks"
+
+      - name: Upload V183 APK and source deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.184-RELEASE-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.183-release.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.183-source.zip
+          if-no-files-found: error
+          retention-days: 30
