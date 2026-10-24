@@ -102,6 +102,8 @@ jobs:
           grep -Fq 'CastLabMediaServer.prepare(this@PlayerActivity, mediaUri, channelName, isLive)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           grep -Fq 'VOD relay self-test' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
           grep -Fq 'awaitReceiverBytes(2600L, 4096L)' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
+          grep -Fq 'probe.status >= 400' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
+          grep -Fq 'proxyMedia.entries.toList()' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
           grep -Fq 'method == "OPTIONS"' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
           grep -Fq 'CASTLAB DIAGNOSTICS — FAILED' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           test -s CASTLAB_V100_0_182_VOD_RELAY_AUDIT.md
