@@ -473,7 +473,7 @@ object CastLabMediaServer {
             }.getOrDefault(resolved)
         }
 
-        val uriAttribute = Regex("""URI="([^"]+)"""")
+        val uriAttribute = Regex("URI=\"([^\"]+)\"")
         return text.lineSequence().joinToString("\n") { line ->
             if (line.startsWith("#")) {
                 uriAttribute.replace(line) { match -> "URI=\"" + localize(match.groupValues[1]) + "\"" }
