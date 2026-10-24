@@ -67,7 +67,7 @@ object CastLabDlnaEngine {
                 reuseAddress = true
                 soTimeout = 250
                 timeToLive = 2
-                bind(if (localAddress != null) InetSocketAddress(localAddress, 0) else InetSocketAddress(0)
+                bind(if (localAddress != null) InetSocketAddress(localAddress, 0) else InetSocketAddress(0))
                 if (networkInterface != null) runCatching { this.networkInterface = networkInterface }
                 if (networkInterface != null) {
                     runCatching { joinGroup(InetSocketAddress(multicastAddress, PORT), networkInterface) }
