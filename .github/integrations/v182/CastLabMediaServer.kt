@@ -236,7 +236,7 @@ object CastLabMediaServer {
         val safeName = base + "." + (ext ?: "mp4")
 
         val now = System.currentTimeMillis()
-        proxyMedia.entries.removeIf { now - it.value.createdAtMs > 2 * 60 * 60 * 1000L }
+        proxyMedia.entries.toList().forEach { entry -> if (now - entry.value.createdAtMs > 2 * 60 * 60 * 1000L) proxyMedia.remove(entry.key) }
         val token = UUID.randomUUID().toString().replace("-", "")
         val mimeType = mimeForExtension(ext)
         proxyMedia[token] = ProxyMedia(token, sourceUrl, safeName, mimeType)
@@ -271,7 +271,7 @@ object CastLabMediaServer {
 
     private fun registerProxyUrl(context: Context?, upstreamUrl: String, nameHint: String): String {
         val now = System.currentTimeMillis()
-        proxyMedia.entries.removeIf { now - it.value.createdAtMs > 2 * 60 * 60 * 1000L }
+        proxyMedia.entries.toList().forEach { entry -> if (now - entry.value.createdAtMs > 2 * 60 * 60 * 1000L) proxyMedia.remove(entry.key) }
         val upstream = URL(upstreamUrl)
         val basename = runCatching { Uri.decode(upstream.path.substringAfterLast('/')) }.getOrDefault("")
             .ifBlank { nameHint }
