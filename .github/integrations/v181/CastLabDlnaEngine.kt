@@ -223,38 +223,116 @@ object CastLabDlnaEngine {
 
             try {
                 castCastLabPrimary(receiver, mediaUrl, title, isLive)
-                if (localFileUrl && !CastLabMediaServer.awaitReceiverBytes(2800L, 4096L)) {
-                    val probe = CastLabMediaServer.receiverProbe()
-                    Log.w(
-                        TAG,
-                        "Samsung accepted CastLab SOAP, but the HTTP server has not sent 4KiB to the TV. " +
-                            "host=${probe.host}, path=${probe.path}, range=${probe.range}, error=${probe.error}; trying compatibility transport."
-                    )
-                    castSamsungCompatibleFallback(receiver, mediaUrl, title, isLive, null, requirePayload = true)
-                    if (!CastLabMediaServer.awaitReceiverBytes(2500L, 4096L)) {
-                        throw mediaFetchFailure(receiver, mediaUrl, "CastLab primary and compatibility SOAP were accepted, but the TV did not read the media payload.")
-                    }
-                }
             } catch (error: Exception) {
                 primaryFailure = error
-                Log.w(TAG, "CastLab primary transport failed; retrying Samsung compatibility flow", error)
-                castSamsungCompatibleFallback(receiver, mediaUrl, title, isLive, error, requirePayload = localFileUrl)
-                if (localFileUrl && !CastLabMediaServer.awaitReceiverBytes(2500L, 4096L)) {
-                    throw mediaFetchFailure(receiver, mediaUrl, "Compatibility SOAP was accepted, but the TV did not read the media payload.")
-                }
+                Log.w(TAG, "CastLab primary SOAP transport failed", error)
             }
 
             if (localFileUrl) {
+                // A successful SOAP status only proves the TV accepted the command. The important
+                // test is whether that receiver actually connected to this phone and read the file.
+                if (!CastLabMediaServer.awaitReceiverBytes(2600L, 4096L)) {
+                    val probe = CastLabMediaServer.receiverProbe()
+                    Log.w(
+                        TAG,
+                        "No 4KiB transfer from TV after primary CastLab transport; " +
+                            "host=${probe.host}, path=${probe.path}, range=${probe.range}, status=${probe.status}, error=${probe.error}. Retrying compatible transport."
+                    )
+                    castSamsungCompatibleFallback(
+                        receiver, mediaUrl, title, isLive, primaryFailure, requirePayload = true
+                    )
+                    if (!CastLabMediaServer.awaitReceiverBytes(3200L, 4096L)) {
+                        throw mediaFetchFailure(
+                            receiver,
+                            mediaUrl,
+                            "The TV accepted or received the Cast command but did not read enough media bytes after both transport attempts."
+                        )
+                    }
+                }
                 val probe = CastLabMediaServer.receiverProbe()
                 Log.i(
                     TAG,
                     "CastLab receiver transfer confirmed: tv=${probe.host}, path=${probe.path}, " +
                         "http=${probe.status}, bytes=${probe.bytesServed}, range=${probe.range}, error=${probe.error}"
                 )
+            } else if (primaryFailure != null) {
+                castSamsungCompatibleFallback(
+                    receiver, mediaUrl, title, isLive, primaryFailure, requirePayload = false
+                )
             }
+
             if (primaryFailure == null) Log.d(TAG, "CastLab primary transport succeeded")
             Unit
         }
+    }
+
+    private fun mediaFetchFailure(receiver: DlnaReceiver, mediaUrl: String, message: String): IllegalStateException {
+        val probe = CastLabMediaServer.receiverProbe()
+        return IllegalStateException(
+            "$message Receiver=${receiver.name} (${receiver.host}); URL=$mediaUrl; " +
+                "TV HTTP host=${probe.host.ifBlank { "NO REQUEST RECEIVED" }}; " +
+                "path=${probe.path}; range=${probe.range}; HTTP=${probe.status}; " +
+                "bytes-served=${probe.bytesServed}; server-error=${probe.error.ifBlank { "none" }}. " +
+                "If the TV still displays its generic playback error, this shows whether it could reach the phone's media server."
+        )
+    }
+
+    /**
+     * Samsung-compatible fallback is normally only reached if CastLab's original SOAP request
+     * fails. For a local file it is also used when SOAP returns success but the TV never retrieves
+     * a real payload. This distinguishes an accepted command from a working media transfer.
+     */
+    private fun castSamsungCompatibleFallback(
+        receiver: DlnaReceiver,
+        mediaUrl: String,
+        title: String,
+        isLive: Boolean,
+        primaryFailure: Exception?,
+        requirePayload: Boolean
+    ) {
+        val serviceType = receiver.serviceType.ifBlank { AV_SERVICE }
+        runCatching { compatibilitySoap(receiver.controlUrl, serviceType, "Stop", "<InstanceID>0</InstanceID>") }
+
+        var lastError: Exception = primaryFailure ?: IllegalStateException("TV did not start downloading the media after the first CastLab command.")
+        val candidates = compatibilityMimeCandidates(mediaUrl, isLive)
+        for (mime in candidates) {
+            try {
+                val metadata = compatibilityDidl(title, mediaUrl, mime)
+                compatibilitySoap(
+                    receiver.controlUrl,
+                    serviceType,
+                    "SetAVTransportURI",
+                    "<InstanceID>0</InstanceID><CurrentURI>${xmlEscape(mediaUrl)}</CurrentURI><CurrentURIMetaData>${xmlEscape(metadata)}</CurrentURIMetaData>"
+                )
+                Thread.sleep(700L)
+                compatibilitySoap(
+                    receiver.controlUrl,
+                    serviceType,
+                    "Play",
+                    "<InstanceID>0</InstanceID><Speed>1</Speed>"
+                )
+                if (requirePayload && CastLabMediaServer.isServing(mediaUrl) &&
+                    !CastLabMediaServer.awaitReceiverBytes(1800L, 4096L)) {
+                    val probe = CastLabMediaServer.receiverProbe()
+                    lastError = IllegalStateException(
+                        "TV did not fetch media for MIME $mime; host=${probe.host}, status=${probe.status}, " +
+                            "bytes=${probe.bytesServed}, range=${probe.range}, serverError=${probe.error}"
+                    )
+                    Log.w(TAG, "Samsung compatibility command accepted but media was not fetched ($mime): ${lastError.message}")
+                    continue
+                }
+                Log.i(TAG, "CastLab Samsung-compatible transport succeeded: receiver=${receiver.name}, mime=$mime")
+                return
+            } catch (error: Exception) {
+                lastError = error
+                Log.w(TAG, "CastLab fallback candidate failed for ${receiver.name} ($mime): ${error.message}", error)
+            }
+        }
+        throw IllegalStateException(
+            "CastLab failed on ${receiver.name}. Primary request: ${primaryFailure?.message ?: "TV did not fetch media"}. " +
+                "Samsung-compatible retries also failed: ${lastError.message}",
+            lastError
+        )
     }
 
     private fun castCastLabPrimary(receiver: DlnaReceiver, mediaUrl: String, title: String, isLive: Boolean) {
