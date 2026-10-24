@@ -100,6 +100,7 @@ new_menu = '''        // Keep DISCONNECT at the far left and CANCEL at the far r
         castRoot.addView(castList)
         val castButtonRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            layoutDirection = View.LAYOUT_DIRECTION_LTR
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(10), 0, 0)
         }
