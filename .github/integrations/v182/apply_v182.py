@@ -93,6 +93,7 @@ HTTP range errors, or bytes sent from the phone to the TV.
 
 p2 = player.read_text(encoding="utf-8")
 m2 = (engine_root / "CastLabMediaServer.kt").read_text(encoding="utf-8")
+e2 = (engine_root / "CastLabDlnaEngine.kt").read_text(encoding="utf-8")
 g2 = gradle.read_text(encoding="utf-8")
 s2 = settings.read_text(encoding="utf-8")
 assert 'versionCode 1000182' in g2 and 'versionName "100.0.182"' in g2
