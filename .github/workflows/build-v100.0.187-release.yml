@@ -1,0 +1,173 @@
+name: SEAndroid V100.0.187 FongMi DLNA Stability Fix Release Build
+
+on:
+  push:
+    branches:
+      - v100.0.187-fongmi-crash-fix
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: seandroid-v187-fongmi-dlna-stability-${github.ref}
+  cancel-in-progress: true
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: Checkout V187 FongMi stability payload
+        uses: actions/checkout@v4
+
+      - name: Download successful V186 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.187-RELEASE-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 40118547072
+
+      - name: Apply V187 FongMi stability fixes to V186
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.187-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          python3 "$GITHUB_WORKSPACE/.github/integrations/v187/apply_v187.py" "$ROOT"
+
+      - name: Validate the distinct FongMi and OpenIPTV routes
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000187' app/build.gradle
+          grep -q 'versionName "100.0.187"' app/build.gradle
+          grep -q 'rootProject.name = "SEAndroid_v100.0.187"' settings.gradle
+          grep -Fq 'DLNA 7 (FongMi)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -Fq 'Google Cast 2 (OpenIPTV)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -Fq 'FongMiDlnaEngine.discover(this@PlayerActivity)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -Fq 'FongMiDlnaEngine.cast(' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -Fq 'showOpenIptvCastChooser(mediaUri)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -Fq 'new SetAVTransportURI(service, url, metadata)' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiActionExecutor.java
+          grep -Fq 'control.execute(new Play(service)' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiActionExecutor.java
+          grep -Fq 'application/x-mpegURL' app/src/main/java/com/orbital/iptv/utils/originalcast/OpenIptvCastCompatibility.kt
+          grep -Fq '.m3u8' app/src/main/java/com/orbital/iptv/utils/originalcast/OpenIptvCastCompatibility.kt
+          test -s CAST_INTEGRATION_REVIEW_V100_0_186.md
+          test -s DLNA7_FONGMI_CRASH_FIX_V100_0_187_AUDIT.md
+          grep -Fq 'FongMiDLNAServiceConfiguration' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiDlnaService.kt
+          grep -Fq 'device.normalizeURI(av.controlURI)' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiDlnaEngine.kt
+          grep -Fq 'createMulticastLock' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiDlnaEngine.kt
+          grep -q 'android.permission.WAKE_LOCK' app/src/main/AndroidManifest.xml
+          grep -Fq 'class SocketHttpStreamServer' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/SocketHttpStreamServer.java
+          test -s THIRD_PARTY_LICENSES/FONGMI-TV-GPL-3.0.txt
+          test -s THIRD_PARTY_LICENSES/OPENIPTV-GPL-3.0.txt
+          test -s THIRD_PARTY_NOTICES.md
+          test -s RELEASE_SIGNING_CERT_SHA256.txt
+          grep -q 'signingConfig signingConfigs.release' app/build.gradle
+          grep -q 'SE_RELEASE_KEYSTORE_PATH' app/build.gradle
+          grep -q 'debuggable false' app/build.gradle
+          echo "V187 FongMi stability and cast-source checks passed."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Prepare protected Release Keystore
+        shell: bash
+        env:
+          SE_RELEASE_KEYSTORE_BASE64: ${{ secrets.SE_RELEASE_KEYSTORE_BASE64 }}
+          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }}
+          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }}
+          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_BASE64" || { echo "Missing Actions secret: SE_RELEASE_KEYSTORE_BASE64"; exit 1; }
+          test -n "$SE_RELEASE_STORE_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_STORE_PASSWORD"; exit 1; }
+          test -n "$SE_RELEASE_KEY_ALIAS" || { echo "Missing Actions secret: SE_RELEASE_KEY_ALIAS"; exit 1; }
+          test -n "$SE_RELEASE_KEY_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_KEY_PASSWORD"; exit 1; }
+          KEYFILE="$RUNNER_TEMP/se-iptv-release.jks"
+          printf '%s' "$SE_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          keytool -list -keystore "$KEYFILE" -storepass "$SE_RELEASE_STORE_PASSWORD" -alias "$SE_RELEASE_KEY_ALIAS" >/dev/null
+          echo "SE_RELEASE_KEYSTORE_PATH=$KEYFILE" >> "$GITHUB_ENV"
+          echo "Protected Release keystore loaded and alias verified."
+
+      - name: Build signed Release APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        env:
+          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }}
+          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }}
+          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_PATH"
+          chmod +x gradlew
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK signature and release certificate fingerprint
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          test -x "$APKSIGNER"
+          mkdir -p out
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > out/apksigner-verify.txt
+          ACTUAL=$(grep -Eio 'certificate SHA-256 digest:[[:space:]]*[0-9a-f:]+' out/apksigner-verify.txt | sed -E 's/.*digest:[[:space:]]*//' | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n 1 || true)
+          EXPECTED=$(tr -d '[:space:]' < RELEASE_SIGNING_CERT_SHA256.txt)
+          test -n "$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED" || { echo "Release certificate fingerprint mismatch"; exit 1; }
+          unzip -t "$APK" >/dev/null
+          echo "APK signature and expected certificate fingerprint verified."
+
+      - name: Package V187 Release APK and source ZIP
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.187-release.apk
+          rsync -a ./ source-export/ \
+            --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' \
+            --exclude='app/build' --exclude='out' --exclude='source-export' \
+            --exclude='build_payload' --exclude='.github' \
+            --exclude='*.jks' --exclude='*.keystore' --exclude='*.p12' --exclude='*.pfx' \
+            --exclude='SE_RELEASE_KEYSTORE_BASE64.txt' --exclude='release-signing.properties'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.187-source.zip .)
+          unzip -t out/SE-Android-v100.0.187-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.187-release.apk out/SE-Android-v100.0.187-source.zip
+          ls -lh out/*
+
+      - name: Clean signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/se-iptv-release.jks"
+
+      - name: Upload V187 APK and source deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.187-RELEASE-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.187-release.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.187-source.zip
+          if-no-files-found: error
+          retention-days: 30
