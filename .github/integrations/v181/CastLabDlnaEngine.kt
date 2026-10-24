@@ -367,73 +367,72 @@ object CastLabDlnaEngine {
         Log.i(TAG, "CastLab SOAP handoff accepted by ${receiver.name}: $mediaUrl")
     }
 
-    private fun mediaFetchFailure(receiver: DlnaReceiver, mediaUrl: String, message: String): IllegalStateException {
-        val probe = CastLabMediaServer.receiverProbe()
-        return IllegalStateException(
-            "$message Receiver=${receiver.name} (${receiver.host}); URL=$mediaUrl; " +
-                "TV HTTP host=${probe.host.ifBlank { "NO REQUEST RECEIVED" }}; " +
-                "path=${probe.path}; range=${probe.range}; HTTP=${probe.status}; " +
-                "bytes-served=${probe.bytesServed}; server-error=${probe.error.ifBlank { "none" }}. " +
-                "If the TV shows its generic playback error, this confirms the phone did not see a usable media transfer."
-        )
+    private fun compatibilityMimeCandidates(url: String, isLive: Boolean): List<String> {
+        val path = runCatching { URL(url).path.lowercase(Locale.US) }.getOrDefault(url.substringBefore('?').lowercase(Locale.US))
+        return when {
+            path.endsWith(".ts") || path.endsWith(".mpeg") || path.endsWith(".mpg") ->
+                listOf("video/mp2t", "video/mpeg")
+            path.endsWith(".m3u8") || path.endsWith(".m3u") ->
+                listOf("application/vnd.apple.mpegurl", "application/x-mpegurl", "application/x-mpegURL")
+            path.endsWith(".mkv") -> listOf("video/x-matroska", "video/mkv")
+            path.endsWith(".avi") -> listOf("video/x-msvideo", "video/avi")
+            path.endsWith(".mov") -> listOf("video/quicktime")
+            path.endsWith(".webm") -> listOf("video/webm", "application/webm")
+            path.endsWith(".mp4") || path.endsWith(".m4v") -> listOf("video/mp4", "application/mp4")
+            isLive -> listOf("video/mp2t", "video/mpeg", "application/vnd.apple.mpegurl", "application/x-mpegurl")
+            else -> listOf("video/mp4", "application/mp4")
+        }.distinct()
     }
 
-    /**
-     * Samsung-compatible fallback is normally only reached if CastLab's original request fails.
-     * For local files we also use it if SOAP returns success but the TV never retrieves media;
-     * that is an important distinction from a DLNA command merely receiving HTTP 200.
-     */
-    private fun castSamsungCompatibleFallback(
-        receiver: DlnaReceiver,
-        mediaUrl: String,
-        title: String,
-        isLive: Boolean,
-        primaryFailure: Exception?,
-        requirePayload: Boolean
-    ) {
-        val serviceType = receiver.serviceType.ifBlank { AV_SERVICE }
-        runCatching { compatibilitySoap(receiver.controlUrl, serviceType, "Stop", "<InstanceID>0</InstanceID>") }
+    private fun compatibilityDidl(title: String, url: String, mime: String): String {
+        val safeTitle = xmlEscape(title.ifBlank { "SE IPTV PLAYER" })
+        val safeUrl = xmlEscape(url)
+        return "<DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" " +
+            "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" " +
+            "xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\">" +
+            "<item id=\"0\" parentID=\"-1\" restricted=\"1\">" +
+            "<dc:title>$safeTitle</dc:title><upnp:class>object.item.videoItem</upnp:class>" +
+            "<res protocolInfo=\"http-get:*:$mime:*\">$safeUrl</res></item></DIDL-Lite>"
+    }
 
-        var lastError: Exception = primaryFailure ?: IllegalStateException("TV did not start downloading the media after the first CastLab command.")
-        val candidates = compatibilityMimeCandidates(mediaUrl, isLive)
-        for (mime in candidates) {
-            try {
-                val metadata = compatibilityDidl(title, mediaUrl, mime)
-                compatibilitySoap(
-                    receiver.controlUrl,
-                    serviceType,
-                    "SetAVTransportURI",
-                    "<InstanceID>0</InstanceID><CurrentURI>${xmlEscape(mediaUrl)}</CurrentURI><CurrentURIMetaData>${xmlEscape(metadata)}</CurrentURIMetaData>"
-                )
-                Thread.sleep(700L)
-                compatibilitySoap(
-                    receiver.controlUrl,
-                    serviceType,
-                    "Play",
-                    "<InstanceID>0</InstanceID><Speed>1</Speed>"
-                )
-                if (requirePayload && CastLabMediaServer.isServing(mediaUrl) &&
-                    !CastLabMediaServer.awaitReceiverBytes(1800L, 4096L)) {
-                    val probe = CastLabMediaServer.receiverProbe()
-                    lastError = IllegalStateException(
-                        "TV did not fetch media for MIME $mime; host=${probe.host}, status=${probe.status}, " +
-                            "bytes=${probe.bytesServed}, range=${probe.range}, serverError=${probe.error}"
-                    )
-                    Log.w(TAG, "Samsung compatibility command accepted but media was not fetched ($mime): ${lastError.message}")
-                    continue
-                }
-                Log.i(TAG, "CastLab Samsung-compatible transport succeeded: receiver=${receiver.name}, mime=$mime")
-                return
-            } catch (error: Exception) {
-                lastError = error
-                Log.w(TAG, "CastLab fallback candidate failed for ${receiver.name} ($mime): ${error.message}", error)
-            }
+    private fun compatibilitySoap(controlUrl: String, serviceType: String, action: String, arguments: String) {
+        val envelope = "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
+            "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
+            "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">" +
+            "<s:Body><u:$action xmlns:u=\"$serviceType\">$arguments</u:$action></s:Body></s:Envelope>"
+        val bytes = envelope.toByteArray(StandardCharsets.UTF_8)
+        val connection = (URL(controlUrl).openConnection() as java.net.HttpURLConnection).apply {
+            connectTimeout = 9000
+            readTimeout = 9000
+            requestMethod = "POST"
+            doOutput = true
+            setRequestProperty("Content-Type", "text/xml; charset=\"utf-8\"")
+            setRequestProperty("SOAPAction", "\"$serviceType#$action\"")
+            setRequestProperty("User-Agent", "DLNA/1.0 UPnP/1.0")
+            setRequestProperty("Accept", "*/*")
+            setRequestProperty("Connection", "close")
+            setFixedLengthStreamingMode(bytes.size)
         }
-        throw IllegalStateException(
-            "CastLab failed on ${receiver.name}. Primary request: ${primaryFailure?.message ?: "TV did not fetch media"}. " +
-                "Samsung-compatible retries also failed: ${lastError.message}",
-            lastError
-        )
+        try {
+            connection.outputStream.use { it.write(bytes) }
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val response = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
+            val code = Regex("<(?:\\w+:)?errorCode>\\s*(.*?)\\s*</(?:\\w+:)?errorCode>", RegexOption.IGNORE_CASE)
+                .find(response)?.groupValues?.getOrNull(1)
+            val description = Regex("<(?:\\w+:)?errorDescription>\\s*(.*?)\\s*</(?:\\w+:)?errorDescription>", RegexOption.IGNORE_CASE)
+                .find(response)?.groupValues?.getOrNull(1)
+            if (status !in 200..299 || response.contains(":Fault", true) || !code.isNullOrBlank()) {
+                throw IllegalStateException(
+                    "$action rejected: HTTP $status" +
+                        (code?.let { " / UPnP $it" }.orEmpty()) +
+                        (description?.let { ": $it" }.orEmpty()) +
+                        (if (description.isNullOrBlank() && response.isNotBlank()) " / ${response.take(240)}" else "")
+                )
+            }
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun findWifiInterface(): NetworkInterface? = runCatching {
