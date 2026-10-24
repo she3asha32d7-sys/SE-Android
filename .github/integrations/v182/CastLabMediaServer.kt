@@ -103,6 +103,14 @@ object CastLabMediaServer {
         val path = Uri.decode(url.path)
         val file = activeMedia
         if (file != null && path.removePrefix("/") == file.file.name) return true
+        isProxyServing(urlText)
+    }.getOrDefault(false)
+
+    fun isProxyServing(urlText: String): Boolean = runCatching {
+        val url = URL(urlText)
+        if (url.port != serverSocket?.localPort) return false
+        val path = Uri.decode(url.path)
+        if (!path.startsWith(PROXY_ROUTE)) return false
         val token = path.removePrefix(PROXY_ROUTE).substringBefore('/')
         token.isNotBlank() && proxyMedia.containsKey(token)
     }.getOrDefault(false)
@@ -246,9 +254,13 @@ object CastLabMediaServer {
         val port = serverSocket?.localPort ?: error("CastLab HTTP media server is not running")
         val localUrl = "http://$localIp:$port$PROXY_ROUTE$token/${Uri.encode(safeName)}"
 
-        // Validate the relay itself, not just the provider URL. The self-test reads at most one
-        // byte and does not count as television traffic in ReceiverProbe.
-        verifyProxyServerUrl(localUrl)
+        // Validate only the local route here. Do not open a second connection to the IPTV provider:
+        // some Xtream accounts limit concurrent VOD sessions, and the TV's request should be the
+        // first upstream playback connection made for this cast.
+        check(serverSocket?.isBound == true && serverSocket?.isClosed == false) {
+            "CastLab local VOD server is not listening."
+        }
+        check(isProxyServing(localUrl)) { "CastLab could not register the VOD proxy route." }
         android.util.Log.i(
             "SE-CastLab-HTTP",
             "Prepared VOD relay: local=$localUrl sourceHost=${upstream.host} mediaExt=${ext ?: "unknown"}"
@@ -285,32 +297,6 @@ object CastLabMediaServer {
         val localIp = localServerIp ?: (context?.let { findLanIpv4(it) } ?: throw IllegalStateException("Wi-Fi address is not initialized for HLS proxy")).also { localServerIp = it }
         val port = serverSocket?.localPort ?: error("CastLab HTTP media server is not running")
         return "http://$localIp:$port$PROXY_ROUTE$token/${Uri.encode(safeName)}"
-    }
-
-    private fun verifyProxyServerUrl(localUrl: String) {
-        val connection = URL(localUrl).openConnection() as HttpURLConnection
-        try {
-            connection.connectTimeout = 5000
-            // The local handler may spend up to 15 seconds opening a provider connection and
-            // another 30 seconds waiting for the first upstream bytes on a slow VOD host.
-            connection.readTimeout = 45000
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("Range", "bytes=0-0")
-            connection.setRequestProperty("User-Agent", PROXY_USER_AGENT)
-            val code = connection.responseCode
-            require(code in 200..299) {
-                "CastLab VOD relay self-test failed: local HTTP $code. The provider may have rejected the stream request."
-            }
-            val contentRange = connection.getHeaderField("Content-Range").orEmpty()
-            connection.inputStream.use { input ->
-                require(input.read() >= 0) {
-                    "CastLab VOD relay returned an empty response. The provider may not allow this stream URL."
-                }
-            }
-            android.util.Log.d("SE-CastLab-HTTP", "VOD relay self-test HTTP $code contentRange=$contentRange")
-        } finally {
-            connection.disconnect()
-        }
     }
 
     private fun handleProxyRequest(
