@@ -348,7 +348,7 @@ object CastLabDlnaEngine {
             requestMethod = "POST"
             doOutput = true
             setRequestProperty("Content-Type", "text/xml; charset=\\"utf-8\\"")
-            setRequestProperty("SOAPAction", "\\\"$serviceType#$action\\\"")
+            setRequestProperty("SOAPAction", "\"$serviceType#$action\"")
             setRequestProperty("User-Agent", "DLNA/1.0 UPnP/1.0")
             setRequestProperty("Accept", "*/*")
             setRequestProperty("Connection", "close")
