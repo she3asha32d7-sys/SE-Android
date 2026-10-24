@@ -22,9 +22,10 @@ assert 'rootProject.name = "SEAndroid_v100.0.181"' in s
 
 engine_root = root / "app/src/main/java/com/orbital/iptv/utils/originaldlna"
 engine_root.mkdir(parents=True, exist_ok=True)
-source = repo / ".github/integrations/v182/CastLabMediaServer.kt"
-assert source.is_file(), f"Missing V182 payload: {source}"
-shutil.copy2(source, engine_root / "CastLabMediaServer.kt")
+for name in ("CastLabMediaServer.kt", "CastLabDlnaEngine.kt"):
+    source = repo / ".github/integrations/v182" / name
+    assert source.is_file(), f"Missing V182 payload: {source}"
+    shutil.copy2(source, engine_root / name)
 
 g = g.replace("versionCode 1000181", "versionCode 1000182", 1)
 g = g.replace('versionName "100.0.181"', 'versionName "100.0.182"', 1)
@@ -102,5 +103,6 @@ assert 'setRequestProperty("User-Agent", PROXY_USER_AGENT)' in m2
 assert 'setRequestProperty("Range", it)' in m2
 assert 'rewriteHlsManifest' in m2 and 'PROXY_ROUTE' in m2
 assert 'if (isLive) return@withContext source' in m2
+assert 'probe.status >= 400' in e2
 assert 'OriginalDlnaEngine.CASTLAB -> CastLabDlnaEngine.cast(device, castUri, channelName, isLive)' in p2
 print("V182 CastLab VOD relay static preflight passed.")
