@@ -291,7 +291,9 @@ object CastLabMediaServer {
         val connection = URL(localUrl).openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 5000
-            connection.readTimeout = 10000
+            // The local handler may spend up to 15 seconds opening a provider connection and
+            // another 30 seconds waiting for the first upstream bytes on a slow VOD host.
+            connection.readTimeout = 45000
             connection.requestMethod = "GET"
             connection.setRequestProperty("Range", "bytes=0-0")
             connection.setRequestProperty("User-Agent", PROXY_USER_AGENT)
