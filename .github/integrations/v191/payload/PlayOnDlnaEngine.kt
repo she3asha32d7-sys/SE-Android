@@ -117,7 +117,7 @@ object PlayOnDlnaEngine {
                     .onFailure { Log.w(TAG, "Device-description fetch failed: $location", it) }
                     .getOrNull()
             }.distinctBy { it.id }.sortedBy { it.name.lowercase(Locale.US) }
-            Log.i(TAG, "SSDP discovery complete: ${{receivers.size} PlayOnDlna-style renderer(s)")
+            Log.i(TAG, "SSDP discovery complete: ${receivers.size} PlayOnDlna-style renderer(s)")
             receivers
         } finally {
             runCatching { socket?.close() }
@@ -145,10 +145,10 @@ object PlayOnDlnaEngine {
                 }
             )
             val safeUrl = dlnaXmlEscape(mediaUrl)
-            val didl = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/"><item id="se-playondlna-${{System.currentTimeMillis()}" parentID="0" restricted="1"><dc:title>${{safeTitle}</dc:title><upnp:class>object.item.videoItem.movie</upnp:class><res protocolInfo="http-get:*:${{mime}:*">${{safeUrl}</res></item></DIDL-Lite>"""
+            val didl = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/"><item id="se-playondlna-${System.currentTimeMillis()}" parentID="0" restricted="1"><dc:title>${safeTitle}</dc:title><upnp:class>object.item.videoItem.movie</upnp:class><res protocolInfo="http-get:*:${mime}:*">${safeUrl}</res></item></DIDL-Lite>"""
             // CurrentURIMetaData is XML text within SOAP, so escape the embedded DIDL document.
             val mediaMetadata = dlnaXmlEscape(didl)
-            Log.i(TAG, "SetAVTransportURI to ${{receiver.name}; mime=$mime; host=${{runCatching { URL(mediaUrl).host }.getOrDefault("unknown")}")
+            Log.i(TAG, "SetAVTransportURI to ${receiver.name}; mime=$mime; host=${runCatching { URL(mediaUrl).host }.getOrDefault("unknown")}")
             soapAction(
                 receiver.controlUrl,
                 receiver.serviceType.ifBlank { AV_TRANSPORT_V1 },
@@ -163,7 +163,7 @@ object PlayOnDlnaEngine {
                 "Play",
                 "<InstanceID>0</InstanceID><Speed>1</Speed>"
             )
-            Log.i(TAG, "PlayOnDlna-style AVTransport accepted by ${{receiver.name}")
+            Log.i(TAG, "PlayOnDlna-style AVTransport accepted by ${receiver.name}")
             Unit
         }
     }
@@ -190,7 +190,7 @@ object PlayOnDlnaEngine {
             .build()
         val xml = http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                Log.d(TAG, "Device description HTTP ${{response.code} at $location")
+                Log.d(TAG, "Device description HTTP ${response.code} at $location")
                 return null
             }
             response.body?.string() ?: return null
@@ -294,10 +294,10 @@ object PlayOnDlnaEngine {
                 .find(responseText)?.groupValues?.getOrNull(1)?.trim()
             if (!response.isSuccessful || responseText.contains(":Fault", true) || !code.isNullOrBlank()) {
                 throw IllegalStateException(
-                    "$action rejected by renderer: HTTP ${{response.code}" +
+                    "$action rejected by renderer: HTTP ${response.code}" +
                         (code?.let { " / UPnP $it" }.orEmpty()) +
                         (description?.let { ": $it" }.orEmpty()) +
-                        (if (description.isNullOrBlank() && responseText.isNotBlank()) " / ${{responseText.take(280)}" else "")
+                        (if (description.isNullOrBlank() && responseText.isNotBlank()) " / ${responseText.take(280)}" else "")
                 )
             }
         }
