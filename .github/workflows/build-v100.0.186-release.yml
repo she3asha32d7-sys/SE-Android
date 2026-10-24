@@ -57,8 +57,8 @@ jobs:
           grep -Fq 'FongMiDlnaEngine.discover(this@PlayerActivity)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           grep -Fq 'FongMiDlnaEngine.cast(' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           grep -Fq 'showOpenIptvCastChooser(mediaUri)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          grep -Fq 'SetAVTransportURI(service, url, metadata)' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiDlnaEngine.kt
-          grep -Fq 'control.execute(object : Play(service)' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiDlnaEngine.kt
+          grep -Fq 'new SetAVTransportURI(service, url, metadata)' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiActionExecutor.java
+          grep -Fq 'control.execute(new Play(service)' app/src/main/java/com/orbital/iptv/utils/originaldlna/fongmi/FongMiActionExecutor.java
           grep -Fq 'application/x-mpegURL' app/src/main/java/com/orbital/iptv/utils/originalcast/OpenIptvCastCompatibility.kt
           grep -Fq '.m3u8' app/src/main/java/com/orbital/iptv/utils/originalcast/OpenIptvCastCompatibility.kt
           test -s CAST_INTEGRATION_REVIEW_V100_0_186.md
