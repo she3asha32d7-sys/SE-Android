@@ -1,0 +1,163 @@
+name: SEAndroid V100.0.190 CAST Dialog Buttons Release Build
+
+on:
+  push:
+    branches:
+      - v100.0.190-cast-dialog-buttons
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: seandroid-v190-cast-dialog-buttons-${{  github.ref  }}
+  cancel-in-progress: true
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: Checkout V190 dialog update
+        uses: actions/checkout@v4
+
+      - name: Download successful V189 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.189-RELEASE-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{  github.token  }}
+          repository: ${{  github.repository  }}
+          run-id: 40126325591
+
+      - name: Apply V190 CAST dialog update to V189
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.189-source.zip' -print -quit)
+          test -n "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          python3 "$GITHUB_WORKSPACE/.github/integrations/v190/apply_v190.py" "$ROOT"
+
+      - name: Validate common CAST dialog and button order
+        working-directory: ${{  env.ROOT  }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000190' app/build.gradle
+          grep -q 'versionName "100.0.190"' app/build.gradle
+          grep -q 'rootProject.name = "SEAndroid_v100.0.190"' settings.gradle
+          PLAYER=app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          grep -Fq '.setNegativeButton("DISCONNECT", null)' "$PLAYER"
+          grep -Fq '.setPositiveButton("CANCEL", null)' "$PLAYER"
+          grep -Fq 'window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR' "$PLAYER"
+          grep -Fq 'CastDisconnectManager.disconnect(this@PlayerActivity)' "$PLAYER"
+          grep -Fq 'binding.btnCastBottomRoute.setOnClickListener { showCastChooser() }' "$PLAYER"
+          grep -Fq 'binding.btnCastBottom.setOnClickListener { showCastChooser() }' "$PLAYER"
+          grep -Fq 'b.btnGencCast.setOnClickListener { showCastChooser() }' "$PLAYER"
+          test -s CAST_DIALOG_DISCONNECT_CANCEL_VISIBLE_V100_0_190_AUDIT.md
+          test -s RELEASE_SIGNING_CERT_SHA256.txt
+          grep -q 'signingConfig signingConfigs.release' app/build.gradle
+          grep -q 'SE_RELEASE_KEYSTORE_PATH' app/build.gradle
+          grep -q 'debuggable false' app/build.gradle
+          echo "V190 common CAST dialog static checks passed."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Prepare protected Release Keystore
+        shell: bash
+        env:
+          SE_RELEASE_KEYSTORE_BASE64: ${{  secrets.SE_RELEASE_KEYSTORE_BASE64  }}
+          SE_RELEASE_STORE_PASSWORD: ${{  secrets.SE_RELEASE_STORE_PASSWORD  }}
+          SE_RELEASE_KEY_ALIAS: ${{  secrets.SE_RELEASE_KEY_ALIAS  }}
+          SE_RELEASE_KEY_PASSWORD: ${{  secrets.SE_RELEASE_KEY_PASSWORD  }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_BASE64" || { echo "Missing Actions secret: SE_RELEASE_KEYSTORE_BASE64"; exit 1; }
+          test -n "$SE_RELEASE_STORE_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_STORE_PASSWORD"; exit 1; }
+          test -n "$SE_RELEASE_KEY_ALIAS" || { echo "Missing Actions secret: SE_RELEASE_KEY_ALIAS"; exit 1; }
+          test -n "$SE_RELEASE_KEY_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_KEY_PASSWORD"; exit 1; }
+          KEYFILE="$RUNNER_TEMP/se-iptv-release.jks"
+          printf '%s' "$SE_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          keytool -list -keystore "$KEYFILE" -storepass "$SE_RELEASE_STORE_PASSWORD" -alias "$SE_RELEASE_KEY_ALIAS" >/dev/null
+          echo "SE_RELEASE_KEYSTORE_PATH=$KEYFILE" >> "$GITHUB_ENV"
+          echo "Protected release keystore loaded and alias verified."
+
+      - name: Build signed Release APK
+        working-directory: ${{  env.ROOT  }}
+        shell: bash
+        env:
+          SE_RELEASE_STORE_PASSWORD: ${{  secrets.SE_RELEASE_STORE_PASSWORD  }}
+          SE_RELEASE_KEY_ALIAS: ${{  secrets.SE_RELEASE_KEY_ALIAS  }}
+          SE_RELEASE_KEY_PASSWORD: ${{  secrets.SE_RELEASE_KEY_PASSWORD  }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_PATH"
+          chmod +x gradlew
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK signature and release certificate fingerprint
+        working-directory: ${{  env.ROOT  }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          SDK=$(printenv ANDROID_HOME || printenv ANDROID_SDK_ROOT || echo /usr/local/lib/android/sdk)
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          test -x "$APKSIGNER"
+          mkdir -p out
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > out/apksigner-verify.txt
+          ACTUAL=$(grep -Eio 'certificate SHA-256 digest:[[:space:]]*[0-9a-f:]+' out/apksigner-verify.txt | sed -E 's/.*digest:[[:space:]]*//' | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n 1 || true)
+          EXPECTED=$(tr -d '[:space:]' < RELEASE_SIGNING_CERT_SHA256.txt)
+          test -n "$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED" || { echo "Release certificate fingerprint mismatch"; exit 1; }
+          unzip -t "$APK" >/dev/null
+          echo "APK signature and expected release certificate fingerprint verified."
+
+      - name: Package V190 APK and source ZIP
+        working-directory: ${{  env.ROOT  }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.190-release.apk
+          rsync -a ./ source-export/ \
+            --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' \
+            --exclude='app/build' --exclude='out' --exclude='source-export' \
+            --exclude='build_payload' --exclude='.github' \
+            --exclude='*.jks' --exclude='*.keystore' --exclude='*.p12' --exclude='*.pfx' \
+            --exclude='SE_RELEASE_KEYSTORE_BASE64.txt' --exclude='release-signing.properties'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.190-source.zip .)
+          unzip -t out/SE-Android-v100.0.190-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.190-release.apk out/SE-Android-v100.0.190-source.zip
+          ls -lh out/*
+
+      - name: Clean signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/se-iptv-release.jks"
+
+      - name: Upload V190 APK and source deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.190-RELEASE-FINAL
+          path: |
+            ${{  env.ROOT  }}/out/SE-Android-v100.0.190-release.apk
+            ${{  env.ROOT  }}/out/SE-Android-v100.0.190-source.zip
+          if-no-files-found: error
+          retention-days: 30
