@@ -73,7 +73,8 @@ object FongMiDlnaEngine {
             Log.w(TAG, "jUPnP service disconnected")
             service = null
             synchronized(lock) {
-                bound = false
+                // Android retains a live binding after a temporary disconnection and may reconnect
+                // this same ServiceConnection. Do not bind a duplicate connection here.
                 if (pendingService == null || pendingService?.isCompleted == true) {
                     pendingService = CompletableDeferred()
                 }
