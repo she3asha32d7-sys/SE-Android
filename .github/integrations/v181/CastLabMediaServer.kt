@@ -316,31 +316,10 @@ object CastLabMediaServer {
                     if (colon > 0) headers[line.substring(0, colon).trim().lowercase(Locale.US)] =
                         line.substring(colon + 1).trim()
                 }
-                if (method == "OPTIONS") {
-                    val response = "HTTP/1.1 200 OK\r\nAllow: GET, HEAD, OPTIONS\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, HEAD, OPTIONS\r\nAccess-Control-Allow-Headers: Range, transferMode.dlna.org, contentFeatures.dlna.org\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-                    output.write(response.toByteArray(StandardCharsets.US_ASCII))
-                    output.flush()
-                    return
-                }
-                if (method != "GET" && method != "HEAD") {
-                    output.write("HTTP/1.1 405 Method Not Allowed\r\nAllow: GET, HEAD, OPTIONS\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".toByteArray(StandardCharsets.US_ASCII))
-                    output.flush()
-                    return
-                }
-
-                val current = activeMedia
-                val requestedName = Uri.decode(path).removePrefix("/")
-                if (current == null || requestedName != current.file.name ||
-                    !current.file.isFile || current.file.length() <= 0L) {
-                    writeError(output, 404, "Not Found")
-                    return
-                }
-
-                val total = current.file.length()
-                val rangeHeader = headers["range"]
                 val remoteHost = socket.inetAddress?.hostAddress.orEmpty()
                 val isReceiverRequest = remoteHost.isNotBlank() && remoteHost != localServerIp &&
                     remoteHost != "127.0.0.1" && remoteHost != "::1"
+                val rangeHeader = headers["range"]
                 if (isReceiverRequest) {
                     lastRemoteHost = remoteHost
                     lastRemotePath = path
@@ -350,6 +329,37 @@ object CastLabMediaServer {
                     lastServerError = ""
                     android.util.Log.i("SE-CastLab-HTTP", "Receiver request host=$remoteHost method=$method path=$path range=${rangeHeader.orEmpty()}")
                 }
+                if (method == "OPTIONS") {
+                    val response = "HTTP/1.1 200 OK\r\nAllow: GET, HEAD, OPTIONS\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, HEAD, OPTIONS\r\nAccess-Control-Allow-Headers: Range, transferMode.dlna.org, contentFeatures.dlna.org\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    output.write(response.toByteArray(StandardCharsets.US_ASCII))
+                    output.flush()
+                    if (isReceiverRequest) lastRemoteStatus = 200
+                    return
+                }
+                if (method != "GET" && method != "HEAD") {
+                    output.write("HTTP/1.1 405 Method Not Allowed\r\nAllow: GET, HEAD, OPTIONS\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".toByteArray(StandardCharsets.US_ASCII))
+                    output.flush()
+                    if (isReceiverRequest) {
+                        lastRemoteStatus = 405
+                        lastServerError = "Unsupported HTTP method: $method"
+                    }
+                    return
+                }
+
+                val current = activeMedia
+                val requestedName = Uri.decode(path).removePrefix("/")
+                if (current == null || requestedName != current.file.name ||
+                    !current.file.isFile || current.file.length() <= 0L) {
+                    if (isReceiverRequest) {
+                        lastRemoteStatus = 404
+                        lastServerError = "Media path mismatch: request=$path expected=${current?.file?.name ?: "no active file"}"
+                        android.util.Log.w("SE-CastLab-HTTP", lastServerError)
+                    }
+                    writeError(output, 404, "Not Found")
+                    return
+                }
+
+                val total = current.file.length()
                 // A multi-range probe is rare for a media renderer. Ignore that Range header and
                 // return the full resource rather than rejecting the television with HTTP 416.
                 val range = if (rangeHeader.isNullOrBlank() || rangeHeader.contains(',')) {
@@ -376,7 +386,7 @@ object CastLabMediaServer {
                     append("Cache-Control: no-cache, no-store, must-revalidate\r\n")
                     append("Pragma: no-cache\r\n")
                     append("Last-Modified: ${java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("GMT") }.format(java.util.Date(current.file.lastModified()))}\r\n")
-                    append("ETag: \"\${current.file.length()}-${current.file.lastModified()}\"\r\n")
+                    append("ETag: \"${current.file.length()}-${current.file.lastModified()}\"\r\n")
                     append("transferMode.dlna.org: Streaming\r\n")
                     append("contentFeatures.dlna.org: DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=$DLNA_FLAGS\r\n")
                     append("Access-Control-Allow-Origin: *\r\n")
