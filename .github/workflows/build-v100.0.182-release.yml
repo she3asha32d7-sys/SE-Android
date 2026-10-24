@@ -94,7 +94,7 @@ jobs:
           done
           test -s app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
           test -s app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
-          test -s CASTLAB_V100_0_182_AUDIT.md
+          test -s CASTLAB_V100_0_182_VOD_RELAY_AUDIT.md
 
           test -s CASTLAB_V100_0_182_VOD_RELAY_AUDIT.md
           grep -Fq 'return@withContext prepareNetworkProxy(app, source, titleHint)' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
@@ -104,12 +104,12 @@ jobs:
           grep -Fq 'awaitReceiverBytes(2600L, 4096L)' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
           grep -Fq 'method == "OPTIONS"' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
           grep -Fq 'CASTLAB DIAGNOSTICS — FAILED' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
-          test -s CASTLAB_V100_0_182_AUDIT.md
+          test -s CASTLAB_V100_0_182_VOD_RELAY_AUDIT.md
           grep -Fq 'verifyServerUrl(mediaUrl, target.length())' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
           grep -Fq 'castSamsungCompatibleFallback' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
           grep -Fq 'TdmCompatibleDlnaManager.discover(app)' app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
-          test -s CASTLAB_V100_0_182_AUDIT.md
-          grep -Fq 'CastLabMediaServer.prepare(this@PlayerActivity, mediaUri, channelName)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          test -s CASTLAB_V100_0_182_VOD_RELAY_AUDIT.md
+          grep -Fq 'CastLabMediaServer.prepare(this@PlayerActivity, mediaUri, channelName, isLive)' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           ! grep -Fq 'b.btnGencCast.visibility = if (isLocalFile) View.GONE else View.VISIBLE' app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
           test -s app/src/main/java/com/orbital/iptv/utils/originaldlna/VegaDlnaEngine.kt
           test -s app/src/main/java/com/orbital/iptv/utils/originaldlna/NekoVideoDlnaEngine.kt
