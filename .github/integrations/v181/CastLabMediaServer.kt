@@ -102,16 +102,17 @@ object CastLabMediaServer {
         error = lastServerError
     )
 
-    fun awaitReceiverBytes(timeoutMs: Long): Boolean {
+    fun awaitReceiverBytes(timeoutMs: Long, minimumBytes: Long = 1L): Boolean {
+        val minimum = minimumBytes.coerceAtLeast(1L)
         val deadline = System.currentTimeMillis() + timeoutMs.coerceAtLeast(0L)
         while (System.currentTimeMillis() < deadline) {
-            if (lastRemoteBytesServed.get() > 0L) return true
+            if (lastRemoteBytesServed.get() >= minimum) return true
             try { Thread.sleep(100L) } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
-                return lastRemoteBytesServed.get() > 0L
+                return lastRemoteBytesServed.get() >= minimum
             }
         }
-        return lastRemoteBytesServed.get() > 0L
+        return lastRemoteBytesServed.get() >= minimum
     }
     private val clients = Executors.newCachedThreadPool { task ->
         Thread(task, "SE-CastLab-HTTP-Client").apply { isDaemon = true }
