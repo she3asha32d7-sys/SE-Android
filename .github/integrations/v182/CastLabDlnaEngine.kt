@@ -218,6 +218,7 @@ object CastLabDlnaEngine {
             }
 
             val localFileUrl = CastLabMediaServer.isServing(mediaUrl)
+            val remoteVodProxy = CastLabMediaServer.isProxyServing(mediaUrl)
             if (localFileUrl) CastLabMediaServer.resetReceiverProbe()
             var primaryFailure: Exception? = null
 
@@ -231,7 +232,7 @@ object CastLabDlnaEngine {
             if (localFileUrl) {
                 // A successful SOAP status only proves the TV accepted the command. The important
                 // test is whether that receiver actually connected to this phone and read the file.
-                if (!CastLabMediaServer.awaitReceiverBytes(2600L, 4096L)) {
+                if (!CastLabMediaServer.awaitReceiverBytes(if (remoteVodProxy) 10000L else 2600L, 4096L)) {
                     val probe = CastLabMediaServer.receiverProbe()
                     Log.w(
                         TAG,
@@ -241,7 +242,7 @@ object CastLabDlnaEngine {
                     castSamsungCompatibleFallback(
                         receiver, mediaUrl, title, isLive, primaryFailure, requirePayload = true
                     )
-                    if (!CastLabMediaServer.awaitReceiverBytes(3200L, 4096L)) {
+                    if (!CastLabMediaServer.awaitReceiverBytes(if (remoteVodProxy) 8000L else 3200L, 4096L)) {
                         throw mediaFetchFailure(
                             receiver,
                             mediaUrl,
@@ -319,7 +320,7 @@ object CastLabDlnaEngine {
                     "<InstanceID>0</InstanceID><Speed>1</Speed>"
                 )
                 if (requirePayload && CastLabMediaServer.isServing(mediaUrl) &&
-                    !CastLabMediaServer.awaitReceiverBytes(1800L, 4096L)) {
+                    !CastLabMediaServer.awaitReceiverBytes(if (CastLabMediaServer.isProxyServing(mediaUrl)) 6000L else 1800L, 4096L)) {
                     val probe = CastLabMediaServer.receiverProbe()
                     lastError = IllegalStateException(
                         "TV did not fetch media for MIME $mime; host=${probe.host}, status=${probe.status}, " +
