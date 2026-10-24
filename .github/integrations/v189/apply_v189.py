@@ -183,11 +183,11 @@ p = replace_once(p, 'import com.orbital.iptv.utils.UniversalCastManager\n',
 p = replace_once(p,
 '''                        if (result.isSuccess) {
                             if (::localPlayer.isInitialized) localPlayer.pause()
-                            Toast.makeText(this@PlayerActivity, "DLNA 2 CASTING TO \${device.name}", Toast.LENGTH_SHORT).show()''',
+                            Toast.makeText(this@PlayerActivity, "DLNA 2 CASTING TO ${device.name}", Toast.LENGTH_SHORT).show()''',
 '''                        if (result.isSuccess) {
                             CastDisconnectManager.registerDlna("DLNA 2 — " + device.name, device.controlUrl, device.serviceType)
                             if (::localPlayer.isInitialized) localPlayer.pause()
-                            Toast.makeText(this@PlayerActivity, "DLNA 2 CASTING TO \${device.name}", Toast.LENGTH_SHORT).show()''',
+                            Toast.makeText(this@PlayerActivity, "DLNA 2 CASTING TO ${device.name}", Toast.LENGTH_SHORT).show()''',
     "register DLNA 2")
 p = replace_once(p,
 '''                        if (result.isSuccess) {
@@ -203,13 +203,13 @@ p = replace_once(p,
             if (::localPlayer.isInitialized) localPlayer.pause()
             Toast.makeText(
                 this@PlayerActivity,
-                "CASTING TO \${device.friendlyName}",''',
+                "CASTING TO ${device.friendlyName}",''',
 '''        if (result.isSuccess) {
             CastDisconnectManager.registerUniversal("TV / DLNA — " + device.friendlyName)
             if (::localPlayer.isInitialized) localPlayer.pause()
             Toast.makeText(
                 this@PlayerActivity,
-                "CASTING TO \${device.friendlyName}",''',
+                "CASTING TO ${device.friendlyName}",''',
     "register Universal TV route")
 p = replace_once(p,
 '''                            if (::localPlayer.isInitialized) localPlayer.pause()
