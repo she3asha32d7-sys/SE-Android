@@ -99,6 +99,7 @@ assert 'versionCode 1000182' in g2 and 'versionName "100.0.182"' in g2
 assert 'rootProject.name = "SEAndroid_v100.0.182"' in s2
 assert 'CastLabMediaServer.prepare(this@PlayerActivity, mediaUri, channelName, isLive)' in p2
 assert 'return@withContext prepareNetworkProxy(app, source, titleHint)' in m2
+assert 'check(isProxyServing(localUrl))' in m2
 assert 'setRequestProperty("User-Agent", PROXY_USER_AGENT)' in m2
 assert 'setRequestProperty("Range", it)' in m2
 assert 'rewriteHlsManifest' in m2 and 'PROXY_ROUTE' in m2
