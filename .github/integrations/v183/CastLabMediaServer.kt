@@ -373,7 +373,7 @@ object CastLabMediaServer {
                 }
                 val errorBody = "Upstream IPTV source returned $normalizedType instead of playable media."
                     .toByteArray(StandardCharsets.UTF_8)
-                val errorHeaders = "HTTP/1.1 502 Bad Gateway\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: ${errorBody.size}\\r\\nConnection: close\\r\\n\\r\\n"
+                val errorHeaders = "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${errorBody.size}\r\nConnection: close\r\n\r\n"
                 output.write(errorHeaders.toByteArray(StandardCharsets.US_ASCII))
                 output.write(errorBody)
                 output.flush()
