@@ -236,6 +236,7 @@ object CastLabDlnaEngine {
                 timeoutSeconds = 3
             )
             Log.i(TAG, "CastLab playback handoff succeeded to ${receiver.name}: $mediaUrl")
+            Unit
         }
     }
 
