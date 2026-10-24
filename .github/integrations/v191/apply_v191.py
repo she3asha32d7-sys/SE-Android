@@ -162,3 +162,5 @@ assert (root / "PLAYONDlNA_CAST_V100_0_191_AUDIT.md").is_file()
 assert (root / "THIRD_PARTY_LICENSES/PLAYONDlNA-GPL-3.0.txt").is_file()
 player_file.write_text(p, encoding="utf-8")
 print("V100.0.191 PlayOnDlna route applied; static checks passed.")
+
+# Trigger the versioned release workflow after its definition is committed.
