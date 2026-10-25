@@ -1,0 +1,203 @@
+name: SEAndroid V100.0.196 SE DOWNLOAD Buffered DLNA Release Build
+
+on:
+  push:
+    branches:
+      - v100.0.196-se-download-cast
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: seandroid-v196-se-download-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: Checkout V196 SE DOWNLOAD integration
+        uses: actions/checkout@v4
+
+      - name: Download successful V193 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SEAndroid-v100.0.193-RELEASE-FINAL
+          path: /tmp/base-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 40142666255
+
+      - name: Apply V194, V195 and V196 source patches with checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.193-source.zip' -print -quit)
+          test -n "$SRCZIP" || { echo "V193 source artifact not found"; find /tmp/base-artifact -maxdepth 3 -type f; exit 1; }
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          apply_patch_payload() {
+            local label="$1" dir="$2" expected="$3"
+            cat "$GITHUB_WORKSPACE/$dir/"*.b64 | tr -d '\r\n' > "/tmp/$label.patch.gz.b64"
+            local actual
+            actual=$(sha256sum "/tmp/$label.patch.gz.b64" | awk '{print $1}')
+            test "$actual" = "$expected" || { echo "$label patch payload checksum mismatch"; exit 1; }
+            base64 --decode "/tmp/$label.patch.gz.b64" | gzip -dc > "/tmp/$label.patch"
+            (cd "$ROOT" && patch -p1 --batch --forward < "/tmp/$label.patch")
+          }
+          apply_patch_payload v194 .github/integrations/v194/patches 6e20f0619574ccf3d22a2d698034c9f860b510c1672a0680d41b6cd7c0dd9d58
+          apply_patch_payload v195 .github/integrations/v195/patches 27dbb74af9b0e3f1e39688ac2281e795585312e29e1a0e721db1bb985fcf8ea9
+          apply_patch_payload v196 .github/integrations/v196/patches 258a030e266e137794b4177e39bbb50fed34dce51462bacc1a3a32fcb0899dee
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Validate SE DOWNLOAD buffering and preservation of existing CAST routes
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 1000196' app/build.gradle
+          grep -q 'versionName "100.0.196"' app/build.gradle
+          grep -q 'rootProject.name = "SEAndroid_v100.0.196"' settings.gradle
+          PLAYER=app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt
+          TDM=app/src/main/java/com/orbital/iptv/utils/SeTdmDlnaManager.kt
+          SERVER=app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabMediaServer.kt
+          ENGINE=app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt
+          DOWNLOAD=app/src/main/java/com/orbital/iptv/utils/SeDownloadMediaServer.kt
+          grep -Fq '"SE CAST"' "$PLAYER"
+          grep -Fq '13 -> showSeCastChooser(mediaUri)' "$PLAYER"
+          grep -Fq 'private fun showSeCastChooser(mediaUri: String)' "$PLAYER"
+          grep -Fq '"SE TDM"' "$PLAYER"
+          grep -Fq '14 -> showSeTdmChooser(mediaUri)' "$PLAYER"
+          grep -Fq 'private fun showSeTdmChooser(mediaUri: String)' "$PLAYER"
+          grep -Fq 'SeTdmDlnaManager.discover(this@PlayerActivity)' "$PLAYER"
+          grep -Fq 'SeTdmDlnaManager.cast(' "$PLAYER"
+          grep -Fq '"SE DOWNLOAD"' "$PLAYER"
+          grep -Fq '15 -> showSeDownloadChooser(mediaUri)' "$PLAYER"
+          grep -Fq 'private fun showSeDownloadChooser(mediaUri: String)' "$PLAYER"
+          grep -Fq 'SeDownloadMediaServer.prepare(' "$PLAYER"
+          grep -Fq 'DIRECT_BUFFER_BYTES = 2 * 1024 * 1024' "$DOWNLOAD"
+          grep -Fq 'PREFETCH_SEGMENT_COUNT = 2' "$DOWNLOAD"
+          grep -Fq 'private fun prefetchInitialHlsSegments' "$DOWNLOAD"
+          grep -Fq 'private fun downloadBounded' "$DOWNLOAD"
+          grep -Fq 'private fun serveDirect' "$DOWNLOAD"
+          grep -Fq 'private fun rewriteManifest' "$DOWNLOAD"
+          grep -Fq 'SE DOWNLOAD' SE_DOWNLOAD_CAST_V100_0_196_AUDIT.md
+          grep -Fq 'application/x-mpegURL' "$TDM"
+          grep -Fq 'DLNA/1.0 UPnP/1.0' "$TDM"
+          grep -Fq '239.255.255.250' "$TDM"
+          grep -Fq 'SetAVTransportURI' "$TDM"
+          grep -Fq '"Play"' "$TDM"
+          grep -Fq 'SE CAST / phone-local IPTV relay' SE_CAST_V100_0_193_AUDIT.md
+          grep -Fq 'SE TDM' SE_TDM_CAST_V100_0_195_AUDIT.md
+          grep -Fq 'PlayOnDlna' THIRD_PARTY_NOTICES.md
+          test -s THIRD_PARTY_LICENSES/PLAYONDlNA-GPL-3.0.txt
+          test -s RELEASE_SIGNING_CERT_SHA256.txt
+          grep -q 'signingConfig signingConfigs.release' app/build.gradle
+          grep -q 'SE_RELEASE_KEYSTORE_PATH' app/build.gradle
+          grep -q 'debuggable false' app/build.gradle
+          for choice in 'DLNA 3 (CastLab)' 'DLNA 4 (Vega)' 'DLNA 5 (NekoVideo)' 'DLNA 6 (YAACC)' 'DLNA 7 (FongMi)' 'DLNA 8 (PlayOnDlna)'; do
+            grep -Fq "\"$choice\"" "$PLAYER"
+          done
+          grep -Fq 'CastLabMediaServer.minimumReceiverBytes(mediaUrl, 4096L)' "$ENGINE"
+          grep -Fq 'fun isSeCastServing' "$SERVER"
+          echo "V196 SE DOWNLOAD buffering checks passed; existing SE CAST, SE TDM and all other CAST choices remain separately routed."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Prepare protected Release Keystore
+        shell: bash
+        env:
+          SE_RELEASE_KEYSTORE_BASE64: ${{ secrets.SE_RELEASE_KEYSTORE_BASE64 }}
+          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }}
+          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }}
+          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_BASE64" || { echo "Missing Actions secret: SE_RELEASE_KEYSTORE_BASE64"; exit 1; }
+          test -n "$SE_RELEASE_STORE_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_STORE_PASSWORD"; exit 1; }
+          test -n "$SE_RELEASE_KEY_ALIAS" || { echo "Missing Actions secret: SE_RELEASE_KEY_ALIAS"; exit 1; }
+          test -n "$SE_RELEASE_KEY_PASSWORD" || { echo "Missing Actions secret: SE_RELEASE_KEY_PASSWORD"; exit 1; }
+          KEYFILE="$RUNNER_TEMP/se-iptv-release.jks"
+          printf '%s' "$SE_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          keytool -list -keystore "$KEYFILE" -storepass "$SE_RELEASE_STORE_PASSWORD" -alias "$SE_RELEASE_KEY_ALIAS" >/dev/null
+          echo "SE_RELEASE_KEYSTORE_PATH=$KEYFILE" >> "$GITHUB_ENV"
+          echo "Protected release keystore loaded and alias verified."
+
+      - name: Build signed Release APK
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        env:
+          SE_RELEASE_STORE_PASSWORD: ${{ secrets.SE_RELEASE_STORE_PASSWORD }}
+          SE_RELEASE_KEY_ALIAS: ${{ secrets.SE_RELEASE_KEY_ALIAS }}
+          SE_RELEASE_KEY_PASSWORD: ${{ secrets.SE_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SE_RELEASE_KEYSTORE_PATH"
+          chmod +x gradlew
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK signature and release certificate fingerprint
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          SDK=$(printenv ANDROID_HOME || printenv ANDROID_SDK_ROOT || echo /usr/local/lib/android/sdk)
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          test -x "$APKSIGNER"
+          mkdir -p out
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > out/apksigner-verify.txt
+          ACTUAL=$(grep -Eio 'certificate SHA-256 digest:[[:space:]]*[0-9a-f:]+' out/apksigner-verify.txt | sed -E 's/.*digest:[[:space:]]*//' | tr -d ':' | tr '[:upper:]' '[:lower:]' | head -n 1 || true)
+          EXPECTED=$(tr -d '[:space:]' < RELEASE_SIGNING_CERT_SHA256.txt)
+          test -n "$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED" || { echo "Release certificate fingerprint mismatch"; exit 1; }
+          unzip -t "$APK" >/dev/null
+          echo "APK signature and expected release certificate fingerprint verified."
+
+      - name: Package V196 APK and source ZIP
+        working-directory: ${{ env.ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          mkdir -p out source-export
+          cp "$APK" out/SE-Android-v100.0.196-release.apk
+          rsync -a ./ source-export/ \
+            --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='.idea' \
+            --exclude='app/build' --exclude='out' --exclude='source-export' \
+            --exclude='build_payload' --exclude='.github' \
+            --exclude='*.jks' --exclude='*.keystore' --exclude='*.p12' --exclude='*.pfx' \
+            --exclude='SE_RELEASE_KEYSTORE_BASE64.txt' --exclude='release-signing.properties'
+          (cd source-export && zip -qr ../out/SE-Android-v100.0.196-source.zip .)
+          unzip -t out/SE-Android-v100.0.196-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.196-release.apk out/SE-Android-v100.0.196-source.zip
+          ls -lh out/*
+
+      - name: Clean signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/se-iptv-release.jks"
+
+      - name: Upload V196 APK and source deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEAndroid-v100.0.196-RELEASE-FINAL
+          path: |
+            ${{ env.ROOT }}/out/SE-Android-v100.0.196-release.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.196-source.zip
+          if-no-files-found: error
+          retention-days: 30
