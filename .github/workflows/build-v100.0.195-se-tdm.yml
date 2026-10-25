@@ -25,7 +25,7 @@ jobs:
       - name: Download successful V193 source artifact
         uses: actions/download-artifact@v4
         with:
-          name: SEAndroid-v100.0.195-RELEASE-FINAL
+          name: SEAndroid-v100.0.193-RELEASE-FINAL
           path: /tmp/base-artifact
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
