@@ -35,6 +35,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p /tmp/src
+          SRCZIP=$(find /tmp/base-artifact -type f -name 'SE-Android-v100.0.193-source.zip' -print -quit)
+          test -n "$SRCZIP" || { echo "V193 source artifact not found"; find /tmp/base-artifact -maxdepth 3 -type f; exit 1; }
+          unzip -q "$SRCZIP" -d /tmp/src
+          ROOT=$(find /tmp/src -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
           cat "$GITHUB_WORKSPACE/.github/integrations/v194/patches/"*.b64 | tr -d '\r\n' > /tmp/v194.patch.gz.b64
           ACTUAL_PATCH_PAYLOAD_SHA=$(sha256sum /tmp/v194.patch.gz.b64 | awk '{print $1}')
           EXPECTED_PATCH_PAYLOAD_SHA=6e20f0619574ccf3d22a2d698034c9f860b510c1672a0680d41b6cd7c0dd9d58
@@ -187,8 +194,8 @@ jobs:
             --exclude='*.jks' --exclude='*.keystore' --exclude='*.p12' --exclude='*.pfx' \
             --exclude='SE_RELEASE_KEYSTORE_BASE64.txt' --exclude='release-signing.properties'
           (cd source-export && zip -qr ../out/SE-Android-v100.0.195-source.zip .)
-          unzip -t out/SE-Android-v100.0.193-source.zip >/dev/null
-          sha256sum out/SE-Android-v100.0.193-release.apk out/SE-Android-v100.0.193-source.zip
+          unzip -t out/SE-Android-v100.0.195-source.zip >/dev/null
+          sha256sum out/SE-Android-v100.0.195-release.apk out/SE-Android-v100.0.195-source.zip
           ls -lh out/*
 
       - name: Clean signing material
@@ -199,9 +206,9 @@ jobs:
       - name: Upload V195 APK and source deliverables
         uses: actions/upload-artifact@v4
         with:
-          name: SEAndroid-v100.0.193-RELEASE-FINAL
+          name: SEAndroid-v100.0.195-RELEASE-FINAL
           path: |
-            ${{ env.ROOT }}/out/SE-Android-v100.0.193-release.apk
-            ${{ env.ROOT }}/out/SE-Android-v100.0.193-source.zip
+            ${{ env.ROOT }}/out/SE-Android-v100.0.195-release.apk
+            ${{ env.ROOT }}/out/SE-Android-v100.0.195-source.zip
           if-no-files-found: error
           retention-days: 30
