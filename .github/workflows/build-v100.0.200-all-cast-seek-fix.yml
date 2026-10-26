@@ -48,15 +48,21 @@ jobs:
           base64 --decode /tmp/v200.patch.xz.b64 | xz -dc > /tmp/v200.patch
           (cd "$ROOT" && patch -p1 --batch --forward < /tmp/v200.patch)
           # The CastLab primary DIDL builder also needs SE CAST's duration/size attributes.
-          python3 - "$ROOT/app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt" <<'PYFIX'
+          python3 - "$ROOT/app/src/main/java/com/orbital/iptv/utils/originaldlna/CastLabDlnaEngine.kt" "$ROOT/app/src/main/java/com/orbital/iptv/ui/player/PlayerActivity.kt" <<'PYFIX'
           import sys
           from pathlib import Path
-          p = Path(sys.argv[1])
-          source = p.read_text()
+          castlab = Path(sys.argv[1])
+          source = castlab.read_text()
           old = '<res protocolInfo="$protocolInfo">$safeUrl</res></item></DIDL-Lite>"""'
           new = '<res protocolInfo="$protocolInfo"${com.orbital.iptv.utils.SeCastSeekMetadata.resourceAttributes(url)}>$safeUrl</res></item></DIDL-Lite>"""'
           assert source.count(old) == 1, f"Expected one CastLab primary DIDL resource, found {source.count(old)}"
-          p.write_text(source.replace(old, new))
+          castlab.write_text(source.replace(old, new))
+          player = Path(sys.argv[2])
+          player_source = player.read_text()
+          old_import = "import com.orbital.iptv.utils.SeDownloadMediaServer\\n"
+          new_import = old_import + "import com.orbital.iptv.utils.SeCastSeekMetadata\\n"
+          assert player_source.count(old_import) == 1, "PlayerActivity import insertion anchor was not unique"
+          player.write_text(player_source.replace(old_import, new_import)) 
           PYFIX
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
 
