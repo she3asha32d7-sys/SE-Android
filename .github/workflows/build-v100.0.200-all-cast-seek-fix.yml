@@ -59,8 +59,8 @@ jobs:
           castlab.write_text(source.replace(old, new))
           player = Path(sys.argv[2])
           player_source = player.read_text()
-          old_import = "import com.orbital.iptv.utils.SeDownloadMediaServer\\n"
-          new_import = old_import + "import com.orbital.iptv.utils.SeCastSeekMetadata\\n"
+          old_import = "import com.orbital.iptv.utils.SeDownloadMediaServer\n"
+          new_import = old_import + "import com.orbital.iptv.utils.SeCastSeekMetadata\n"
           assert player_source.count(old_import) == 1, "PlayerActivity import insertion anchor was not unique"
           player.write_text(player_source.replace(old_import, new_import)) 
           PYFIX
