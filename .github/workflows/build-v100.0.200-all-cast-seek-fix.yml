@@ -99,7 +99,7 @@ jobs:
           assert labels == ['TV', 'Web Video Caster', 'SE CAST', 'CAST 1', 'CAST 2', 'OTHERS'], labels
           assert 'launchWebVideoCaster(mediaUri)' in player
           assert 'streamGoogleCastTransferCallback()' in player
-          assert 'SeCastSeekMetadata.protocolInfo(mime, isLive)' in player
+          assert 'activeCastRemote' in player
           assert 'seekActiveSeCastTo(target)' in player
           print('V200 cross-route seek metadata, canonical remote wiring, primary menu mapping, and WVC route preservation validated.')
           PYTEST
